@@ -24,12 +24,13 @@ const statusTone = {
 };
 
 function App() {
+  const clientFacing = new URLSearchParams(window.location.search).get('audience') === 'client';
   const onExit = () => {
-    window.location.href = '/';
+    window.location.href = new URL('../', window.location.href).href;
   };
   return (
     <StoreProvider>
-      <Platform onExit={onExit} />
+      <Platform onExit={onExit} clientFacing={clientFacing} />
     </StoreProvider>
   );
 }
@@ -38,16 +39,16 @@ function Brand({ dark = false, compact = false }) {
   return <div className={`brand ${dark ? 'dark' : ''} ${compact ? 'compact' : ''}`}><div className="brand-mark">A</div>{!compact && <div><b>ASTERA</b><span>TOKENIZATION</span></div>}</div>;
 }
 
-function Platform({ onExit }) {
+function Platform({ onExit, clientFacing = false }) {
   const { data, session, setSession } = useStore();
   const user = session ? data.users.find((u) => u.id === session.userId) : null;
-  if (!session || !user) return <Login onExit={onExit} />;
+  if (!session || !user || (clientFacing && user.role === 'master_admin')) return <Login onExit={onExit} clientFacing={clientFacing} />;
   if (user.role === 'master_admin') return <MasterApp user={user} onExit={onExit} />;
   if (user.role === 'tenant_admin') return <TenantApp user={user} onExit={onExit} />;
   return <InvestorApp user={user} onExit={onExit} />;
 }
 
-function Login({ onExit }) {
+function Login({ onExit, clientFacing = false }) {
   const { data, setSession, mutate, reset } = useStore();
   const [role, setRole] = useState('investor');
   const [tenantId, setTenantId] = useState('tenant-madero');
@@ -107,8 +108,8 @@ function Login({ onExit }) {
       <div className="login-branding">
         <button className="icon-btn login-back" onClick={onExit}><ArrowLeft/></button>
         <Brand dark />
-        <div className="login-message"><span className="eyebrow"><Sparkles size={15}/> Demo multi rol</span><h1>Una plataforma.<br/>Tres puntos de vista.</h1><p>Probá la operación desde el inversor, la constructora y el administrador central. Los datos viven en tu navegador y se sincronizan entre pestañas.</p></div>
-        <div className="login-roles-visual"><div><ShieldCheck/><span>Master Admin</span></div><div><Building2/><span>Constructora</span></div><div><Users/><span>Inversor</span></div></div>
+        <div className="login-message"><span className="eyebrow"><Sparkles size={15}/> {clientFacing ? 'Demo de producto' : 'Demo multi rol'}</span><h1>Una plataforma.<br/>{clientFacing ? 'Dos experiencias.' : 'Tres puntos de vista.'}</h1><p>{clientFacing ? 'Recorré el backoffice de la constructora y el portal del inversor. Los datos viven en tu navegador y se sincronizan entre pestañas.' : 'Probá la operación desde el inversor, la constructora y el administrador central. Los datos viven en tu navegador y se sincronizan entre pestañas.'}</p></div>
+        <div className="login-roles-visual">{!clientFacing && <div><ShieldCheck/><span>Master Admin</span></div>}<div><Building2/><span>Constructora</span></div><div><Users/><span>Inversor</span></div></div>
       </div>
       <div className="login-panel">
         {!register ? <>
@@ -117,7 +118,7 @@ function Login({ onExit }) {
             <div className="role-tabs">
               <button className={role === 'investor' ? 'active' : ''} onClick={() => presetRole('investor')}><Users/>Inversor</button>
               <button className={role === 'tenant_admin' ? 'active' : ''} onClick={() => presetRole('tenant_admin')}><Building2/>Constructora</button>
-              <button className={role === 'master_admin' ? 'active' : ''} onClick={() => presetRole('master_admin')}><ShieldCheck/>Master</button>
+              {!clientFacing && <button className={role === 'master_admin' ? 'active' : ''} onClick={() => presetRole('master_admin')}><ShieldCheck/>Master</button>}
             </div>
             {role !== 'master_admin' && <div className="field"><label>Plataforma</label><select value={tenantId} onChange={(e) => chooseTenant(e.target.value)}>{data.tenants.filter(t => t.status === 'active').map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}
             <form onSubmit={login}>
@@ -503,8 +504,8 @@ function TenantIssuance({ user, onToast }) {
   const [modal,setModal]=useState(false);
   const [form,setForm]=useState({projectName:'',symbol:'',softCap:'200000',hardCap:'350000',deadline:'2027-03-31'});
   const requests=data.issuanceRequests.filter(r=>r.tenantId===user.tenantId).sort((a,b)=>new Date(b.requestedAt)-new Date(a.requestedAt));
-  const submit=()=>{if(!form.projectName||!form.symbol)return;mutate(d=>{d.issuanceRequests.unshift({id:uid('req'),tenantId:user.tenantId,requestedBy:user.id,status:'pending',projectName:form.projectName,symbol:form.symbol.toUpperCase(),softCap:Number(form.softCap),hardCap:Number(form.hardCap),deadline:form.deadline,requestedAt:new Date().toISOString()});d.auditLog.unshift({id:uid('a'),actor:user.name,action:'Solicitud de emisión',detail:`${form.projectName} · ${form.symbol.toUpperCase()}`,createdAt:new Date().toISOString()})});setModal(false);onToast('Solicitud enviada al Master Backoffice.');};
-  return <div className="stack-lg"><div className="section-action"><div><h2>Solicitudes de emisión</h2><p>El Master Admin revisa y aprueba las nuevas emisiones.</p></div><button className="btn btn-primary" onClick={()=>setModal(true)}><Plus size={16}/> Nueva solicitud</button></div><Card>{requests.length?<div className="request-list">{requests.map(r=><div key={r.id}><span className="holding-token">{r.symbol.slice(0,2)}</span><div><b>{r.projectName}</b><small>Solicitada {dateFmt(r.requestedAt)}</small></div><div><small>Soft cap</small><b>{money(r.softCap)}</b></div><div><small>Hard cap</small><b>{money(r.hardCap)}</b></div><Badge status={r.status}/></div>)}</div>:<Empty icon={Coins} title="Sin solicitudes" text="Podés pedir una nueva emisión al administrador central."/>}</Card>{modal&&<Modal title="Solicitar nueva emisión" subtitle="La solicitud quedará pendiente de aprobación central" onClose={()=>setModal(false)}><div className="modal-body form-grid"><div className="field full"><label>Nombre del proyecto</label><input value={form.projectName} onChange={e=>setForm({...form,projectName:e.target.value})} placeholder="Ej. Madero Studios III"/></div><div className="field"><label>Símbolo del token</label><input value={form.symbol} onChange={e=>setForm({...form,symbol:e.target.value})} placeholder="MSTD" maxLength={8}/></div><div className="field"><label>Deadline</label><input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/></div><div className="field"><label>Soft cap</label><input type="number" value={form.softCap} onChange={e=>setForm({...form,softCap:e.target.value})}/></div><div className="field"><label>Hard cap</label><input type="number" value={form.hardCap} onChange={e=>setForm({...form,hardCap:e.target.value})}/></div></div><div className="modal-footer"><button className="btn btn-ghost" onClick={()=>setModal(false)}>Cancelar</button><button className="btn btn-primary" onClick={submit}>Enviar solicitud <Send size={16}/></button></div></Modal>}</div>;
+  const submit=()=>{if(!form.projectName||!form.symbol)return;mutate(d=>{d.issuanceRequests.unshift({id:uid('req'),tenantId:user.tenantId,requestedBy:user.id,status:'pending',projectName:form.projectName,symbol:form.symbol.toUpperCase(),softCap:Number(form.softCap),hardCap:Number(form.hardCap),deadline:form.deadline,requestedAt:new Date().toISOString()});d.auditLog.unshift({id:uid('a'),actor:user.name,action:'Solicitud de emisión',detail:`${form.projectName} · ${form.symbol.toUpperCase()}`,createdAt:new Date().toISOString()})});setModal(false);onToast('Solicitud enviada para revisión.');};
+  return <div className="stack-lg"><div className="section-action"><div><h2>Solicitudes de emisión</h2><p>Las nuevas emisiones se envían a revisión antes de su publicación.</p></div><button className="btn btn-primary" onClick={()=>setModal(true)}><Plus size={16}/> Nueva solicitud</button></div><Card>{requests.length?<div className="request-list">{requests.map(r=><div key={r.id}><span className="holding-token">{r.symbol.slice(0,2)}</span><div><b>{r.projectName}</b><small>Solicitada {dateFmt(r.requestedAt)}</small></div><div><small>Soft cap</small><b>{money(r.softCap)}</b></div><div><small>Hard cap</small><b>{money(r.hardCap)}</b></div><Badge status={r.status}/></div>)}</div>:<Empty icon={Coins} title="Sin solicitudes" text="Podés solicitar una nueva emisión para esta plataforma."/>}</Card>{modal&&<Modal title="Solicitar nueva emisión" subtitle="La solicitud quedará pendiente de revisión" onClose={()=>setModal(false)}><div className="modal-body form-grid"><div className="field full"><label>Nombre del proyecto</label><input value={form.projectName} onChange={e=>setForm({...form,projectName:e.target.value})} placeholder="Ej. Madero Studios III"/></div><div className="field"><label>Símbolo del token</label><input value={form.symbol} onChange={e=>setForm({...form,symbol:e.target.value})} placeholder="MSTD" maxLength={8}/></div><div className="field"><label>Deadline</label><input type="date" value={form.deadline} onChange={e=>setForm({...form,deadline:e.target.value})}/></div><div className="field"><label>Soft cap</label><input type="number" value={form.softCap} onChange={e=>setForm({...form,softCap:e.target.value})}/></div><div className="field"><label>Hard cap</label><input type="number" value={form.hardCap} onChange={e=>setForm({...form,hardCap:e.target.value})}/></div></div><div className="modal-footer"><button className="btn btn-ghost" onClick={()=>setModal(false)}>Cancelar</button><button className="btn btn-primary" onClick={submit}>Enviar solicitud <Send size={16}/></button></div></Modal>}</div>;
 }
 
 function TenantDistributions({ user, onToast }) {

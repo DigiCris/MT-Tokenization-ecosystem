@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0b1739" />
     <meta name="description" content="Infraestructura de tokenización para estructurar, colocar y administrar proyectos de inversión digitales." />
     <title>Astera Tokenization | Infraestructura para inversiones digitales</title>
-    <link rel="stylesheet" href="/landing.css" />
+    <link rel="stylesheet" href="./landing.css" />
   </head>
   <body>
     <header class="site-header" id="top">
@@ -19,12 +19,12 @@
         <nav class="nav-links" aria-label="Navegación principal">
           <a href="#producto">Producto</a>
           <a href="#flujo">Cómo funciona</a>
-          <a href="#arquitectura">Arquitectura</a>
+          <a href="#solucion">Solución</a>
           <a href="#ecosistema">Ecosistema</a>
         </nav>
 
         <div class="nav-actions">
-          <a class="button button-primary button-small" href="/app/">Ver plataforma</a>
+          <a class="button button-primary button-small" href="./app/?audience=client">Ver plataforma</a>
           <button class="menu-button" id="menuButton" type="button" aria-label="Abrir menú" aria-expanded="false">
             <span></span><span></span><span></span>
           </button>
@@ -33,9 +33,9 @@
       <div class="mobile-menu" id="mobileMenu">
         <a href="#producto">Producto</a>
         <a href="#flujo">Cómo funciona</a>
-        <a href="#arquitectura">Arquitectura</a>
+        <a href="#solucion">Solución</a>
         <a href="#ecosistema">Ecosistema</a>
-        <a class="button button-primary" href="/app/">Ver plataforma</a>
+        <a class="button button-primary" href="./app/?audience=client">Ver plataforma</a>
       </div>
     </header>
 
@@ -45,17 +45,17 @@
         <div class="hero-glow glow-two"></div>
         <div class="container hero-grid">
           <div class="hero-copy reveal">
-            <span class="eyebrow">INFRAESTRUCTURA DE TOKENIZACIÓN END TO END</span>
-            <h1>Convertí proyectos reales en experiencias de inversión digitales.</h1>
-            <p class="hero-text">Una plataforma multi tenant para estructurar, colocar y administrar inversiones tokenizadas con una experiencia simple para el inversor y control central para la operación.</p>
+            <span class="eyebrow">PLATAFORMA WHITE LABEL DE TOKENIZACIÓN</span>
+            <h1>Convertí tus proyectos en una experiencia digital de inversión.</h1>
+            <p class="hero-text">Una solución para constructoras y desarrolladoras que combina un backoffice de gestión con un portal de inversión de marca propia. Onboarding, compliance, suscripción, inversión y seguimiento en una misma experiencia.</p>
             <div class="hero-actions">
-              <a class="button button-primary button-large" href="/app/">Explorar demo funcional <span>→</span></a>
+              <a class="button button-primary button-large" href="./app/?audience=client">Explorar demo funcional <span>→</span></a>
               <a class="button button-secondary button-large" href="#flujo">Ver cómo funciona</a>
             </div>
             <div class="hero-notes">
-              <div><span class="check">✓</span><strong>Multi tenant</strong><small>Una infraestructura, múltiples marcas.</small></div>
+              <div><span class="check">✓</span><strong>Marca propia</strong><small>Una experiencia digital alineada con tu identidad.</small></div>
               <div><span class="check">✓</span><strong>Compliance integrado</strong><small>KYC, AML y reglas por proyecto.</small></div>
-              <div><span class="check">✓</span><strong>Ciclo completo</strong><small>Emisión, inversión y distribuciones.</small></div>
+              <div><span class="check">✓</span><strong>Ciclo completo</strong><small>Colocación, inversión y distribuciones.</small></div>
             </div>
           </div>
 
@@ -104,26 +104,21 @@
       <section class="section-pad" id="producto">
         <div class="container">
           <div class="section-heading center reveal">
-            <span class="eyebrow">UN PRODUCTO, TRES EXPERIENCIAS</span>
-            <h2>Cada actor ve exactamente lo que necesita.</h2>
-            <p>La operación central mantiene control global. Cada constructora administra únicamente su negocio. El inversor recibe una experiencia simple, guiada y coherente.</p>
+            <span class="eyebrow">DOS EXPERIENCIAS, UNA MISMA PLATAFORMA</span>
+            <h2>Tu equipo administra. Tus inversores invierten.</h2>
+            <p>La solución está pensada para que la gestión cotidiana sea simple para la constructora y el recorrido de inversión sea claro para el usuario final.</p>
           </div>
 
-          <div class="roles-grid">
-            <article class="role-card reveal">
-              <div class="role-icon">◎</div><span class="card-kicker">OPERACIÓN CENTRAL</span><h3>Master Backoffice</h3>
-              <p>Alta de constructoras, creación de tokens, identidades globales, tenencias y acciones regulatorias desde una sola consola.</p>
-              <ul><li>Vista global multi tenant</li><li>Control de emisiones</li><li>Compliance y reporting</li></ul>
+          <div class="roles-grid client-roles">
+            <article class="role-card featured reveal">
+              <div class="role-icon">▦</div><span class="card-kicker">PARA TU EQUIPO</span><h3>Backoffice de constructora</h3>
+              <p>Administrá proyectos, seguí la colocación, consultá inversores y coordiná distribuciones desde un único panel.</p>
+              <ul><li>Proyectos y métricas de colocación</li><li>Gestión de emisiones y documentación</li><li>Intereses y devolución de capital</li></ul>
             </article>
-            <article class="role-card featured reveal reveal-delay">
-              <div class="role-icon">▦</div><span class="card-kicker">CADA CLIENTE</span><h3>Backoffice de constructora</h3>
-              <p>Gestión simple de proyectos, colocación, fondos, inversores y distribuciones sin acceder a otros tenants.</p>
-              <ul><li>Proyectos y métricas</li><li>Solicitudes de emisión</li><li>Intereses y devolución de capital</li></ul>
-            </article>
-            <article class="role-card reveal reveal-delay-2">
-              <div class="role-icon">◉</div><span class="card-kicker">USUARIO FINAL</span><h3>Portal del inversor</h3>
-              <p>Onboarding, fondeo, proyectos, suscripción, inversión, tenencias, movimientos y retiros en una misma experiencia.</p>
-              <ul><li>KYC y AML guiados</li><li>Inversión primaria</li><li>Portfolio y movimientos</li></ul>
+            <article class="role-card reveal reveal-delay">
+              <div class="role-icon">◉</div><span class="card-kicker">PARA TUS INVERSORES</span><h3>Portal de inversión</h3>
+              <p>Una experiencia guiada para registrarse, fondear, explorar oportunidades, invertir y seguir cada posición.</p>
+              <ul><li>KYC y AML integrados</li><li>Suscripción e inversión primaria</li><li>Tenencias, movimientos y retiros</li></ul>
             </article>
           </div>
         </div>
@@ -147,27 +142,30 @@
         </div>
       </section>
 
-      <section class="section-pad" id="arquitectura">
+      <section class="section-pad" id="solucion">
         <div class="container architecture-grid">
           <div class="architecture-copy reveal">
-            <span class="eyebrow">ARQUITECTURA MULTI TENANT</span>
-            <h2>Sumar una nueva constructora debería ser configurar, no volver a desarrollar.</h2>
-            <p>Una infraestructura central comparte las piezas complejas, mientras cada cliente conserva su marca, contenido, proyectos, administradores e inversores.</p>
+            <span class="eyebrow">UNA SOLUCIÓN CON TU MARCA</span>
+            <h2>La tecnología se adapta a tu negocio, no al revés.</h2>
+            <p>Implementamos una experiencia de inversión digital para tus proyectos con portal para inversores y herramientas de gestión para tu equipo, manteniendo la identidad visual y comercial de tu compañía.</p>
             <div class="architecture-points">
-              <div><strong>01</strong><span><b>Control central</b><small>La PSAV ve plataformas, personas, tokens y tenencias.</small></span></div>
-              <div><strong>02</strong><span><b>Aislamiento por tenant</b><small>Cada constructora opera únicamente sobre su propia información.</small></span></div>
-              <div><strong>03</strong><span><b>Infraestructura reusable</b><small>Backend, contratos, compliance y procesos compartidos.</small></span></div>
+              <div><strong>01</strong><span><b>Portal personalizado</b><small>Tu marca, tus contenidos y tus oportunidades de inversión.</small></span></div>
+              <div><strong>02</strong><span><b>Gestión de punta a punta</b><small>Desde la publicación del proyecto hasta intereses y devolución de capital.</small></span></div>
+              <div><strong>03</strong><span><b>Compliance integrado</b><small>Onboarding, KYC, AML, documentación y reglas operativas dentro del recorrido.</small></span></div>
             </div>
           </div>
-          <div class="architecture-visual reveal reveal-delay">
-            <div class="master-box"><span>CAPA CENTRAL</span><strong>Master Platform</strong><small>Control global PSAV</small></div>
-            <div class="connector-line"></div>
-            <div class="tenant-list">
-              <div><i class="tenant-color one"></i><span><b>Madero Urban</b><small>MURRD · MUPK</small></span><em>2 proyectos</em></div>
-              <div><i class="tenant-color two"></i><span><b>Arena Desarrollos</b><small>AREI · ARLOG</small></span><em>2 proyectos</em></div>
-              <div><i class="tenant-color three"></i><span><b>Andes Habitat</b><small>ANDL</small></span><em>1 proyecto</em></div>
-              <div class="tenant-add"><i>+</i><span><b>Nueva constructora</b><small>Provisioning de una nueva instancia</small></span></div>
+          <div class="architecture-visual client-suite reveal reveal-delay">
+            <div class="suite-label">TU PLATAFORMA</div>
+            <div class="suite-card suite-backoffice">
+              <div class="suite-icon">▦</div>
+              <div><span>GESTIÓN</span><strong>Backoffice</strong><small>Proyectos · colocación · inversores · distribuciones</small></div>
             </div>
+            <div class="suite-connector"><span></span><em>misma operación</em><span></span></div>
+            <div class="suite-card suite-portal">
+              <div class="suite-icon">◉</div>
+              <div><span>EXPERIENCIA DE INVERSIÓN</span><strong>Portal del inversor</strong><small>Onboarding · fondeo · inversión · portfolio · retiros</small></div>
+            </div>
+            <div class="suite-brandline"><i></i><span>Identidad visual y experiencia adaptadas a tu marca</span><i></i></div>
           </div>
         </div>
       </section>
@@ -175,14 +173,14 @@
       <section class="capabilities section-pad">
         <div class="container">
           <div class="section-heading center light-heading reveal">
-            <span class="eyebrow">UNA CAPA OPERATIVA COMPLETA</span>
-            <h2>Lo complejo queda detrás. La experiencia queda adelante.</h2>
+            <span class="eyebrow">TODO EL CICLO EN UN SOLO PRODUCTO</span>
+            <h2>Una experiencia preparada para operar proyectos tokenizados.</h2>
           </div>
           <div class="capability-grid reveal">
-            <article><span>01</span><h3>Identidad global</h3><p>Una misma persona puede operar en múltiples plataformas y wallets manteniendo una identidad consolidada.</p></article>
-            <article><span>02</span><h3>Escrow y colocación</h3><p>Soft cap, hard cap, deadline, fondos bloqueados y refunds forman parte del ciclo de cada proyecto.</p></article>
-            <article><span>03</span><h3>Compliance por token</h3><p>KYC, AML, adhesión, whitelist, freeze y reglas de transferencia integradas al flujo.</p></article>
-            <article><span>04</span><h3>Distribuciones</h3><p>Pagos de intereses, devolución de capital y cierre del proyecto con trazabilidad para el inversor.</p></article>
+            <article><span>01</span><h3>Proyectos y colocación</h3><p>Publicación de oportunidades, soft cap, hard cap, deadline, avance de colocación y documentación asociada.</p></article>
+            <article><span>02</span><h3>Onboarding y compliance</h3><p>Registro, KYC, AML, adhesión a proyectos y validaciones integradas al recorrido del inversor.</p></article>
+            <article><span>03</span><h3>Inversión y portfolio</h3><p>Ingreso de fondos, inversión, tenencias, movimientos y seguimiento de cada proyecto desde una interfaz simple.</p></article>
+            <article><span>04</span><h3>Distribuciones y cierre</h3><p>Pago de intereses, devolución de capital, retiros y trazabilidad de la evolución de cada inversión.</p></article>
           </div>
         </div>
       </section>
@@ -191,10 +189,10 @@
         <div class="container demo-card reveal">
           <div>
             <span class="eyebrow">DEMO FUNCIONAL</span>
-            <h2>Recorré el producto desde los tres roles.</h2>
-            <p>Probá el Master Admin, el backoffice de cada constructora y el portal del inversor. Todo se simula localmente para poder recorrer el flujo completo sin blockchain ni backend.</p>
+            <h2>Recorré las dos experiencias del producto.</h2>
+            <p>Probá el backoffice de la constructora y el portal del inversor. Todo se simula localmente para poder recorrer el flujo completo sin operaciones reales.</p>
           </div>
-          <a class="button button-white button-large" href="/app/">Abrir plataforma <span>→</span></a>
+          <a class="button button-white button-large" href="./app/?audience=client">Abrir plataforma <span>→</span></a>
         </div>
       </section>
     </main>
@@ -207,6 +205,6 @@
       </div>
     </footer>
 
-    <script src="/landing.js" defer></script>
+    <script src="./landing.js" defer></script>
   </body>
 </html>

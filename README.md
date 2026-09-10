@@ -1,6 +1,6 @@
 # Tokenization Mock
 
-Mock funcional de una plataforma multi tenant de tokenización de inversiones. Incluye una landing comercial completamente separada de la aplicación y una plataforma navegable con tres experiencias: Master Backoffice, Backoffice de constructora y Portal del inversor.
+Mock funcional de una plataforma de tokenización de inversiones. Incluye una landing comercial completamente separada de la aplicación y una plataforma navegable con Backoffice de constructora, Portal del inversor y una vista interna de Master Backoffice reservada para evaluar la operación completa del mock.
 
 Todo es una simulación de frontend. No hay backend, base de datos, wallets reales, blockchain, firmas reales, KYC real, AML real, Bitbase real ni integración con Caja de Valores o BYMA.
 
@@ -8,7 +8,7 @@ Todo es una simulación de frontend. No hay backend, base de datos, wallets real
 
 ### Landing
 
-La ruta `/` es una landing independiente hecha en **HTML + CSS + JavaScript vanilla**. No usa React. Presenta el servicio de tokenización, los tres roles, el ciclo de inversión, la arquitectura multi tenant y el ecosistema Bitbase, Kuantica y Astera Studio.
+La ruta `/` es una landing independiente hecha en **HTML + CSS + JavaScript vanilla**. No usa React. Está planteada como una landing comercial orientada al cliente y presenta únicamente lo que se ofrece hacia afuera: el Backoffice de constructora, el Portal del inversor, el ciclo de inversión y el ecosistema Bitbase, Kuantica y Astera Studio. No expone el Master Backoffice ni la arquitectura operativa interna.
 
 Archivos de la landing:
 
@@ -18,7 +18,7 @@ landing.css
 landing.js
 ```
 
-El CTA `Ver plataforma` abre `/app/`.
+El CTA `Ver plataforma` abre `/app/?audience=client`. Ese modo muestra únicamente las experiencias de Constructora e Inversor. La vista Master sigue disponible para evaluación interna entrando directamente a `/app/`.
 
 ### Master Backoffice
 
@@ -106,6 +106,12 @@ Esto es intencional. Permite abrir varias pestañas del mismo navegador, usar un
 
 La aplicación escucha el evento `storage`, por lo que los cambios realizados en una pestaña se reflejan en las demás.
 
+## Cómo abrir la landing
+
+La landing es completamente estática y usa rutas relativas. Por lo tanto, también puede abrirse directamente haciendo doble clic sobre `index.html` sin ejecutar npm. En ese modo se cargan correctamente `landing.css` y `landing.js`.
+
+El botón `Ver plataforma` apunta a la carpeta `app`. La plataforma funcional sí debe ejecutarse con Vite porque utiliza React y módulos ES.
+
 ## Cómo levantar el proyecto
 
 Requisitos:
@@ -123,8 +129,9 @@ npm run dev
 Vite mostrará la URL local, normalmente:
 
 ```text
-http://localhost:5173/       # landing vanilla
-http://localhost:5173/app/   # plataforma funcional
+http://localhost:5173/                       # landing vanilla
+http://localhost:5173/app/?audience=client  # demo comercial: constructora + inversor
+http://localhost:5173/app/                  # demo interna completa
 ```
 
 Para generar un build:
