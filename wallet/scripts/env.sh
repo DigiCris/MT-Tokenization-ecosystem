@@ -4,7 +4,7 @@
 WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export WALLET_ROOT
 export WALLET_TOOLS="$WALLET_ROOT/.tools"
-for _mtw_dir in slither-bin gitleaks/bin foundry/bin pnpm/bin node/bin; do
+for _mtw_dir in slither-bin age/bin gitleaks/bin foundry/bin pnpm/bin node/bin; do
   case ":$PATH:" in
     *":$WALLET_TOOLS/$_mtw_dir:"*) ;;
     *) PATH="$WALLET_TOOLS/$_mtw_dir:$PATH" ;;

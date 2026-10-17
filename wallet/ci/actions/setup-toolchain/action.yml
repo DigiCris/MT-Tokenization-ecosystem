@@ -2,7 +2,7 @@ name: wallet setup-toolchain
 description: Instala la toolchain fijada de wallet/ con scripts/tools/bootstrap (checksums verificados) y restaura las cachés.
 inputs:
   tools:
-    description: Herramientas separadas por espacio (node pnpm foundry gitleaks slither)
+    description: Herramientas separadas por espacio (node pnpm foundry gitleaks age slither)
     required: true
   foundry-rpc-cache:
     description: Restaura y guarda la caché RPC de Foundry del bloque de fork

@@ -4,7 +4,7 @@ import { totalmem, homedir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { run, runAsync, which, versionGte } from '../lib/proc.mjs';
-import { pass, fixed, warn, fail, skip } from '../lib/report.mjs';
+import { pass, fixed, warn, fail, skip, FAIL, FIXED } from '../lib/report.mjs';
 
 const TOOLCHAIN_ANCHOR = 'toolchain-local-del-proyecto';
 
@@ -116,8 +116,18 @@ export const systemChecks = [
   },
   {
     id: 'PF-07',
-    title: 'gitleaks == versión fijada',
-    run: async (ctx) => pinnedTool(ctx, { tool: 'gitleaks', want: ctx.versions.gitleaks.version, label: 'gitleaks', probe: () => toolVersion('gitleaks', ['version'], /v?(\d+\.\d+\.\d+)/) }),
+    title: 'gitleaks y age == versiones fijadas',
+    run: async (ctx) => {
+      // age: backups cifrados del signer y de producción (ADR-031).
+      const results = [
+        await pinnedTool(ctx, { tool: 'gitleaks', want: ctx.versions.gitleaks.version, label: 'gitleaks', probe: () => toolVersion('gitleaks', ['version'], /v?(\d+\.\d+\.\d+)/) }),
+        await pinnedTool(ctx, { tool: 'age', want: ctx.versions.age.version, label: 'age', probe: () => toolVersion('age', ['--version'], /v?(\d+\.\d+\.\d+)/) }),
+      ];
+      const failed = results.find((r) => r.status === FAIL);
+      if (failed) return failed;
+      const detail = results.map((r) => r.detail).join('; ');
+      return results.some((r) => r.status === FIXED) ? fixed(detail) : pass(detail);
+    },
   },
   {
     id: 'PF-08',

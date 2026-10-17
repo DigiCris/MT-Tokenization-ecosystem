@@ -1201,7 +1201,7 @@ Checks del preflight:
 | PF-04 | forge, cast, anvil == Foundry fijado: si falta o difiere → bootstrap y re-verifica | todos |
 | PF-05 | Docker Engine activo + Compose v2 (si el daemon está detenido intenta iniciarlo sin sudo; si no está instalado o no hay permisos → STOP: es la única dependencia de sistema obligatoria) | todos |
 | PF-06 | Slither == versión fijada: si falta o difiere → venv `wallet/.tools/slither` (o imagen Docker fijada) y re-verifica | todos |
-| PF-07 | gitleaks == versión fijada: si falta o difiere → bootstrap (o imagen Docker fijada) y re-verifica | todos |
+| PF-07 | gitleaks y age == versiones fijadas: si falta o difiere → bootstrap (o imagen Docker fijada) y re-verifica (age desde P11: backups cifrados, ADR-031) | todos |
 | PF-08 | Imágenes de herramientas de seguridad (Semgrep, OSV-Scanner, zizmor, syft, Trivy) presentes por digest; si faltan → `docker pull` automático | todos |
 | PF-09 | Puertos libres: 5173, 5174, 8080, 8081, 8090, 8545, 55432, 56379, 1025, 8025, 9464–9470 (o en uso por los servicios propios ya levantados) | local |
 | PF-10 | `wallet/.env` existe y `git check-ignore -q wallet/.env` | todos |

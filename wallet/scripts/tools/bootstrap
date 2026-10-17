@@ -2,7 +2,7 @@
 # Instala la toolchain fijada del proyecto en wallet/.tools (ADR-032), sin sudo y con verificación
 # de checksum/integridad de cada descarga oficial. Versiones: scripts/tools/versions.json.
 #
-# Uso: scripts/tools/bootstrap [all|node|pnpm|foundry|gitleaks|slither]...   (por defecto: all)
+# Uso: scripts/tools/bootstrap [all|node|pnpm|foundry|gitleaks|age|slither]...   (por defecto: all)
 #      Cada herramienta se instala sólo si falta o su versión difiere (idempotente).
 set -euo pipefail
 
@@ -22,6 +22,7 @@ installed_version() {
     pnpm)     [ -x "$WALLET_TOOLS/pnpm/bin/pnpm" ] && PATH="$WALLET_TOOLS/node/bin:$PATH" "$WALLET_TOOLS/pnpm/bin/pnpm" -v 2>/dev/null ;;
     foundry)  [ -x "$WALLET_TOOLS/foundry/bin/forge" ] && "$WALLET_TOOLS/foundry/bin/forge" --version 2>/dev/null | sed -n 's/^forge Version: \([0-9][0-9.]*\).*/\1/p' ;;
     gitleaks) [ -x "$WALLET_TOOLS/gitleaks/bin/gitleaks" ] && "$WALLET_TOOLS/gitleaks/bin/gitleaks" version 2>/dev/null | sed 's/^v//' ;;
+    age)      [ -x "$WALLET_TOOLS/age/bin/age" ] && "$WALLET_TOOLS/age/bin/age" --version 2>/dev/null | sed 's/^v//' ;;
     slither)  [ -x "$WALLET_TOOLS/slither-bin/slither" ] && "$WALLET_TOOLS/slither-bin/slither" --version 2>/dev/null ;;
   esac
 }
@@ -83,6 +84,27 @@ install_tarball_binaries() { # <tool> <binarios...>
 
 install_foundry()  { install_tarball_binaries foundry forge cast anvil chisel; }
 install_gitleaks() { install_tarball_binaries gitleaks gitleaks; }
+
+# age (backups cifrados, ADR-031): el tarball trae los binarios dentro de `age/`.
+install_age() {
+  local url sha tarball tmp b
+  url="$(json_get "$VERSIONS_JSON" "age.dist.$PLATFORM.url")"
+  sha="$(json_get "$VERSIONS_JSON" "age.dist.$PLATFORM.sha256")"
+  tarball="$CACHE/$(basename "$url")"
+  [ -f "$tarball" ] || download "$url" "$tarball"
+  verify_sha256 "$tarball" "$sha"
+  tmp="$(mktemp -d "$WALLET_TOOLS/.age.XXXXXX")"
+  tar -xzf "$tarball" -C "$tmp" --strip-components=1
+  mkdir -p "$tmp/bin"
+  for b in age age-keygen; do
+    [ -f "$tmp/$b" ] || die "el paquete de age no contiene $b"
+    mv "$tmp/$b" "$tmp/bin/$b"; chmod 0755 "$tmp/bin/$b"
+  done
+  rm -rf "$WALLET_TOOLS/age"
+  mkdir -p "$WALLET_TOOLS/age"
+  mv "$tmp/bin" "$WALLET_TOOLS/age/bin"
+  rm -rf "$tmp"
+}
 
 python_ok() {
   local pyver
@@ -175,10 +197,10 @@ main() {
   local t
   for t in "${targets[@]}"; do
     case "$t" in
-      all) ensure node; ensure pnpm; ensure foundry; ensure gitleaks; ensure slither; install_hook ;;
-      node|pnpm|foundry|gitleaks|slither) ensure "$t" ;;
+      all) ensure node; ensure pnpm; ensure foundry; ensure gitleaks; ensure age; ensure slither; install_hook ;;
+      node|pnpm|foundry|gitleaks|age|slither) ensure "$t" ;;
       hook) install_hook ;;
-      *) die "herramienta desconocida: $t (válidas: all node pnpm foundry gitleaks slither hook)" ;;
+      *) die "herramienta desconocida: $t (válidas: all node pnpm foundry gitleaks age slither hook)" ;;
     esac
   done
 }

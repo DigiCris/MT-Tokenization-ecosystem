@@ -10,6 +10,7 @@ Fuente única de verdad de versiones del proyecto (R-10, P01.T01). Re-verificada
 | pnpm | 12.14.0 | https://registry.npmjs.org/pnpm/12.14.0 | 2026-10-17 | `sha512-wYum2HmT09Fky16JSPMrLAbuhUSH4GzY2GeBNC+z5btGNDZwNHEehoArqpw3vqkGzhkprQjXCITJfYAd8TOJpg==` |
 | Foundry (forge, cast, anvil, chisel) | v1.8.5 | https://github.com/foundry-rs/foundry/releases/tag/v1.8.5 | 2026-10-17 | linux-x64 `sha256:6c66ffcc55fa4249197721baa3098bc208014ea1d8aa04b2ed50ac6bccffb226` · darwin-arm64 `sha256:56049728e25e44a61c7f2e49438023b0890cb45850ffcb7c882f90cd998baf83` |
 | gitleaks | 8.30.1 | https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt | 2026-10-17 | linux-x64 `sha256:551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb` · darwin-arm64 `sha256:b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5` |
+| age | 1.3.2 | https://github.com/FiloSottile/age/releases/tag/v1.3.2 (SHA-256 de los assets en la API de GitHub, verificado al descargar; publicada 2026-08-29) | 2026-10-17 | linux-x64 `sha256:cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10` · darwin-arm64 `sha256:e2020b073c44f692685a24d6abc378817eb81ffaaf49fd0531ef8565f767f2f5` |
 | Slither (venv, pip 26.2.1) | 0.11.6 | https://pypi.org/project/slither-analyzer/0.11.6/ | 2026-10-17 | pip wheel `sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e`; tag `0.11.6` = commit `050cc0a094e77bfd58e8228ae3bb6aa15c65edb4` |
 
 Mínimos del sistema exigidos por PF-01: bash ≥ 4.0, git ≥ 2.34, python ≥ 3.10.
