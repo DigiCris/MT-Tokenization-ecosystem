@@ -129,6 +129,32 @@ El resto de las dependencias de `backend/app` usa exactamente la versión de la 
 
 Scripts de instalación denegados en `backend/app/pnpm-workspace.yaml` (`allowBuilds: false`, cada uno con su motivo): `cpu-features` y `ssh2` (addons nativos opcionales de Testcontainers), `msgpackr-extract` (aceleración opcional de BullMQ) y `protobufjs` (postinstall de compatibilidad).
 
+### Versiones efectivas de `backend/signer` (P11)
+
+Proyecto independiente con su propio lockfile y la misma política de [supply chain](#supply-chain) que `backend/app`
+(`saveExact`, `minimumReleaseAge: 10080`, `strictDepBuilds`). Usa sólo lo necesario para el signer (sin Swagger, sin
+cola, sin email): mismas versiones efectivas que `backend/app` para las librerías compartidas, que todavía no tienen 7
+días en su versión de la tabla (ver la sección anterior).
+
+| Paquete | Fijada en `backend/signer` | Uso | Integridad (lockfile) |
+|---|---|---|---|
+| `@noble/curves` | 2.4.0 | secp256k1: firma de digests (RFC 6979, low-s) y recuperación | `sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==` |
+| `@noble/hashes` | 2.4.0 | scrypt y keccak de los keystores V3, HKDF de las contraseñas, HMAC del fingerprint | `sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==` |
+| `fastify` | 5.12.5 | servidor HTTPS mTLS | `sha512-OB2k1dlxs5/NAABqeKV2FUHkSD2BbENsCak8yULVcymn3fHIPDVa9TI3SDnJSWYSllZmSYuZXy2gTnsT+Sut1A==` |
+| `jose` | 6.2.12 | verificación JWS EdDSA (sesión, challenge, integridad, atestación) | `sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==` |
+| `kysely` | 0.29.6 | DB propia del shard | `sha512-hHaB8C/rfzDDtr/t8YZwxAuPJTT0zHyaPoVzcXwDYhYNAgH/4sIfVhi/XLLIY+bL/FqaIJnjATDbi8ObSELmxg==` |
+| `pg` | 8.23.1 | driver de PostgreSQL | `sha512-aL96AHANtWjPLDOLqnhx+ngp9+UK7ETEU8VJrDCGvsSSi/mGLcWYsS6Herg7lmaBJe4uwrfqsa7gTEFaSizDoQ==` |
+| `pino` | 10.4.0 | logs JSON con redacción | `sha512-bk1ZMTwG/Vymx+zPoa28MhNzucFvXJWp3csrSuxuHPSMeUettaCoQ5Jvg07mtC4JGNpcfTwz41oVCnNgBK9+vA==` |
+| `prom-client` | 15.1.3 | métricas del shard | `sha512-6ZiOBfCywsD4k1BN9IX0uZhF+tJkV8q8llP64G5Hajs4JOeVLPCwpPVcpXy3BwYiUGgyJzsJJQeOIv7+hDSq8g==` |
+| `viem` | 2.57.4 | ABI de lecturas on-chain y serialización EIP-1559 (la decodificación de la SafeTx es propia) | `sha512-ro+8AKrcGU6tPfou0gBRYv6bxnU3tPxxJGY4qpJwjiR40eHCWzeGhrAgYMlIncFtlnry2/yGjz57WOC67oshCQ==` |
+| `zod` | 4.6.5 | validación de pedidos, configuración y snapshot de policy | `sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==` |
+
+Dependencias de desarrollo: las mismas versiones que `backend/app` (`typescript` 6.0.3, `vitest` y
+`@vitest/coverage-v8` 5.0.3, `testcontainers` y `@testcontainers/postgresql` 12.2.0, `eslint` 10.12.0,
+`typescript-eslint` 8.71.1, `@eslint/js` 10.0.1, `prettier` 3.9.10, `@types/node` 26.6.5, `@types/pg` 8.23.1).
+Scripts de instalación denegados en `backend/signer/pnpm-workspace.yaml`: `cpu-features`, `ssh2` y `protobufjs` (mismos
+motivos que en `backend/app`). Los procedimientos del ciclo de vida usan el binario `age` de la toolchain.
+
 ## Herramientas de seguridad y de infraestructura
 
 | Componente | Versión | Tag / commit | Verificado |

@@ -191,6 +191,8 @@ export interface SignerKeysTable {
   address: Bytes;
   provider: 'development' | 'selfhosted' | 'hardware';
   status: 'ACTIVE' | 'PENDING' | 'RETIRED';
+  /** SignerKeyAttestation (JWS) que emitió el shard al crear la clave [B-SIG-07]. */
+  attestation: string | null;
   created_at: GeneratedTimestamp;
 }
 

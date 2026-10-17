@@ -184,7 +184,7 @@ export const chainChecks = [
     run: async (ctx) => {
       const e = ctx.env;
       const problems = [];
-      for (const k of ['DATABASE_URL', 'DATABASE_MIGRATION_URL', 'SIGNER_DATABASE_URL']) {
+      for (const k of ['DATABASE_URL', 'DATABASE_MIGRATION_URL', 'SIGNER_DATABASE_URL', 'SIGNER_PLATFORM_DATABASE_URL']) {
         if (!e[k]) {
           problems.push(`${k} ausente`);
           continue;
@@ -193,6 +193,21 @@ export const chainChecks = [
           const [[one]] = await pgQuery(e[k], 'select 1');
           if (one !== '1') problems.push(`${k}: respuesta inesperada`);
         } catch (err) {
+          // Volúmenes locales creados antes de P11 no tienen la DB del shard platform (init-db.sh corre una sola vez).
+          if (k === 'SIGNER_PLATFORM_DATABASE_URL' && ctx.fix && ctx.envName === 'local' && /does not exist/.test(err.message)) {
+            try {
+              const admin = `postgres://${encodeURIComponent(e.POSTGRES_USER)}:${encodeURIComponent(e.POSTGRES_PASSWORD)}@127.0.0.1:${e.POSTGRES_HOST_PORT}/`;
+              await pgQuery(`${admin}${encodeURIComponent(e.POSTGRES_DB)}`, 'CREATE DATABASE mtw_signer_platform_dev OWNER mtw_signer');
+              await pgQuery(`${admin}${encodeURIComponent(e.POSTGRES_DB)}`, 'REVOKE ALL ON DATABASE mtw_signer_platform_dev FROM PUBLIC');
+              await pgQuery(`${admin}mtw_signer_platform_dev`, 'ALTER SCHEMA public OWNER TO mtw_signer');
+              await pgQuery(`${admin}mtw_signer_platform_dev`, 'REVOKE CREATE ON SCHEMA public FROM PUBLIC');
+              ctx.log('  auto-remediación: creada la DB mtw_signer_platform_dev (shard platform del signer)');
+              continue;
+            } catch (createErr) {
+              problems.push(`${k}: ${createErr.message}`);
+              continue;
+            }
+          }
           problems.push(`${k}: ${err.message}`);
         }
       }

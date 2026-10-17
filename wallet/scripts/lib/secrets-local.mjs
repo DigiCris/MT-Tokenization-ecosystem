@@ -35,6 +35,16 @@ const setIfEmpty = (k, gen) => {
     generated.push(k);
   }
 };
+// Variables nuevas de .env.example (agregadas en fases posteriores) que todavía no están en wallet/.env: se agregan
+// con su valor por defecto; nunca se toca una clave que ya existe (aunque esté vacía).
+const example = readEnvFile(join(ROOT, '.env.example')) ?? {};
+const addedDefaults = [];
+for (const [k, v] of Object.entries(example)) {
+  if (!(k in env)) {
+    updates[k] = v;
+    addedDefaults.push(k);
+  }
+}
 const hex = (n) => () => randomBytes(n).toString('hex');
 const b64 = (n) => () => randomBytes(n).toString('base64');
 
@@ -71,6 +81,7 @@ const pgDb = current('POSTGRES_DB') || 'mtw_wallet';
 setIfEmpty('DATABASE_URL', () => `postgres://mtw_app:${current('MTW_APP_DB_PASSWORD')}@127.0.0.1:${pgPort}/${pgDb}`);
 setIfEmpty('DATABASE_MIGRATION_URL', () => `postgres://mtw_migrator:${current('MTW_MIGRATOR_DB_PASSWORD')}@127.0.0.1:${pgPort}/${pgDb}`);
 setIfEmpty('SIGNER_DATABASE_URL', () => `postgres://mtw_signer:${current('MTW_SIGNER_DB_PASSWORD')}@127.0.0.1:${pgPort}/mtw_signer_dev`);
+setIfEmpty('SIGNER_PLATFORM_DATABASE_URL', () => `postgres://mtw_signer:${current('MTW_SIGNER_DB_PASSWORD')}@127.0.0.1:${pgPort}/mtw_signer_platform_dev`);
 setIfEmpty('REDIS_URL', () => `redis://:${current('REDIS_PASSWORD')}@127.0.0.1:${current('REDIS_HOST_PORT') || '56379'}/0`);
 
 if (Object.keys(updates).length) updateEnvFile(envFile, updates);
@@ -91,6 +102,21 @@ if (!existsSync(credFile)) {
   files.push('credencial de desbloqueo del shard dev-1');
 }
 chmodSync(credFile, 0o600);
+
+// Shard `platform` (cuenta gas tank): keystores y credencial propios, también separados entre sí.
+const platformKs = abs(current('SIGNER_PLATFORM_KEYSTORE_DIR') || './.secrets/signer/platform/keystore');
+if (!existsSync(platformKs)) {
+  mkdirSync(platformKs, { recursive: true, mode: 0o700 });
+  files.push('directorio de keystores del shard platform');
+}
+chmodSync(platformKs, 0o700);
+const platformCred = abs(current('SIGNER_PLATFORM_UNLOCK_CREDENTIAL_FILE') || './.secrets/signer/platform/unlock.key');
+if (!existsSync(platformCred)) {
+  mkdirSync(dirname(platformCred), { recursive: true, mode: 0o700 });
+  writeFileSync(platformCred, randomBytes(32).toString('hex'), { mode: 0o600 });
+  files.push('credencial de desbloqueo del shard platform');
+}
+chmodSync(platformCred, 0o600);
 
 // mTLS de desarrollo: CA propia + certificado de servidor del signer + certificado cliente del backend.
 const mtls = {
@@ -136,7 +162,8 @@ function generateMtls(p) {
   rmSync(join(dir, 'ca.srl'), { force: true });
 }
 
-if (!generated.length && !files.length) console.error('secrets-local: no había nada que generar (no se sobrescribe ningún valor existente)');
+if (addedDefaults.length) console.error(`secrets-local: agregadas ${addedDefaults.length} variables nuevas de .env.example: ${addedDefaults.join(', ')}`);
+if (!generated.length && !files.length && !addedDefaults.length) console.error('secrets-local: no había nada que generar (no se sobrescribe ningún valor existente)');
 else {
   if (generated.length) console.error(`secrets-local: generadas ${generated.length} variables en wallet/.env: ${generated.join(', ')}`);
   for (const f of files) console.error(`secrets-local: generado: ${f}`);

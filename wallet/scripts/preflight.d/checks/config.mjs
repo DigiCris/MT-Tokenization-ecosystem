@@ -2,7 +2,7 @@
 // estado del signer, mTLS y OPAQUE. Nunca imprime valores: sólo nombres y huellas truncadas.
 import { existsSync, statSync, accessSync, constants, readFileSync, realpathSync, readdirSync } from 'node:fs';
 import { join, resolve, relative, isAbsolute } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { run, runAsync, which } from '../lib/proc.mjs';
 import { isPortListening } from '../lib/net.mjs';
 import { isChecksumAddress } from '../lib/keccak.mjs';
@@ -434,52 +434,69 @@ export const configChecks = [
   },
   {
     id: 'PF-27',
-    title: 'Signer: keystores escribibles y credencial de desbloqueo separada',
+    title: 'Signer: keystores (0700) y credencial de desbloqueo separada (0600), por shard',
     run: async (ctx) => {
+      // Shards locales: dev-1 (S) y, si está configurado, platform (cuenta gas tank). En stg/prod, el del contenedor.
+      const shards = [
+        { id: ctx.env.SIGNER_SHARD_ID || 'dev-1', ks: ctx.env.SIGNER_KEYSTORE_DIR, cred: ctx.env.SIGNER_UNLOCK_CREDENTIAL_FILE, db: ctx.env.SIGNER_DATABASE_URL },
+      ];
+      if (ctx.env.SIGNER_PLATFORM_KEYSTORE_DIR || ctx.envName === 'local') {
+        shards.push({ id: 'platform', ks: ctx.env.SIGNER_PLATFORM_KEYSTORE_DIR, cred: ctx.env.SIGNER_PLATFORM_UNLOCK_CREDENTIAL_FILE, db: ctx.env.SIGNER_PLATFORM_DATABASE_URL });
+      }
       const check = () => {
-        const ks = absPath(ctx, ctx.env.SIGNER_KEYSTORE_DIR ?? '');
-        const cred = absPath(ctx, ctx.env.SIGNER_UNLOCK_CREDENTIAL_FILE ?? '');
         const problems = [];
-        try {
-          if (!statSync(ks).isDirectory()) problems.push('SIGNER_KEYSTORE_DIR no es un directorio');
-          accessSync(ks, constants.W_OK);
-        } catch {
-          problems.push('directorio de keystores ausente o no escribible');
+        for (const shard of shards) {
+          if (!shard.ks || !shard.cred) {
+            problems.push(`${shard.id}: faltan keystores o credencial en .env`);
+            continue;
+          }
+          const ks = absPath(ctx, shard.ks);
+          const cred = absPath(ctx, shard.cred);
+          try {
+            const st = statSync(ks);
+            if (!st.isDirectory()) problems.push(`${shard.id}: el directorio de keystores no es un directorio`);
+            else if ((st.mode & 0o777) !== 0o700) problems.push(`${shard.id}: el directorio de keystores debe ser 0700`);
+            accessSync(ks, constants.W_OK);
+          } catch {
+            problems.push(`${shard.id}: directorio de keystores ausente o no escribible`);
+          }
+          try {
+            const st = statSync(cred);
+            if ((st.mode & 0o077) !== 0) problems.push(`${shard.id}: la credencial de desbloqueo debe ser 0600 o 0400`);
+            if (!/^[0-9a-f]{64}$/.test(readFileSync(cred, 'utf8').replace(/\r?\n$/, ''))) problems.push(`${shard.id}: la credencial debe ser 32 bytes en hex`);
+          } catch {
+            problems.push(`${shard.id}: credencial de desbloqueo ausente`);
+          }
+          const relCred = relative(ks, cred);
+          if (!relCred.startsWith('..') && !isAbsolute(relCred)) problems.push(`${shard.id}: la credencial NO puede estar dentro del directorio de keystores`);
         }
-        try {
-          const st = statSync(cred);
-          if ((st.mode & 0o077) !== 0) problems.push('la credencial de desbloqueo debe tener permisos 0600');
-          if (st.size < 32) problems.push('credencial de desbloqueo demasiado corta');
-        } catch {
-          problems.push('credencial de desbloqueo ausente');
-        }
-        const relCred = relative(ks, cred);
-        if (!relCred.startsWith('..') && !isAbsolute(relCred)) problems.push('la credencial NO puede estar dentro del directorio de keystores');
-        return { problems, cred };
+        return problems;
       };
-      let { problems, cred } = check();
+      let problems = check();
       let wasFixed = false;
       if (problems.length && ctx.fix && ctx.envName === 'local') {
         if (await runSecretsLocal(ctx)) {
-          ({ problems, cred } = check());
+          problems = check();
           wasFixed = true;
         }
       }
-      if (problems.length) return fail(problems.join('; '), { what: 'estado del signer', variable: 'SIGNER_KEYSTORE_DIR, SIGNER_UNLOCK_CREDENTIAL_FILE', how: ctx.envName === 'local' ? 'pnpm secrets:local' : 'ver runbook del signer (alta de shard)', anchor: 'auto-generated' });
-      // Si la DB del signer ya tiene claves, la huella de la credencial debe coincidir.
-      if (ctx.env.SIGNER_DATABASE_URL) {
+      if (problems.length) return fail(problems.join('; '), { what: 'estado del signer', variable: 'SIGNER_KEYSTORE_DIR, SIGNER_UNLOCK_CREDENTIAL_FILE, SIGNER_PLATFORM_*', how: ctx.envName === 'local' ? 'pnpm secrets:local' : 'ver docs/runbooks/signer-lifecycle.md (alta de un shard)', anchor: 'auto-generated' });
+      // Si el shard ya está registrado en su DB, la huella de la credencial montada debe coincidir:
+      // credentialFingerprint = HMAC-SHA256(credencial, "mtw-signer-credential-fingerprint-v1") ([B-SIG-08]).
+      for (const shard of shards) {
+        if (!shard.db) continue;
         try {
-          const [[reg]] = await pgQuery(ctx.env.SIGNER_DATABASE_URL, "select to_regclass('public.signer_shards')::text");
-          if (reg) {
-            const rows = await pgQuery(ctx.env.SIGNER_DATABASE_URL, `select credential_fingerprint from signer_shards where shard_id = '${String(ctx.env.SIGNER_SHARD_ID).replace(/'/g, "''")}'`);
-            const fp = createHash('sha256').update('mtw-signer-credential-fingerprint-v1').update(readFileSync(cred)).digest('hex').slice(0, 16);
-            if (rows.length && rows[0][0] !== fp) return fail('credentialFingerprint distinto al registrado en la DB del signer', { what: 'credencial de desbloqueo correcta para el shard', variable: 'SIGNER_UNLOCK_CREDENTIAL_FILE', how: 'restaurar la credencial correcta (runbook signer-lifecycle)', anchor: 'auto-generated' });
-          }
+          const [[reg]] = await pgQuery(shard.db, "select to_regclass('public.signer_shards')::text");
+          if (!reg) continue;
+          const rows = await pgQuery(shard.db, `select credential_fingerprint from signer_shards where shard_id = '${String(shard.id).replace(/'/g, "''")}'`);
+          const credential = Buffer.from(readFileSync(absPath(ctx, shard.cred), 'utf8').replace(/\r?\n$/, ''), 'hex');
+          const fp = `0x${createHmac('sha256', credential).update('mtw-signer-credential-fingerprint-v1').digest('hex')}`;
+          if (rows.length && rows[0][0] !== fp) return fail(`${shard.id}: credentialFingerprint distinto al registrado en la DB del signer`, { what: 'credencial de desbloqueo correcta para el shard', variable: 'SIGNER_UNLOCK_CREDENTIAL_FILE', how: 'restaurar la credencial correcta (docs/runbooks/signer-lifecycle.md)', anchor: 'auto-generated' });
         } catch {
           /* la DB puede no estar levantada aún: PF-17/PF-18 lo reportan */
         }
       }
-      return wasFixed ? fixed('directorios y credencial generados') : pass('keystores escribibles, credencial separada (0600)');
+      return wasFixed ? fixed('directorios y credenciales generados') : pass(`keystores 0700 y credencial separada en ${shards.map((x) => x.id).join(', ')}`);
     },
   },
   {

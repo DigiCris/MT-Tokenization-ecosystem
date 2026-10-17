@@ -1,0 +1,4213 @@
+{
+  "format": "[B-POL] veredictos de policy compartidos por backend y signer: decisión pura sobre la SafeTx, el rol, el scope, el tipo declarado y hechos ya leídos (montos en unidades de 6 decimales; now en segundos Unix)",
+  "rejectCodes": [
+    "BELOW_MINIMUM",
+    "CHALLENGE_REQUIRED",
+    "DEADLINE_INVALID",
+    "DESTINATION_FORBIDDEN",
+    "DESTINATION_NOT_WHITELISTED",
+    "GUARD_UPGRADE_INVALID",
+    "INSUFFICIENT_BALANCE",
+    "KEY_ACCEPTANCE_REQUIRED",
+    "LIMIT_DAILY",
+    "LIMIT_PER_OPERATION",
+    "MIGRATION_PARTIAL",
+    "OPERATION_NOT_ALLOWED",
+    "OPERATION_TYPE_MISMATCH",
+    "ROTATION_INVALID",
+    "ROTATION_NOT_EXECUTABLE",
+    "ROTATION_TARGET_NOT_SIGNER_KEY",
+    "SLIPPAGE_TOO_HIGH",
+    "SWAP_LIMIT",
+    "SWAP_PAIRING_INVALID",
+    "TWO_FACTOR_REQUIRED",
+    "UNKNOWN_OPERATION"
+  ],
+  "snapshot": {
+    "format": "mtw-policy-snapshot",
+    "formatVersion": 1,
+    "version": 1,
+    "environment": "local",
+    "platformId": "mtw",
+    "chainId": 8453,
+    "issuedAt": "2026-10-17T00:00:00.000Z",
+    "contracts": {
+      "securityGuard": "0xc7183455a4C133Ae270771860664b6B7ec320bB1",
+      "rotationTimelock": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+      "walletFactory": "0x1d1499e622D69689cdf9004d05Ec547d650Ff211",
+      "safeBootstrap": "0xa0Cb889707d426A7A386870A03bc70d1b0697598",
+      "policyRegistry": "0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9",
+      "destinationWhitelist": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+      "denyAllModuleGuard": "0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f",
+      "swapExecutor": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+      "safeL2Singleton": "0xEdd160fEBBD92E350D4D398fb636302fccd67C7e",
+      "safeProxyFactory": "0x14F2982D601c9458F93bd70B218933A6f8165e7b"
+    },
+    "tokens": [
+      {
+        "symbol": "USDC",
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "decimals": 6
+      },
+      {
+        "symbol": "USDT",
+        "address": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+        "decimals": 6
+      }
+    ],
+    "operations": {
+      "U": [
+        "SEND",
+        "SWAP_APPROVE",
+        "SWAP",
+        "APPROVE_REVOKE",
+        "WHITELIST_ADD",
+        "WHITELIST_REMOVE",
+        "ROTATION_PROPOSE",
+        "ROTATION_EXECUTE",
+        "NOOP_CANCEL",
+        "MIGRATION_TRANSFER",
+        "GUARD_UPGRADE"
+      ],
+      "R": [
+        "NOOP_CANCEL",
+        "APPROVE_REVOKE",
+        "WHITELIST_REMOVE",
+        "ROTATION_PROPOSE",
+        "ROTATION_EXECUTE",
+        "MIGRATION_TRANSFER"
+      ]
+    },
+    "limits": {
+      "perOperationMax": "10000000000",
+      "dailyOutflowMax": "20000000000",
+      "twoFactorThreshold": "1000000000",
+      "swapMax": "10000000000",
+      "minPerOperation": "1000000"
+    },
+    "swap": {
+      "defaultSlippageBps": 30,
+      "maxSlippageBps": 50,
+      "deadlineSeconds": 600
+    },
+    "session": {
+      "maxSignatureAgeSeconds": 86400,
+      "clockSkewSeconds": 60
+    },
+    "gas": {
+      "maxFeePerGasWei": "10000000000",
+      "maxPriorityFeePerGasWei": "2000000000",
+      "maxGasLimit": 1500000
+    },
+    "gasTank": {
+      "topupMaxWei": "1000000000000000",
+      "dailyCapWei": "50000000000000000",
+      "maxGasLimit": 3000000
+    }
+  },
+  "cases": [
+    {
+      "name": "send: 100 USDC a destino whitelisteado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "send: USDT",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26000000000000000000000000000000000000000000000000000000000ee6b280",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "send: debajo del mínimo (0,5)",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26000000000000000000000000000000000000000000000000000000000007a120",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "BELOW_MINIMUM"
+      }
+    },
+    {
+      "name": "send: monto 0",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000000000000",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "BELOW_MINIMUM"
+      }
+    },
+    {
+      "name": "send: supera el límite por operación",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e2600000000000000000000000000000000000000000000000000000002540be401",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false,
+          "twoFactorVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "LIMIT_PER_OPERATION"
+      }
+    },
+    {
+      "name": "send: exactamente el límite por operación (con 2FA)",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e2600000000000000000000000000000000000000000000000000000002540be400",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false,
+          "twoFactorVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "send: supera la salida acumulada de 24 h",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000165a0bc00",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "15000000000",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false,
+          "twoFactorVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "LIMIT_DAILY"
+      }
+    },
+    {
+      "name": "send: llega exacto al tope de 24 h",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e2600000000000000000000000000000000000000000000000000000002540be400",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "10000000000",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false,
+          "twoFactorVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "send: destino no whitelisteado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": false,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "DESTINATION_NOT_WHITELISTED"
+      }
+    },
+    {
+      "name": "send: saldo insuficiente",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "99000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "INSUFFICIENT_BALANCE"
+      }
+    },
+    {
+      "name": "send: 1.000 sin 2FA",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26000000000000000000000000000000000000000000000000000000003b9aca00",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "TWO_FACTOR_REQUIRED"
+      }
+    },
+    {
+      "name": "send: 1.000 con 2FA",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26000000000000000000000000000000000000000000000000000000003b9aca00",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false,
+          "twoFactorVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "send: 999,999999 sin 2FA",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26000000000000000000000000000000000000000000000000000000003b9ac9ff",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "send: a un contrato del sistema",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a0000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "DESTINATION_FORBIDDEN"
+      }
+    },
+    {
+      "name": "send: a un token soportado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000fde4c96c8593536e31f229ea8f37b2ada2699bb20000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "DESTINATION_FORBIDDEN"
+      }
+    },
+    {
+      "name": "send: a la propia Safe",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb0000000000000000000000002ffa853a9213c92a16295c55fa6a5b27a64986880000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "DESTINATION_FORBIDDEN"
+      }
+    },
+    {
+      "name": "send: a address(0)",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "DESTINATION_FORBIDDEN"
+      }
+    },
+    {
+      "name": "send: firmado por R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "send: U con scope RECOVERY",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "RECOVERY",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "send: scope ONBOARDING",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "ONBOARDING",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "send: declarado como migración sin autorización",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "MIGRATION_TRANSFER",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "send: declarado SWAP",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "estructura: DELEGATECALL",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 1,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "estructura: value > 0",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "1",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "estructura: safeTxGas ≠ 0",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "1",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "estructura: gasPrice ≠ 0",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "1",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "estructura: refundReceiver ≠ 0",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0xde032aB8bcf44fb9dd7FB9C0d8E9eaD8D2325e26",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "calldata: transfer con un byte de más",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e10000",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "calldata: dirección no canónica",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbbff0000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "calldata: 3 bytes",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xa9059c",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: token no soportado (DAI)",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: transferFrom",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x23b872dd0000000000000000000000002ffa853a9213c92a16295c55fa6a5b27a6498688000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: increaseAllowance",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x39509351000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a0000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: approve a Permit2",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000000000000022d473030f116ddee9f6b43ac78ba30000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: contrato arbitrario",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x4E59b44847b379578588920cA78FbF26c0B4956C",
+          "value": "0",
+          "data": "0xa9059cbb000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: changeThreshold en la Safe",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0x694e80c30000000000000000000000000000000000000000000000000000000000000001",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: addOwnerWithThreshold",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0x0d582f13000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000000000000000000000000000000000000000000000000000000000000001",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: enableModule",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0x610b5925000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: setFallbackHandler",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xf08a0323000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: cancel del timelock por SafeTx",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc4d252f564a019b6fcae807e9cb9c9016136f55bd5e7fb01ada54826f752657e96e3a42c",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "allowlist: tipo de rotación desconocido (5)",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b2050000000000000000000000000000000000000000000000000000000000000005000000000000000000000000c80d387fcc59cb57aef0ec2b137c77d26474288e00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "migración: saldo completo a la Safe nueva autorizada (U)",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "MIGRATION_TRANSFER",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb0000000000000000000000004e59b44847b379578588920ca78fbf26c0b4956c0000000000000000000000000000000000000000000000000000000ba43b7400",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": false,
+          "migrationAuthorized": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "migración: firmada por R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "MIGRATION_TRANSFER",
+        "safeTx": {
+          "to": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+          "value": "0",
+          "data": "0xa9059cbb0000000000000000000000004e59b44847b379578588920ca78fbf26c0b4956c00000000000000000000000000000000000000000000000000000000498d5880",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1234000000",
+          "destinationWhitelisted": false,
+          "migrationAuthorized": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "migración: exenta del tope de 24 h",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "MIGRATION_TRANSFER",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb0000000000000000000000004e59b44847b379578588920ca78fbf26c0b4956c0000000000000000000000000000000000000000000000000000000ba43b7400",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "20000000000",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "migración: parcial",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "MIGRATION_TRANSFER",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb0000000000000000000000004e59b44847b379578588920ca78fbf26c0b4956c0000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "MIGRATION_PARTIAL"
+      }
+    },
+    {
+      "name": "migración: declarada SEND con destino autorizado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SEND",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0xa9059cbb0000000000000000000000004e59b44847b379578588920ca78fbf26c0b4956c0000000000000000000000000000000000000000000000000000000005f5e100",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "50000000000",
+          "destinationWhitelisted": true,
+          "migrationAuthorized": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "approve: con su SWAP N+1 emparejado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a000000000000000000000000000000000000000000000000000000001dcd6500",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "pairedSwap": {
+            "safeTx": {
+              "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+              "value": "0",
+              "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a694",
+              "operation": 0,
+              "safeTxGas": "0",
+              "baseGas": "0",
+              "gasPrice": "0",
+              "gasToken": "0x0000000000000000000000000000000000000000",
+              "refundReceiver": "0x0000000000000000000000000000000000000000",
+              "nonce": "8"
+            },
+            "ownerSignatureValid": true
+          }
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "approve: sin SWAP emparejado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a000000000000000000000000000000000000000000000000000000001dcd6500",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "pairedSwap": null
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SWAP_PAIRING_INVALID"
+      }
+    },
+    {
+      "name": "approve: SWAP con otro monto",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a000000000000000000000000000000000000000000000000000000001dcd6500",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "pairedSwap": {
+            "safeTx": {
+              "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+              "value": "0",
+              "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dbe22c0000000000000000000000000000000000000000000000000000000001da74b18000000000000000000000000000000000000000000000000000000006ad2a694",
+              "operation": 0,
+              "safeTxGas": "0",
+              "baseGas": "0",
+              "gasPrice": "0",
+              "gasToken": "0x0000000000000000000000000000000000000000",
+              "refundReceiver": "0x0000000000000000000000000000000000000000",
+              "nonce": "8"
+            },
+            "ownerSignatureValid": true
+          }
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SWAP_PAIRING_INVALID"
+      }
+    },
+    {
+      "name": "approve: SWAP con otro nonce",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a000000000000000000000000000000000000000000000000000000001dcd6500",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "pairedSwap": {
+            "safeTx": {
+              "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+              "value": "0",
+              "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a694",
+              "operation": 0,
+              "safeTxGas": "0",
+              "baseGas": "0",
+              "gasPrice": "0",
+              "gasToken": "0x0000000000000000000000000000000000000000",
+              "refundReceiver": "0x0000000000000000000000000000000000000000",
+              "nonce": "9"
+            },
+            "ownerSignatureValid": true
+          }
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SWAP_PAIRING_INVALID"
+      }
+    },
+    {
+      "name": "approve: SWAP con otro token",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a000000000000000000000000000000000000000000000000000000001dcd6500",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "pairedSwap": {
+            "safeTx": {
+              "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+              "value": "0",
+              "data": "0xc9ec9248000000000000000000000000fde4c96c8593536e31f229ea8f37b2ada2699bb2000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a694",
+              "operation": 0,
+              "safeTxGas": "0",
+              "baseGas": "0",
+              "gasPrice": "0",
+              "gasToken": "0x0000000000000000000000000000000000000000",
+              "refundReceiver": "0x0000000000000000000000000000000000000000",
+              "nonce": "8"
+            },
+            "ownerSignatureValid": true
+          }
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SWAP_PAIRING_INVALID"
+      }
+    },
+    {
+      "name": "approve: SWAP sin firma válida de U",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a000000000000000000000000000000000000000000000000000000001dcd6500",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "pairedSwap": {
+            "safeTx": {
+              "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+              "value": "0",
+              "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a694",
+              "operation": 0,
+              "safeTxGas": "0",
+              "baseGas": "0",
+              "gasPrice": "0",
+              "gasToken": "0x0000000000000000000000000000000000000000",
+              "refundReceiver": "0x0000000000000000000000000000000000000000",
+              "nonce": "8"
+            },
+            "ownerSignatureValid": false
+          }
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SWAP_PAIRING_INVALID"
+      }
+    },
+    {
+      "name": "approve: el SWAP emparejado excede el slippage",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a000000000000000000000000000000000000000000000000000000001dcd6500",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "pairedSwap": {
+            "safeTx": {
+              "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+              "value": "0",
+              "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001da67c10000000000000000000000000000000000000000000000000000000006ad2a694",
+              "operation": 0,
+              "safeTxGas": "0",
+              "baseGas": "0",
+              "gasPrice": "0",
+              "gasToken": "0x0000000000000000000000000000000000000000",
+              "refundReceiver": "0x0000000000000000000000000000000000000000",
+              "nonce": "8"
+            },
+            "ownerSignatureValid": true
+          }
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SLIPPAGE_TOO_HIGH"
+      }
+    },
+    {
+      "name": "approve: supera el máximo de swap",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a00000000000000000000000000000000000000000000000000000002540be401",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "20000000000",
+          "pairedSwap": {
+            "safeTx": {
+              "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+              "value": "0",
+              "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda0291300000000000000000000000000000000000000000000000000000002540be4010000000000000000000000000000000000000000000000000000000252422080000000000000000000000000000000000000000000000000000000006ad2a694",
+              "operation": 0,
+              "safeTxGas": "0",
+              "baseGas": "0",
+              "gasPrice": "0",
+              "gasToken": "0x0000000000000000000000000000000000000000",
+              "refundReceiver": "0x0000000000000000000000000000000000000000",
+              "nonce": "8"
+            },
+            "ownerSignatureValid": true
+          }
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SWAP_LIMIT"
+      }
+    },
+    {
+      "name": "approve: saldo insuficiente",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a000000000000000000000000000000000000000000000000000000001dcd6500",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "499000000",
+          "pairedSwap": {
+            "safeTx": {
+              "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+              "value": "0",
+              "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a694",
+              "operation": 0,
+              "safeTxGas": "0",
+              "baseGas": "0",
+              "gasPrice": "0",
+              "gasToken": "0x0000000000000000000000000000000000000000",
+              "refundReceiver": "0x0000000000000000000000000000000000000000",
+              "nonce": "8"
+            },
+            "ownerSignatureValid": true
+          }
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "INSUFFICIENT_BALANCE"
+      }
+    },
+    {
+      "name": "approve: firmado por R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a000000000000000000000000000000000000000000000000000000001dcd6500",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "pairedSwap": {
+            "safeTx": {
+              "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+              "value": "0",
+              "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a694",
+              "operation": 0,
+              "safeTxGas": "0",
+              "baseGas": "0",
+              "gasPrice": "0",
+              "gasToken": "0x0000000000000000000000000000000000000000",
+              "refundReceiver": "0x0000000000000000000000000000000000000000",
+              "nonce": "8"
+            },
+            "ownerSignatureValid": true
+          }
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "swap: tras el approve ejecutado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a568",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "allowance": "500000000",
+          "approvalSigned": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "swap: slippage de 50 bps exacto",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec9248000000000000000000000000fde4c96c8593536e31f229ea8f37b2ada2699bb2000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001da73f60000000000000000000000000000000000000000000000000000000006ad2a568",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "allowance": "500000000",
+          "approvalSigned": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "swap: slippage de 51 bps",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001da67c10000000000000000000000000000000000000000000000000000000006ad2a568",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "allowance": "500000000",
+          "approvalSigned": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SLIPPAGE_TOO_HIGH"
+      }
+    },
+    {
+      "name": "swap: deadline vencido",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a43b",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "allowance": "500000000",
+          "approvalSigned": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "DEADLINE_INVALID"
+      }
+    },
+    {
+      "name": "swap: deadline demasiado lejano",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a6d1",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "allowance": "500000000",
+          "approvalSigned": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "DEADLINE_INVALID"
+      }
+    },
+    {
+      "name": "swap: sin approve co-firmado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a568",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "allowance": "500000000",
+          "approvalSigned": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SWAP_PAIRING_INVALID"
+      }
+    },
+    {
+      "name": "swap: allowance distinta de amountIn",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a568",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "allowance": "400000000",
+          "approvalSigned": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SWAP_PAIRING_INVALID"
+      }
+    },
+    {
+      "name": "swap: supera el máximo",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda0291300000000000000000000000000000000000000000000000000000002540be4010000000000000000000000000000000000000000000000000000000252422080000000000000000000000000000000000000000000000000000000006ad2a568",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "20000000000",
+          "allowance": "10000000001",
+          "approvalSigned": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "SWAP_LIMIT"
+      }
+    },
+    {
+      "name": "swap: tokenIn no soportado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec924800000000000000000000000050c5725949a6f0c72e6c4a641f24049a917db0cb000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a568",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "allowance": "500000000",
+          "approvalSigned": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "swap: firmado por R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "SWAP",
+        "safeTx": {
+          "to": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+          "value": "0",
+          "data": "0xc9ec9248000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000000000000000000000000000000000001dcd6500000000000000000000000000000000000000000000000000000000001db681a0000000000000000000000000000000000000000000000000000000006ad2a568",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "balance": "1000000000",
+          "allowance": "500000000",
+          "approvalSigned": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "revocación: U",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "APPROVE_REVOKE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a0000000000000000000000000000000000000000000000000000000000000000",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "revocación: R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "APPROVE_REVOKE",
+        "safeTx": {
+          "to": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a0000000000000000000000000000000000000000000000000000000000000000",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "revocación: declarada SWAP_APPROVE",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "SWAP_APPROVE",
+        "safeTx": {
+          "to": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000f62849f9a0b5bf2913b396098f7c7019b51a820a0000000000000000000000000000000000000000000000000000000000000000",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_TYPE_MISMATCH"
+      }
+    },
+    {
+      "name": "whitelist: alta con challenge completado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "WHITELIST_ADD",
+        "safeTx": {
+          "to": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+          "value": "0",
+          "data": "0x678f3ef3000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "whitelistChallengeVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "whitelist: alta sin challenge",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "WHITELIST_ADD",
+        "safeTx": {
+          "to": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+          "value": "0",
+          "data": "0x678f3ef3000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "whitelistChallengeVerified": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "CHALLENGE_REQUIRED"
+      }
+    },
+    {
+      "name": "whitelist: alta de un contrato del sistema",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "WHITELIST_ADD",
+        "safeTx": {
+          "to": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+          "value": "0",
+          "data": "0x678f3ef3000000000000000000000000c7183455a4c133ae270771860664b6b7ec320bb1",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "whitelistChallengeVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "DESTINATION_FORBIDDEN"
+      }
+    },
+    {
+      "name": "whitelist: alta de la propia Safe",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "WHITELIST_ADD",
+        "safeTx": {
+          "to": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+          "value": "0",
+          "data": "0x678f3ef30000000000000000000000002ffa853a9213c92a16295c55fa6a5b27a6498688",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "whitelistChallengeVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "DESTINATION_FORBIDDEN"
+      }
+    },
+    {
+      "name": "whitelist: alta firmada por R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "WHITELIST_ADD",
+        "safeTx": {
+          "to": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+          "value": "0",
+          "data": "0x678f3ef3000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "whitelistChallengeVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "whitelist: baja por U",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "WHITELIST_REMOVE",
+        "safeTx": {
+          "to": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+          "value": "0",
+          "data": "0x5cadd08d000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "whitelist: baja por R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "WHITELIST_REMOVE",
+        "safeTx": {
+          "to": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+          "value": "0",
+          "data": "0x5cadd08d000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e26",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "whitelist: calldata con bytes de más",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "WHITELIST_ADD",
+        "safeTx": {
+          "to": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+          "value": "0",
+          "data": "0x678f3ef3000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e260000",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "whitelistChallengeVerified": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "UNKNOWN_OPERATION"
+      }
+    },
+    {
+      "name": "noop: U",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0x",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "noop: R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0x",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "scope: U_REPLACEMENT no co-firma",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "U_REPLACEMENT",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0x",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "scope: KEY_RESTORE no co-firma",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "KEY_RESTORE",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0x",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "scope: ENROLLMENT no co-firma",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "ENROLLMENT",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0x",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "scope: R con OPERATIONS",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "OPERATIONS",
+        "declaredType": "NOOP_CANCEL",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0x",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0"
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    },
+    {
+      "name": "rotación: U propone S hacia una clave del signer",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b2050000000000000000000000000000000000000000000000000000000000000002000000000000000000000000c80d387fcc59cb57aef0ec2b137c77d26474288e00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "newKeyIsSignerKey": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "rotación: S hacia una clave ajena",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b2050000000000000000000000000000000000000000000000000000000000000002000000000000000000000000c80d387fcc59cb57aef0ec2b137c77d26474288e00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "newKeyIsSignerKey": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_TARGET_NOT_SIGNER_KEY"
+      }
+    },
+    {
+      "name": "rotación: U propone U con KeyAcceptance",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b205000000000000000000000000000000000000000000000000000000000000000000000000000000000000000079406eb1d6abda075a9789dbd7d31626fefe290400000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "keyAcceptanceValid": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "rotación: U sin KeyAcceptance",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b205000000000000000000000000000000000000000000000000000000000000000000000000000000000000000079406eb1d6abda075a9789dbd7d31626fefe290400000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "keyAcceptanceValid": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "KEY_ACCEPTANCE_REQUIRED"
+      }
+    },
+    {
+      "name": "rotación: R propone U (recovery)",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b205000000000000000000000000000000000000000000000000000000000000000000000000000000000000000079406eb1d6abda075a9789dbd7d31626fefe290400000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "keyAcceptanceValid": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "rotación: U propone R con KeyAcceptance",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b20500000000000000000000000000000000000000000000000000000000000000010000000000000000000000007184d30100a188c9f869ccb6883392534ecd6c9d00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "keyAcceptanceValid": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "rotación: R propone R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b20500000000000000000000000000000000000000000000000000000000000000010000000000000000000000007184d30100a188c9f869ccb6883392534ecd6c9d00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "keyAcceptanceValid": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "rotación: R propone GUARD",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b2050000000000000000000000000000000000000000000000000000000000000003000000000000000000000000c7183455a4c133ae270771860664b6b7ec320bb10000000000000000000000001111111111111111111111111111111111111111",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "currentGuard": "0xc7183455a4C133Ae270771860664b6B7ec320bB1",
+          "successorRegistered": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "rotación: old distinto del rol vigente",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b205000000000000000000000000000000000000000000000000000000000000000200000000000000000000000079406eb1d6abda075a9789dbd7d31626fefe290400000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "newKeyIsSignerKey": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "rotación: new es un owner actual",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b2050000000000000000000000000000000000000000000000000000000000000002000000000000000000000000c80d387fcc59cb57aef0ec2b137c77d26474288e0000000000000000000000007184d30100a188c9f869ccb6883392534ecd6c9d",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "newKeyIsSignerKey": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "rotación: new es el sentinel",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b205000000000000000000000000000000000000000000000000000000000000000000000000000000000000000079406eb1d6abda075a9789dbd7d31626fefe29040000000000000000000000000000000000000000000000000000000000000001",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "keyAcceptanceValid": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "rotación: new es un contrato del sistema",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b205000000000000000000000000000000000000000000000000000000000000000000000000000000000000000079406eb1d6abda075a9789dbd7d31626fefe29040000000000000000000000001d1499e622d69689cdf9004d05ec547d650ff211",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "keyAcceptanceValid": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "rotación: U propone GUARD hacia un sucesor registrado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b2050000000000000000000000000000000000000000000000000000000000000003000000000000000000000000c7183455a4c133ae270771860664b6b7ec320bb10000000000000000000000001111111111111111111111111111111111111111",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "currentGuard": "0xc7183455a4C133Ae270771860664b6B7ec320bB1",
+          "successorRegistered": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "rotación: GUARD hacia algo no registrado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b2050000000000000000000000000000000000000000000000000000000000000003000000000000000000000000c7183455a4c133ae270771860664b6b7ec320bb10000000000000000000000001111111111111111111111111111111111111111",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "currentGuard": "0xc7183455a4C133Ae270771860664b6B7ec320bB1",
+          "successorRegistered": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "GUARD_UPGRADE_INVALID"
+      }
+    },
+    {
+      "name": "rotación: MODULE_GUARD con old distinto del slot",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_PROPOSE",
+        "safeTx": {
+          "to": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+          "value": "0",
+          "data": "0xc626b205000000000000000000000000000000000000000000000000000000000000000400000000000000000000000011111111111111111111111111111111111111110000000000000000000000005615deb798bb3e4dfa0139dfa1b3d433cc23b72f",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "currentModuleGuard": "0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f",
+          "successorRegistered": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "ejecución: S → clave del signer, madura",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_EXECUTE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe318b52b0000000000000000000000007184d30100a188c9f869ccb6883392534ecd6c9d000000000000000000000000c80d387fcc59cb57aef0ec2b137c77d26474288e00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "prevOwnerCorrect": true,
+          "rotationExecutable": true,
+          "newKeyIsSignerKey": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "ejecución: propuesta no madura",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_EXECUTE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe318b52b0000000000000000000000007184d30100a188c9f869ccb6883392534ecd6c9d000000000000000000000000c80d387fcc59cb57aef0ec2b137c77d26474288e00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "prevOwnerCorrect": true,
+          "rotationExecutable": false,
+          "newKeyIsSignerKey": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_NOT_EXECUTABLE"
+      }
+    },
+    {
+      "name": "ejecución: prev incorrecto",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_EXECUTE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe318b52b0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000c80d387fcc59cb57aef0ec2b137c77d26474288e00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "prevOwnerCorrect": false,
+          "rotationExecutable": true,
+          "newKeyIsSignerKey": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "ejecución: R ejecuta la rotación de R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "ROTATION_EXECUTE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe318b52b00000000000000000000000079406eb1d6abda075a9789dbd7d31626fefe29040000000000000000000000007184d30100a188c9f869ccb6883392534ecd6c9d00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "prevOwnerCorrect": true,
+          "rotationExecutable": true,
+          "keyAcceptanceValid": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "ejecución: R ejecuta U → U' (recovery)",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "ROTATION_EXECUTE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe318b52b000000000000000000000000000000000000000000000000000000000000000100000000000000000000000079406eb1d6abda075a9789dbd7d31626fefe290400000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "prevOwnerCorrect": true,
+          "rotationExecutable": true,
+          "keyAcceptanceValid": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "ejecución: U → U' sin KeyAcceptance",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "ROTATION_EXECUTE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe318b52b000000000000000000000000000000000000000000000000000000000000000100000000000000000000000079406eb1d6abda075a9789dbd7d31626fefe290400000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "prevOwnerCorrect": true,
+          "rotationExecutable": true,
+          "keyAcceptanceValid": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "KEY_ACCEPTANCE_REQUIRED"
+      }
+    },
+    {
+      "name": "ejecución: old no es un rol vigente",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_EXECUTE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe318b52b0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000de032ab8bcf44fb9dd7fb9c0d8e9ead8d2325e2600000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "prevOwnerCorrect": true,
+          "rotationExecutable": true,
+          "newKeyIsSignerKey": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_INVALID"
+      }
+    },
+    {
+      "name": "ejecución: S hacia una clave ajena",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "ROTATION_EXECUTE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe318b52b0000000000000000000000007184d30100a188c9f869ccb6883392534ecd6c9d000000000000000000000000c80d387fcc59cb57aef0ec2b137c77d26474288e00000000000000000000000030680c97b8efe2404915432e7e16115679417abf",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "prevOwnerCorrect": true,
+          "rotationExecutable": true,
+          "newKeyIsSignerKey": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "ROTATION_TARGET_NOT_SIGNER_KEY"
+      }
+    },
+    {
+      "name": "guard: setGuard hacia el sucesor con propuesta madura",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "GUARD_UPGRADE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe19a9dd90000000000000000000000001111111111111111111111111111111111111111",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "successorRegistered": true,
+          "guardUpgradeMature": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "guard: setModuleGuard hacia el sucesor con propuesta madura",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "GUARD_UPGRADE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe068df370000000000000000000000001111111111111111111111111111111111111111",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "successorRegistered": true,
+          "guardUpgradeMature": true
+        }
+      },
+      "expected": {
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "name": "guard: propuesta no madura",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "GUARD_UPGRADE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe19a9dd90000000000000000000000001111111111111111111111111111111111111111",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "successorRegistered": true,
+          "guardUpgradeMature": false
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "GUARD_UPGRADE_INVALID"
+      }
+    },
+    {
+      "name": "guard: sucesor no registrado",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "U",
+        "scope": "OPERATIONS",
+        "declaredType": "GUARD_UPGRADE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe19a9dd90000000000000000000000001111111111111111111111111111111111111111",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "successorRegistered": false,
+          "guardUpgradeMature": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "GUARD_UPGRADE_INVALID"
+      }
+    },
+    {
+      "name": "guard: firmado por R",
+      "input": {
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "role": "R",
+        "scope": "RECOVERY",
+        "declaredType": "GUARD_UPGRADE",
+        "safeTx": {
+          "to": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+          "value": "0",
+          "data": "0xe19a9dd90000000000000000000000001111111111111111111111111111111111111111",
+          "operation": 0,
+          "safeTxGas": "0",
+          "baseGas": "0",
+          "gasPrice": "0",
+          "gasToken": "0x0000000000000000000000000000000000000000",
+          "refundReceiver": "0x0000000000000000000000000000000000000000",
+          "nonce": "7"
+        },
+        "facts": {
+          "now": 1792189500,
+          "roles": {
+            "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+            "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+            "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+          },
+          "dailyOutflowUsed": "0",
+          "successorRegistered": true,
+          "guardUpgradeMature": true
+        }
+      },
+      "expected": {
+        "verdict": "REJECT",
+        "code": "OPERATION_NOT_ALLOWED"
+      }
+    }
+  ]
+}

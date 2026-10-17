@@ -51,9 +51,27 @@ library DeploymentJson {
         return eq(n, "local") || eq(n, "ci");
     }
 
-    /// @notice Ruta absoluta de `deployments/<red>.json`.
+    /// @notice `DEPLOYMENT_TAG` con caracteres fuera de `[a-z0-9-]` o de más de 40.
+    error InvalidDeploymentTag(string tag);
+
+    /// @notice Ruta absoluta de `deployments/<red>.json`. En las redes con semilla (`local`, `ci`) el sufijo opcional
+    ///         `DEPLOYMENT_TAG` (`[a-z0-9-]{1,40}`) da `deployments/<red>-<tag>.json`: los tests de otros proyectos
+    ///         (signer, backend) despliegan en su propio Anvil efímero sin pisar el JSON del job de contratos.
     function path(string memory n) internal view returns (string memory) {
-        return string.concat(VM.projectRoot(), "/deployments/", n, ".json");
+        string memory tag = isSeedNetwork(n) ? VM.envOr("DEPLOYMENT_TAG", string("")) : "";
+        if (bytes(tag).length == 0) return string.concat(VM.projectRoot(), "/deployments/", n, ".json");
+        _checkTag(tag);
+        return string.concat(VM.projectRoot(), "/deployments/", n, "-", tag, ".json");
+    }
+
+    function _checkTag(string memory tag) private pure {
+        bytes memory b = bytes(tag);
+        if (b.length > 40) revert InvalidDeploymentTag(tag);
+        for (uint256 i = 0; i < b.length; i++) {
+            bytes1 c = b[i];
+            bool ok = (c >= 0x61 && c <= 0x7a) || (c >= 0x30 && c <= 0x39) || c == 0x2d;
+            if (!ok) revert InvalidDeploymentTag(tag);
+        }
     }
 
     /// @notice JSON completo del deployment `d` (addresses, codehash, constructor args, compilador, commit,

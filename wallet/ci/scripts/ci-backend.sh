@@ -11,6 +11,11 @@ source "$(dirname "$0")/lib.sh"
 skip_if_missing backend/app/package.json P08
 section "backend/app: vectores y ABIs iguales a los de contracts/ (§10, regla 2)"
 node "$WALLET_ROOT/backend/app/scripts/sync-contract-artifacts.mjs" --check
+# Los tests de integración del backend levantan shards reales del signer (otro proyecto, su propio lockfile) y
+# despliegan el sistema en el fork con los scripts del repo: instalar sus dependencias antes.
+section "backend/signer y contracts: dependencias de los tests de integración del backend"
+(cd "$WALLET_ROOT/backend/signer" && pnpm install --frozen-lockfile)
+(cd "$WALLET_ROOT/contracts" && { [ -d dependencies ] || forge soldeer install; })
 ci_node_project backend/app P08
 
 LIVE_PATHS='^wallet/backend/app/(src/email/|test/email/[^/]+\.live\.test\.ts|test/helpers/(gmail|live-env|mailgun-live|email-fixtures|email-pipeline)\.ts)|^wallet/ci/scripts/ci-backend\.sh$|^\.github/workflows/wallet-backend\.yml$'

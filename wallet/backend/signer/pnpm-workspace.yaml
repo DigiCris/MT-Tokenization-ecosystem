@@ -1,0 +1,10 @@
+# Política de supply chain del proyecto (igual que backend/app, docs/VERSIONS.md#supply-chain).
+saveExact: true
+strictPeerDependencies: true
+minimumReleaseAge: 10080
+strictDepBuilds: true
+# Scripts de instalación revisados y denegados (no se ejecuta código de instalación de terceros):
+allowBuilds:
+  cpu-features: false # addon nativo opcional de ssh2 (testcontainers); ssh2 funciona sin él
+  ssh2: false # binding cripto nativo opcional; usa la implementación JS
+  protobufjs: false # postinstall de compatibilidad de versiones; no hace falta para funcionar

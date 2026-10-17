@@ -45,6 +45,7 @@ Mailpit (`EMAIL_PROVIDER=smtp`, `SMTP_HOST`/`SMTP_PORT` del stack) y se leen en 
 | `pnpm audit:verify`                                                      | recalcula la cadena HMAC de `audit_events`                                        |
 | `pnpm opaque:setup`                                                      | genera `OPAQUE_SERVER_SETUP` en `wallet/.env` (sólo local; nunca reemplaza uno)   |
 | `pnpm dev:session [--method --path --body] [--print]`                    | material de PlatformSession para Swagger (sólo local, ver abajo)                  |
+| `pnpm signer:reassign <archivo>`                                         | aplica una migración entre shards del signer (salida de `shard:migrate`)          |
 | `pnpm start:api` · `pnpm start:worker`                                   | entrypoints de producción sobre `dist/`                                           |
 
 ## Estructura
@@ -53,7 +54,8 @@ Mailpit (`EMAIL_PROVIDER=smtp`, `SMTP_HOST`/`SMTP_PORT` del stack) y se leen en 
 src/
   config/        env.ts (Zod por APP_ENV, <VAR>_FILE, calidad de secretos), dotenv.ts, secret.ts
   db/            kysely.ts, schema.ts, migrator.ts, transaction.ts (withTransaction), backup.ts
-    migrations/  0001_initial_schema.ts (todas las tablas de [B-DB]), 0002_account_preferences.ts, grants.ts
+    migrations/  0001_initial_schema.ts (todas las tablas de [B-DB]), 0002_account_preferences.ts,
+                 0003_signer_key_attestation.ts, grants.ts
     repositories/ outbox, idempotency
   audit/         audit-writer.ts (cadena HMAC, verificación)
   auth/          account-service.ts (reglas de cuenta), password.ts, common-passwords.ts, otp.ts, challenges.ts,
@@ -64,10 +66,12 @@ src/
                  envío), plugin.ts (Fastify), keys.ts (session keys P-256), auth-secret.ts (derivación del cliente)
   queue/         queues.ts, outbox-dispatcher.ts, outbox-consumer.ts, redis.ts
   chain/         rpc-quorum.ts, safe-tx.ts, eip712.ts, signatures.ts, create2.ts, decoders/, abis/ (generados)
+  signer-client/ client.ts (mTLS hacia los shards, errores tipificados), sharding.ts (asignación por hash guardada en
+                 signer_keys, S de onboarding y de rotación, reasignación tras una migración)
   observability/ logger.ts, redaction.ts, metrics.ts
   api/           server.ts (dos listeners), errors.ts (RFC 9457), health.ts, routes/ (health, v1/auth, v1/users,
                  v1/sessions), plugins/ (auth y CSRF, rate limit, idempotencia, OpenAPI, seguridad)
-  cli/           db.ts, audit-verify.ts, opaque-setup.ts, dev-session.ts
+  cli/           db.ts, audit-verify.ts, opaque-setup.ts, dev-session.ts, signer-reassign.ts
   services.ts    armado de los servicios de cuenta (proceso `api` y tests)
   main.ts        entrypoint `api` | `worker`
 data/            lista vendorizada de passwords comunes (SecLists, SHA-256 fijado)
@@ -138,6 +142,14 @@ test/            unit, integración (Testcontainers + Anvil), API (inject), segu
   `X-Session-Signature` sobre `MTW-REQ-V1` con timestamp ±60 s y nonce único (Valkey). Las fallas de esta capa son 403
   con código propio (la sesión de cuenta sigue vigente). Formatos con vectores en `contracts/test/vectors/wire`.
 
+## Signer S
+
+El backend habla con los shards del signer (`backend/signer`, proyecto independiente) sólo por mTLS (`MTLS_CA_CERT_PATH`,
+`MTLS_BACKEND_CLIENT_CERT_PATH`, `MTLS_BACKEND_CLIENT_KEY_PATH`; TLS 1.3). Cada wallet nueva va al shard que surge del
+hash estable de su `walletId` sobre los shards activos de `SIGNER_SHARDS`, y esa asignación queda guardada en
+`signer_keys` junto con la S y su `SignerKeyAttestation` (no se recalcula si cambian los shards) [B-SIG-09]. El signer
+responde errores tipificados (`code`, `reason`, `retryable`) que el worker usa para reintentar o fallar ([B-Q-03]).
+
 ## PlatformSession en local (`dev:session`)
 
 Sin frontend, `pnpm dev:session` hace lo mismo que el navegador contra la API local: la primera vez crea el usuario de
@@ -155,7 +167,9 @@ operación; la firma vale 60 s y una sola vez. Con `APP_ENV` distinto de `local`
 tests de cadena levantan Anvil sobre el fork de Base (`BASE_RPC_URL` o `FORK_RPC_URL`; en local se lee de
 `wallet/.env`) y el cliente de quórum se prueba con dos Anvil y un proxy de inyección de fallas. Cobertura: ≥ 90 % de
 líneas en `src/chain/` (§10); `main.ts` y las CLIs se prueban como procesos reales. Los flujos de cuenta usan el
-pipeline de email real (outbox → BullMQ → worker → SMTP de Mailpit) y leen los códigos de Mailpit.
+pipeline de email real (outbox → BullMQ → worker → SMTP de Mailpit) y leen los códigos de Mailpit. Los tests del
+cliente del signer levantan shards reales del signer (procesos de `backend/signer`, que necesita sus dependencias
+instaladas).
 
 `pnpm test:live` envía por la API real de Mailgun (dominio sandbox) a `EMAIL_TEST_ADDRESS` y lee los códigos con la
 Gmail API (credenciales `EMAIL_PROVIDER_*` y `EMAIL_TEST_*` del entorno o de `wallet/.env`). El sandbox firma DKIM y

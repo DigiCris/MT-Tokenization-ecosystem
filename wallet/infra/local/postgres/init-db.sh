@@ -21,9 +21,12 @@ REVOKE ALL ON DATABASE mtw_wallet FROM PUBLIC;
 GRANT CONNECT, TEMPORARY ON DATABASE mtw_wallet TO mtw_app;
 GRANT CONNECT ON DATABASE mtw_wallet TO mtw_readonly;
 
--- DB propia del signer de desarrollo (estado del signer, separada del backend).
+-- DBs propias de los shards del signer de desarrollo (una DB lógica por shard [B-SIG-03], separadas del backend):
+-- dev-1 (claves S) y platform (cuenta gas tank).
 CREATE DATABASE mtw_signer_dev OWNER mtw_signer;
 REVOKE ALL ON DATABASE mtw_signer_dev FROM PUBLIC;
+CREATE DATABASE mtw_signer_platform_dev OWNER mtw_signer;
+REVOKE ALL ON DATABASE mtw_signer_platform_dev FROM PUBLIC;
 SQL
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname mtw_wallet <<'SQL'
@@ -40,7 +43,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE mtw_migrator IN SCHEMA public
   GRANT SELECT ON TABLES TO mtw_readonly;
 SQL
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname mtw_signer_dev <<'SQL'
+for db in mtw_signer_dev mtw_signer_platform_dev; do
+  psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$db" <<'SQL'
 ALTER SCHEMA public OWNER TO mtw_signer;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 SQL
+done

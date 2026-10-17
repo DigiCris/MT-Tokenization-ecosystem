@@ -8,6 +8,7 @@ import { migrateToLatest, migrationStatus, pendingMigrations } from '../../src/d
 import { createTestDatabase, insertUser, type TestDatabase } from '../helpers/db.ts';
 
 const addr = () => randomBytes(20);
+const ALL_MIGRATIONS = ['0001_initial_schema', '0002_account_preferences', '0003_signer_key_attestation'];
 const hash = () => randomBytes(32);
 const sig = () => randomBytes(65);
 
@@ -99,8 +100,8 @@ describe('migraciones desde una base vacía', () => {
   });
 
   it('aplica las migraciones en orden y es idempotente; mtw_app ve el estado sin DDL', async () => {
-    expect(await pendingMigrations(fresh.app)).toEqual(['0001_initial_schema', '0002_account_preferences']);
-    expect(await migrateToLatest(fresh.migrator)).toEqual(['0001_initial_schema', '0002_account_preferences']);
+    expect(await pendingMigrations(fresh.app)).toEqual(ALL_MIGRATIONS);
+    expect(await migrateToLatest(fresh.migrator)).toEqual(ALL_MIGRATIONS);
     expect(await migrateToLatest(fresh.migrator)).toEqual([]);
     const status = await migrationStatus(fresh.app);
     expect(status.known.every((m) => m.executedAt instanceof Date)).toBe(true);
@@ -454,6 +455,41 @@ describe('esquema [B-DB]', () => {
     try {
       await db.admin.query('SET LOCAL ROLE mtw_readonly');
       await db.admin.query('SELECT locale, time_zone, last_failed_login_at FROM users');
+    } finally {
+      await db.admin.query('ROLLBACK');
+    }
+  });
+
+  it('0003: atestación de la S en signer_keys (JWS compacto o null), visible para mtw_readonly', async () => {
+    const wallet = await insertWallet('ACTIVE', await insertUser(db.app));
+    const part = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const attestation = [
+      part({ alg: 'EdDSA' }),
+      part({ shardId: 'dev-1' }),
+      randomBytes(64).toString('base64url'),
+    ].join('.');
+    const insertKey = (value: string | null) =>
+      db.app
+        .insertInto('signer_keys')
+        .values({
+          wallet_id: wallet.id,
+          shard_id: 'dev-1',
+          key_ref: randomBytes(8).toString('hex'),
+          address: addr(),
+          provider: 'selfhosted',
+          status: 'PENDING',
+          attestation: value,
+        })
+        .execute();
+    expect(await sqlStateOf(insertKey(attestation))).toBeUndefined();
+    expect(await sqlStateOf(insertKey(null))).toBeUndefined();
+    for (const invalid of ['', 'a.b', 'a.b.c.d', 'a..c', 'a.b.c=', 'a.b.c d']) {
+      expect(await sqlStateOf(insertKey(invalid)), invalid).toBe('23514');
+    }
+    await db.admin.query('BEGIN');
+    try {
+      await db.admin.query('SET LOCAL ROLE mtw_readonly');
+      await db.admin.query('SELECT shard_id, address, attestation FROM signer_keys');
     } finally {
       await db.admin.query('ROLLBACK');
     }

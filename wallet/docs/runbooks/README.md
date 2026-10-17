@@ -1,1 +1,1 @@
-Runbooks operativos (fork, signer, entorno local, deploy, rollback, incidentes, rotación de claves, restore): se agregan desde P03. Disponibles: [fork de Base](fork.md), [deploy de contratos sobre el fork](deploy.md).
+Runbooks operativos (fork, signer, entorno local, deploy, rollback, incidentes, rotación de claves, restore): se agregan desde P03. Disponibles: [fork de Base](fork.md), [deploy de contratos sobre el fork](deploy.md), [ciclo de vida del signer S](signer-lifecycle.md), [migración del signer S a un HSM físico](signer-hardware-migration.md).

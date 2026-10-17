@@ -26,7 +26,9 @@ test('coverage-gate suma sólo src/ (sin interfaces) y calcula porcentajes', () 
 test('match-areas respeta la semántica de * y ** de GitHub Actions', () => {
   const run = (input) => spawnSync('python3', ['-I', join(CI, 'scripts/match-areas.py'), join(CI, 'areas.json')], { input, encoding: 'utf8' }).stdout.trim().split('\n').filter(Boolean);
   assert.deepEqual(run('README.md\nsrc/index.ts\n'), []);
-  assert.deepEqual(run('wallet/contracts/src/SecurityGuard.sol\n'), ['wallet-contracts', 'wallet-security']);
+  // Los tests de backend y signer despliegan los contratos en el fork: un cambio en src/ también los dispara.
+  assert.deepEqual(run('wallet/contracts/src/SecurityGuard.sol\n'), ['wallet-contracts', 'wallet-backend', 'wallet-signer', 'wallet-security']);
+  assert.deepEqual(run('wallet/contracts/test/unit/SecurityGuard.t.sol\n'), ['wallet-contracts', 'wallet-security']);
   assert.deepEqual(run('.github/workflows/wallet-signer.yml\n'), ['wallet-signer', 'wallet-security']);
   assert.deepEqual(run('.github/workflows/otro.yml\n'), []);
   assert.ok(run('wallet/frontend/recovery/src/main.tsx\n').includes('wallet-repro-build'));

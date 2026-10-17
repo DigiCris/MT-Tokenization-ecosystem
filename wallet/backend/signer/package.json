@@ -1,0 +1,60 @@
+{
+  "name": "mtw-backend-signer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Signer-service S de MT Wallet (un proceso por shard): keystores V3 cifrados, política propia con snapshot firmado, estado propio y API mTLS interna.",
+  "type": "module",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": "26.12.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint --max-warnings 0 . && prettier --check .",
+    "format": "prettier --write .",
+    "test": "vitest run --coverage --project signer --project security",
+    "test:security": "vitest run --project security",
+    "sync:contracts": "node scripts/sync-contract-artifacts.mjs",
+    "check:contracts": "node scripts/sync-contract-artifacts.mjs --check",
+    "openapi": "node scripts/openapi.ts",
+    "check:openapi": "node scripts/openapi.ts --check",
+    "dev": "node --watch src/main.ts serve",
+    "start": "node dist/main.js serve",
+    "db:migrate": "node src/main.ts migrate",
+    "restore-verify": "node scripts/restore-verify.ts",
+    "shard:create": "node scripts/create-shard.ts",
+    "shard:backup": "node scripts/backup-shard.ts",
+    "shard:restore": "node scripts/restore-shard.ts",
+    "shard:migrate": "node scripts/shard-migrate.ts",
+    "shard:destroy-retired": "node scripts/destroy-retired.ts",
+    "credential:rotate": "node scripts/rotate-unlock-credential.ts",
+    "credential:escrow": "node scripts/credential-escrow.ts",
+    "attestation:public-key": "node scripts/attestation-public-key.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "fastify": "5.12.5",
+    "jose": "6.2.12",
+    "kysely": "0.29.6",
+    "pg": "8.23.1",
+    "pino": "10.4.0",
+    "prom-client": "15.1.3",
+    "viem": "2.57.4",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@testcontainers/postgresql": "12.2.0",
+    "@types/node": "26.6.5",
+    "@types/pg": "8.23.1",
+    "@vitest/coverage-v8": "5.0.3",
+    "eslint": "10.12.0",
+    "prettier": "3.9.10",
+    "testcontainers": "12.2.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "vitest": "5.0.3"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "format": "[W-07] scopes de PlatformSession y operaciones/endpoints permitidos (backend y signer la aplican igual)",
+  "scopes": {
+    "OPERATIONS": {
+      "app": "Wallet",
+      "operations": [
+        "SEND",
+        "SWAP_APPROVE",
+        "SWAP",
+        "APPROVE_REVOKE",
+        "WHITELIST_ADD",
+        "WHITELIST_REMOVE",
+        "ROTATION_PROPOSE:U",
+        "ROTATION_EXECUTE:U",
+        "NOOP_CANCEL:U",
+        "MIGRATION_TRANSFER:U",
+        "GUARD_UPGRADE:U"
+      ]
+    },
+    "RECOVERY": {
+      "app": "Recovery",
+      "operations": [
+        "ROTATION_PROPOSE:R(U,S)",
+        "ROTATION_EXECUTE:R",
+        "NOOP_CANCEL:R",
+        "WHITELIST_REMOVE:R",
+        "APPROVE_REVOKE:R",
+        "MIGRATION_TRANSFER:R"
+      ]
+    },
+    "U_REPLACEMENT": {
+      "app": "Wallet",
+      "operations": [
+        "REGISTER_U_PRIME_OPAQUE_PENDING",
+        "KEY_ACCEPTANCE"
+      ]
+    },
+    "ENROLLMENT": {
+      "app": "Recovery",
+      "operations": [
+        "RECOVERY_ENROLLMENT",
+        "R_PRIME_ENROLLMENT"
+      ]
+    },
+    "ONBOARDING": {
+      "app": "Wallet",
+      "operations": [
+        "REGISTER_U",
+        "CREATE_ENROLLMENT",
+        "WALLET_CREATION_AUTHORIZATION",
+        "DEPLOY"
+      ]
+    },
+    "KEY_RESTORE": {
+      "app": "Wallet",
+      "operations": [
+        "USER_KEY_RESTORE"
+      ]
+    }
+  }
+}

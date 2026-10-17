@@ -21,6 +21,8 @@ export interface PgInfo {
   adminPassword: string;
   appPassword: string;
   migratorPassword: string;
+  /** Rol mtw_signer (infra/local/postgres/init-db.sh): las DBs de los shards del signer de los tests de integración. */
+  signerPassword: string;
 }
 
 export interface MailpitInfo {
@@ -46,6 +48,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
   const adminPassword = secret();
   const appPassword = secret();
   const migratorPassword = secret();
+  const signerPassword = secret();
   const redisPassword = secret();
 
   const [postgres, valkey, mailpit] = await Promise.all([
@@ -56,7 +59,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
       .withEnvironment({
         MTW_APP_DB_PASSWORD: appPassword,
         MTW_MIGRATOR_DB_PASSWORD: migratorPassword,
-        MTW_SIGNER_DB_PASSWORD: secret(),
+        MTW_SIGNER_DB_PASSWORD: signerPassword,
       })
       .withCopyFilesToContainer([
         {
@@ -104,6 +107,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
     adminPassword,
     appPassword,
     migratorPassword,
+    signerPassword,
   };
 
   // Base plantilla migrada (con el rol mtw_migrator, igual que en producción).

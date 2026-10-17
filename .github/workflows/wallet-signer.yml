@@ -1,4 +1,7 @@
-# CI del signer-service S (P02): install congelado, lint, typecheck, tests, cobertura y build.
+# CI del signer-service S (P02/P11): vectores y ABIs iguales a contracts/, spec interna al día, install congelado, lint,
+# typecheck, tests (PostgreSQL vía Testcontainers y Anvil sobre el fork con el sistema de contratos ya instalado por
+# los scripts del repo),
+# cobertura y build. Los procedimientos del ciclo de vida usan `age` de la toolchain.
 name: wallet-signer
 
 on:
@@ -8,18 +11,30 @@ on:
       - main
     paths:
       - "wallet/backend/signer/**"
+      - "wallet/contracts/src/**"
+      - "wallet/contracts/script/**"
       - "wallet/contracts/test/vectors/**"
+      - "wallet/contracts/out-abi/**"
       - "wallet/config/**"
       - "wallet/ci/**"
       - "wallet/scripts/tools/**"
+      - "wallet/scripts/deploy-core"
+      - "wallet/scripts/env.sh"
+      - "wallet/scripts/lib/**"
       - ".github/workflows/wallet-signer.yml"
   pull_request:
     paths:
       - "wallet/backend/signer/**"
+      - "wallet/contracts/src/**"
+      - "wallet/contracts/script/**"
       - "wallet/contracts/test/vectors/**"
+      - "wallet/contracts/out-abi/**"
       - "wallet/config/**"
       - "wallet/ci/**"
       - "wallet/scripts/tools/**"
+      - "wallet/scripts/deploy-core"
+      - "wallet/scripts/env.sh"
+      - "wallet/scripts/lib/**"
       - ".github/workflows/wallet-signer.yml"
   workflow_dispatch:
 
@@ -44,7 +59,7 @@ jobs:
       - name: Toolchain fijada
         uses: ./wallet/ci/actions/setup-toolchain
         with:
-          tools: node pnpm foundry
+          tools: node pnpm foundry age
           foundry-rpc-cache: "true"
       - name: ci-signer
         env:

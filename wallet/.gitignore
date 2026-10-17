@@ -21,6 +21,9 @@ contracts/cache/
 contracts/broadcast/
 contracts/deployments/local.json
 contracts/deployments/ci.json
+# JSON de deploys efímeros de los tests de otros proyectos (DEPLOYMENT_TAG).
+contracts/deployments/local-*.json
+contracts/deployments/ci-*.json
 
 # --- Playwright ---
 e2e/test-results/

@@ -1,0 +1,10 @@
+dist/
+coverage/
+node_modules/
+pnpm-lock.yaml
+# Copias byte a byte de contracts/test/vectors (CI verifica igualdad con la fuente).
+test/vectors/
+# Generados desde contracts/out-abi por scripts/sync-contract-artifacts.mjs.
+src/chain/abis/
+# Spec interna generada desde los schemas Zod (scripts/openapi.ts; CI verifica que esté al día).
+openapi.json

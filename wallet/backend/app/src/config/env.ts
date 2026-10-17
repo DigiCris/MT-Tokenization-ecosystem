@@ -624,3 +624,25 @@ export function loadAuditVerifyConfig(options: LoadOptions = {}): AuditVerifyCon
   );
   return { appEnv: v.APP_ENV, databaseUrl: v.DATABASE_URL, auditChainKey: v.AUDIT_CHAIN_KEY };
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Cliente del signer [B-SIG-01], [B-SIG-09]
+
+export interface SignerShardEndpoint {
+  id: string;
+  url: string;
+  /** Recibe wallets nuevas (la asignación de las existentes está guardada y no cambia). */
+  active: boolean;
+}
+
+export interface DatabaseOnlyConfig {
+  appEnv: AppEnv;
+  databaseUrl: Secret<string>;
+}
+
+/** CLIs que sólo tocan la DB con el rol de la aplicación (p. ej. `signer:reassign`). */
+export function loadDatabaseConfig(options: LoadOptions = {}): DatabaseOnlyConfig {
+  const resolved = resolveEnv(options);
+  const v = parseWith(z.object({ APP_ENV: baseFields.APP_ENV, DATABASE_URL: postgresUrl }), resolved);
+  return { appEnv: v.APP_ENV, databaseUrl: v.DATABASE_URL };
+}
