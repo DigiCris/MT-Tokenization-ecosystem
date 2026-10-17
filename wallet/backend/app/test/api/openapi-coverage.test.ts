@@ -34,12 +34,13 @@ const walletOnly: RouteRegistrar = (app, client) => {
   app.post(
     '/test/wallet-only',
     {
+      config: { auth: 'public' },
       schema: {
         operationId: 'testWalletOnly',
         tags: ['test'],
         summary: 'Ruta sólo del listener de Wallet',
         body: z.object({ value: z.string() }),
-        response: { 201: z.object({ ok: z.boolean() }), ...errorResponses(422) },
+        response: { 201: z.object({ ok: z.boolean() }), ...errorResponses(403, 415, 422) },
       },
     },
     (_request, reply) => {
@@ -48,6 +49,31 @@ const walletOnly: RouteRegistrar = (app, client) => {
     },
   );
 };
+
+/** Rutas de ambos listeners hasta P09: health, auth, users y sessions. */
+const ACCOUNT_PATHS = [
+  '/api/v1/health',
+  '/api/v1/health/live',
+  '/api/v1/health/ready',
+  '/api/v1/auth/csrf',
+  '/api/v1/auth/register',
+  '/api/v1/auth/verify-email',
+  '/api/v1/auth/verify-email/resend',
+  '/api/v1/auth/login',
+  '/api/v1/auth/logout',
+  '/api/v1/auth/forgot-password',
+  '/api/v1/auth/reset-password',
+  '/api/v1/auth/unlock/request',
+  '/api/v1/auth/unlock',
+  '/api/v1/auth/totp/setup',
+  '/api/v1/auth/totp/enable',
+  '/api/v1/auth/totp/disable',
+  '/api/v1/users/me',
+  '/api/v1/sessions',
+  '/api/v1/sessions/{id}',
+];
+/** Operaciones (método + ruta): GET y PATCH /users/me, GET y DELETE /sessions. */
+const ACCOUNT_OPERATIONS = ACCOUNT_PATHS.length + 2;
 
 let db: TestDatabase;
 const listeners: Record<'WALLET' | 'RECOVERY', TestListener | undefined> = { WALLET: undefined, RECOVERY: undefined };
@@ -79,7 +105,7 @@ describe('spec OpenAPI por listener', () => {
     expect(doc.openapi).toBe('3.1.0');
     expect(doc.info.title).toBe(client === 'WALLET' ? 'MTW API — Wallet' : 'MTW API — Recovery');
     const paths = Object.keys(doc.paths).sort();
-    const expected = ['/api/v1/health', '/api/v1/health/live', '/api/v1/health/ready'];
+    const expected = [...ACCOUNT_PATHS].sort();
     expect(paths).toEqual(client === 'WALLET' ? [...expected, '/api/v1/test/wallet-only'].sort() : expected);
   });
 
@@ -103,7 +129,7 @@ describe('spec OpenAPI por listener', () => {
             expect(response, `${where} ${status}`).toBeDefined();
             expect(JSON.stringify(response), `${where} ${status}`).toContain('#/components/schemas/Problem');
           }
-          if (method === 'post') expect(operation.requestBody, where).toBeDefined();
+          if (method === 'post' || method === 'patch') expect(operation.requestBody, where).toBeDefined();
         }
       }
     },
@@ -114,8 +140,11 @@ describe('spec OpenAPI por listener', () => {
     const documented = new Set(
       Object.entries(doc.paths).flatMap(([path, ops]) => Object.keys(ops).map((m) => `${m.toUpperCase()} ${path}`)),
     );
-    const api = listeners[client]!.app.apiRoutes.map((route) => `${route.method} ${route.url}`);
-    expect(api.length).toBe(client === 'WALLET' ? 4 : 3);
+    // Fastify registra `/sessions/:id`; OpenAPI lo publica como `/sessions/{id}`.
+    const api = listeners[client]!.app.apiRoutes.map(
+      (route) => `${route.method} ${route.url.replace(/:([A-Za-z0-9_]+)/g, '{$1}')}`,
+    );
+    expect(api.length).toBe(client === 'WALLET' ? ACCOUNT_OPERATIONS + 1 : ACCOUNT_OPERATIONS);
     for (const entry of api) expect(documented.has(entry), entry).toBe(true);
   });
 });

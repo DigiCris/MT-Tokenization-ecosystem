@@ -15,12 +15,13 @@ const routes: RouteRegistrar = (app) => {
   app.post(
     '/test/echo',
     {
+      config: { auth: 'public' },
       schema: {
         operationId: 'testEcho',
         tags: ['test'],
         summary: 'Eco validado',
         body: z.object({ amount: z.string().regex(/^\d+$/), note: z.string().max(10).optional() }),
-        response: { 200: z.object({ amount: z.string() }), ...errorResponses(409) },
+        response: { 200: z.object({ amount: z.string() }), ...errorResponses(403, 409, 415) },
       },
     },
     (request) => ({ amount: request.body.amount }),
@@ -28,6 +29,7 @@ const routes: RouteRegistrar = (app) => {
   app.get(
     '/test/conflict',
     {
+      config: { auth: 'public' },
       schema: {
         operationId: 'testConflict',
         tags: ['test'],
@@ -176,6 +178,8 @@ describe('startApi', () => {
       redis: wallet.redis,
       rpc: wallet.rpc,
       idempotency: new IdempotencyRepository(db.app),
+      sessions: wallet.services.sessions,
+      account: wallet.services.account,
       version: '0.0.0-test',
     });
     try {
@@ -205,11 +209,9 @@ describe('errores RFC 9457', () => {
   });
 
   it('validación: 400 con los campos inválidos y sin repetir el valor recibido', async () => {
-    const response = await wallet.app.inject({
-      method: 'POST',
-      url: '/api/v1/test/echo',
-      payload: { amount: 'uno-SECRETO', note: 'demasiado-largo-para-el-campo' },
-    });
+    const response = await wallet
+      .newClient()
+      .post('/api/v1/test/echo', { amount: 'uno-SECRETO', note: 'demasiado-largo-para-el-campo' });
     expect(response.statusCode).toBe(400);
     const problem = response.json<{ code: string; errors: { path: string; message: string }[] }>();
     expect(problem.code).toBe('VALIDATION_FAILED');

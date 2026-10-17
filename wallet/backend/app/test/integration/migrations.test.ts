@@ -98,9 +98,9 @@ describe('migraciones desde una base vacía', () => {
     await fresh.close();
   });
 
-  it('aplica 0001 y es idempotente; mtw_app ve el estado sin DDL', async () => {
-    expect(await pendingMigrations(fresh.app)).toEqual(['0001_initial_schema']);
-    expect(await migrateToLatest(fresh.migrator)).toEqual(['0001_initial_schema']);
+  it('aplica las migraciones en orden y es idempotente; mtw_app ve el estado sin DDL', async () => {
+    expect(await pendingMigrations(fresh.app)).toEqual(['0001_initial_schema', '0002_account_preferences']);
+    expect(await migrateToLatest(fresh.migrator)).toEqual(['0001_initial_schema', '0002_account_preferences']);
     expect(await migrateToLatest(fresh.migrator)).toEqual([]);
     const status = await migrationStatus(fresh.app);
     expect(status.known.every((m) => m.executedAt instanceof Date)).toBe(true);
@@ -421,6 +421,42 @@ describe('esquema [B-DB]', () => {
       .where('id', '=', wallet.id)
       .executeTakeFirstOrThrow();
     expect(after.updated_at.getTime()).toBeGreaterThan(before.updated_at.getTime());
+  });
+
+  it('0002: preferencias de la cuenta con defaults y CHECK, editables por mtw_app y visibles para mtw_readonly', async () => {
+    const id = await insertUser(db.app);
+    const row = await db.app
+      .selectFrom('users')
+      .select(['locale', 'time_zone', 'last_failed_login_at'])
+      .where('id', '=', id)
+      .executeTakeFirstOrThrow();
+    expect(row).toEqual({ locale: 'es-AR', time_zone: 'UTC', last_failed_login_at: null });
+    await db.app
+      .updateTable('users')
+      .set({ locale: 'en', time_zone: 'America/Buenos_Aires' })
+      .where('id', '=', id)
+      .execute();
+    for (const locale of ['español', 'es_AR', 'ES-ar', '']) {
+      expect(await sqlStateOf(db.app.updateTable('users').set({ locale }).where('id', '=', id).execute()), locale).toBe(
+        '23514',
+      );
+    }
+    expect(
+      await sqlStateOf(
+        db.app
+          .updateTable('users')
+          .set({ time_zone: 'x'.repeat(65) })
+          .where('id', '=', id)
+          .execute(),
+      ),
+    ).toBe('23514');
+    await db.admin.query('BEGIN');
+    try {
+      await db.admin.query('SET LOCAL ROLE mtw_readonly');
+      await db.admin.query('SELECT locale, time_zone, last_failed_login_at FROM users');
+    } finally {
+      await db.admin.query('ROLLBACK');
+    }
   });
 
   it('mtw_readonly lee todo salvo hashes y secretos cifrados, y no escribe', async () => {

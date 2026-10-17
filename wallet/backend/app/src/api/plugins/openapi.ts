@@ -82,6 +82,22 @@ export async function registerOpenApi(app: AppInstance, options: OpenApiOptions)
             : 'API del listener de Recovery (`api.<RECOVERY_DOMAIN>`). Errores RFC 9457 (`application/problem+json`).',
       },
       servers: [{ url: options.serverUrl }],
+      components: {
+        securitySchemes: {
+          sessionCookie: {
+            type: 'apiKey',
+            in: 'cookie',
+            name: options.client === 'WALLET' ? '__Host-mtw_sid' : '__Host-mtr_sid',
+            description: 'Sesión de cuenta (cookie HttpOnly del API host; la fija el login).',
+          },
+          csrfToken: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-CSRF-Token',
+            description: 'Token de GET /api/v1/auth/csrf; obligatorio en todo método no-GET.',
+          },
+        },
+      },
     },
     transform: jsonSchemaTransform,
     transformObject: jsonSchemaTransformObject,

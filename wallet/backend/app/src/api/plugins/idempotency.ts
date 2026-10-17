@@ -6,7 +6,8 @@
 // - Request repetido todavía en curso → 409.
 // - Los errores de validación ocurren antes de reclamar la clave (no la consumen); un 5xx la libera para reintentar.
 //
-// Corre en preHandler: la autenticación (onRequest) ya fijó `request.principal` y el body ya está validado.
+// Corre en preHandler: la autenticación (preValidation) ya fijó `request.principal` y el body ya está validado. Una
+// ruta idempotente pública no arranca (plugins/auth.ts); el chequeo de acá es la segunda barrera.
 import { createHash } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import type { IdempotencyRepository } from '../../db/repositories/idempotency-repository.ts';

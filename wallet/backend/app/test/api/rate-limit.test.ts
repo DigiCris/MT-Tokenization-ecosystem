@@ -14,15 +14,18 @@ import {
 import type { RouteRegistrar } from '../../src/api/server.ts';
 import { createMetrics } from '../../src/observability/metrics.ts';
 import { buildTestListener, testRedis, type TestListener } from '../helpers/api.ts';
+import type { TestClient } from '../helpers/client.ts';
 import { createTestDatabase, type TestDatabase } from '../helpers/db.ts';
+import { REDIS_DBS } from '../helpers/redis-dbs.ts';
 
-const REDIS_DB = 5;
+const REDIS_DB = REDIS_DBS.rateLimit;
 
 /** Ruta de prueba que aplica una política con las claves que llegan en el body. */
 const routes: RouteRegistrar = (app) => {
   app.post(
     '/test/limited/:policy',
     {
+      config: { auth: 'public' },
       schema: {
         operationId: 'testLimited',
         tags: ['test'],
@@ -38,7 +41,7 @@ const routes: RouteRegistrar = (app) => {
           proposal: z.string().optional(),
           challengeType: z.string().optional(),
         }),
-        response: { 200: z.object({ ok: z.boolean() }), ...errorResponses() },
+        response: { 200: z.object({ ok: z.boolean() }), ...errorResponses(403, 415) },
       },
     },
     async (request) => {
@@ -73,8 +76,17 @@ async function listener(options: { client?: 'WALLET' | 'RECOVERY'; global?: numb
   return built;
 }
 
+/** Un cliente tipo navegador por listener e IP (cookie anónima y token CSRF propios, como un navegador real). */
+const clients = new Map<string, TestClient>();
+
 function hit(target: TestListener, policy: string, body: Record<string, string>, ip = '203.0.113.10') {
-  return target.app.inject({ method: 'POST', url: `/api/v1/test/limited/${policy}`, remoteAddress: ip, payload: body });
+  const id = `${String(opened.indexOf(target))}|${ip}`;
+  let browser = clients.get(id);
+  if (!browser) {
+    browser = target.newClient(ip);
+    clients.set(id, browser);
+  }
+  return browser.post(`/api/v1/test/limited/${policy}`, body);
 }
 
 async function statuses(n: number, fn: () => Promise<{ statusCode: number }>): Promise<number[]> {

@@ -7,6 +7,7 @@ export interface Metrics {
   registry: Registry;
   httpRequestDuration: Histogram<'listener' | 'method' | 'route' | 'status_code'>;
   authFailures: Counter<'reason'>;
+  authRiskSignals: Counter<'signal'>;
   rateLimitHits: Counter<'listener' | 'policy'>;
   outboxDispatched: Counter<'queue'>;
   outboxDispatchErrors: Counter;
@@ -40,6 +41,12 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_auth_failures_total',
       help: 'Fallos de autenticación por motivo',
       labelNames: ['reason'],
+      registers,
+    }),
+    authRiskSignals: new Counter({
+      name: 'mtw_auth_risk_signals_total',
+      help: 'Señales de credential stuffing (pico de fallos, IP contra muchas cuentas) [B-AUTH-08]',
+      labelNames: ['signal'],
       registers,
     }),
     rateLimitHits: new Counter({

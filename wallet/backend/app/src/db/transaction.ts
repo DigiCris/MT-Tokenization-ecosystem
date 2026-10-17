@@ -10,7 +10,7 @@ export type IsolationLevel = 'serializable' | 'repeatable read' | 'read committe
 
 export interface TransactionOptions {
   isolation?: IsolationLevel;
-  /** Intentos totales (default 5). */
+  /** Intentos totales (default 6). */
   maxAttempts?: number;
   onRetry?: (attempt: number, sqlState: string) => void;
   /**
@@ -45,7 +45,7 @@ export async function withTransaction<DB, T>(
   options: TransactionOptions = {},
 ): Promise<T> {
   const isolation = options.isolation ?? 'serializable';
-  const maxAttempts = options.maxAttempts ?? 5;
+  const maxAttempts = options.maxAttempts ?? 6;
   for (let attempt = 1; ; attempt++) {
     try {
       return await db
@@ -65,8 +65,9 @@ export async function withTransaction<DB, T>(
         );
       }
       options.onRetry?.(attempt, state);
-      // Backoff exponencial con jitter completo: 0–(10 ms × 2^intento), máx. 500 ms.
-      await sleep(randomInt(0, Math.min(500, 10 * 2 ** attempt) + 1));
+      // Backoff exponencial con jitter completo: 0–(25 ms × 2^intento), máx. 1 s (≈ 1,5 s de ventana en total): la
+      // transacción que ganó el conflicto tiene que llegar a confirmar antes del próximo intento, también con carga.
+      await sleep(randomInt(0, Math.min(1_000, 25 * 2 ** attempt) + 1));
     }
   }
 }

@@ -275,6 +275,7 @@ const apiFields = {
   METRICS_PORT: port.default(9464),
   WORKER_METRICS_PORT: port.default(9465),
   RATE_LIMIT_GLOBAL_PER_MINUTE: z.coerce.number({ error: 'debe ser un entero' }).int().min(1).max(100_000).optional(),
+  AUTH_FAILURE_SPIKE_PER_MINUTE: positiveInt(60, 100_000),
 };
 
 const databaseFields = {
@@ -472,6 +473,7 @@ export interface AppConfig {
     docsTryItOut: boolean;
     rateLimitGlobalPerMinute: number;
   };
+  auth: { failureSpikePerMinute: number };
   metrics: { bindHost: string; port: number; workerPort: number };
   database: { url: Secret<string>; poolMax: number };
   redis: { url: Secret<string> };
@@ -523,6 +525,7 @@ export function loadConfig(options: LoadOptions = {}): AppConfig {
       docsTryItOut: v.APP_ENV !== 'production',
       rateLimitGlobalPerMinute: v.RATE_LIMIT_GLOBAL_PER_MINUTE ?? defaultRate,
     },
+    auth: { failureSpikePerMinute: v.AUTH_FAILURE_SPIKE_PER_MINUTE },
     metrics: { bindHost: v.METRICS_BIND_HOST, port: v.METRICS_PORT, workerPort: v.WORKER_METRICS_PORT },
     database: { url: v.DATABASE_URL, poolMax: v.DATABASE_POOL_MAX },
     redis: { url: v.REDIS_URL },

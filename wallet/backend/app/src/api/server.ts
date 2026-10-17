@@ -5,12 +5,16 @@ import Fastify, { LogController, type FastifyBaseLogger } from 'fastify';
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Kysely } from 'kysely';
 import type { Redis } from 'ioredis';
+import type { AccountService } from '../auth/account-service.ts';
+import { csrfToken } from '../auth/csrf.ts';
+import type { SessionService } from '../auth/sessions.ts';
 import type { RpcQuorumClient } from '../chain/rpc-quorum.ts';
 import type { AppConfig } from '../config/env.ts';
 import type { IdempotencyRepository } from '../db/repositories/idempotency-repository.ts';
 import type { Client, Database } from '../db/schema.ts';
 import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
+import { registerAuth } from './plugins/auth.ts';
 import { registerErrorHandling } from './plugins/error-handler.ts';
 import { registerIdempotency } from './plugins/idempotency.ts';
 import { registerOpenApi } from './plugins/openapi.ts';
@@ -18,6 +22,9 @@ import { registerRateLimit } from './plugins/rate-limit.ts';
 import { registerRequestContext } from './plugins/request-context.ts';
 import { registerSecurity } from './plugins/security.ts';
 import { healthRoutes } from './routes/health.ts';
+import { authRoutes } from './routes/v1/auth.ts';
+import { sessionsRoutes } from './routes/v1/sessions.ts';
+import { usersRoutes } from './routes/v1/users.ts';
 import type { AppInstance } from './types.ts';
 
 export const API_PREFIX = '/api/v1';
@@ -30,6 +37,8 @@ export interface ApiDeps {
   redis: Redis;
   rpc: RpcQuorumClient;
   idempotency: IdempotencyRepository;
+  sessions: SessionService;
+  account: AccountService;
   version: string;
 }
 
@@ -90,12 +99,23 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
     tryItOut: config.api.docsTryItOut,
     appEnv: config.appEnv,
   });
+  // Después de OpenAPI: una ruta sin schema se informa primero; Swagger UI (infraestructura) queda sin estos hooks.
+  await registerAuth(app, {
+    client,
+    sessions: deps.sessions,
+    sessionSecret: config.secrets.sessionSecret,
+    csrfSecret: config.secrets.csrfSecret,
+  });
 
   await app.register(healthRoutes, {
     prefix: API_PREFIX,
     version: deps.version,
     readiness: { db: deps.db, redis: deps.redis, rpc: deps.rpc },
   });
+  const csrfForSession = (sessionId: string) => csrfToken(config.secrets.csrfSecret, { kind: 'session', sessionId });
+  await app.register(authRoutes, { prefix: API_PREFIX, account: deps.account, csrfForSession });
+  await app.register(sessionsRoutes, { prefix: API_PREFIX, account: deps.account });
+  await app.register(usersRoutes, { prefix: API_PREFIX, account: deps.account });
   if (extraRoutes) {
     await app.register(
       async (scope) => {

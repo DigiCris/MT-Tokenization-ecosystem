@@ -71,6 +71,9 @@ export interface UsersTable {
   locked_until: Timestamp | null;
   totp_enabled: Generated<boolean>;
   global_user_id: string | null;
+  locale: Generated<string>;
+  time_zone: Generated<string>;
+  last_failed_login_at: Timestamp | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
 }

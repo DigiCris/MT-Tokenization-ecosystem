@@ -50,6 +50,7 @@ describe('logs de requests reales', () => {
         app.post(
           '/test/canary',
           {
+            config: { auth: 'public' },
             schema: {
               operationId: 'testCanary',
               tags: ['test'],
@@ -60,7 +61,7 @@ describe('logs de requests reales', () => {
                 otp: z.string(),
                 nested: z.object({ token: z.string() }),
               }),
-              response: { 200: z.object({ ok: z.boolean() }), ...errorResponses() },
+              response: { 200: z.object({ ok: z.boolean() }), ...errorResponses(403, 415) },
             },
           },
           (request) => {
@@ -71,6 +72,7 @@ describe('logs de requests reales', () => {
         app.get(
           '/test/boom',
           {
+            config: { auth: 'public' },
             schema: {
               operationId: 'testBoom',
               tags: ['test'],
@@ -97,35 +99,38 @@ describe('logs de requests reales', () => {
       authorization: canary('authz'),
       platformSession: canary('ps'),
       sessionSignature: canary('sig'),
-      csrf: canary('csrf'),
       password: canary('pw'),
       otp: canary('otp'),
       token: canary('token'),
     };
-    const response = await listener.app.inject({
-      method: 'POST',
-      url: '/api/v1/test/canary',
-      headers: {
-        cookie: `__Host-mtw_sid=${values.cookie}`,
+    // Request real de navegador: cookie anónima y token CSRF válidos (también secretos) más una cookie de sesión
+    // inválida con un canario.
+    const browser = listener.newClient();
+    const csrf = await browser.refreshCsrf();
+    const anonCookie = browser.jar.get('__Host-mtw_csrf') ?? '';
+    expect(anonCookie).not.toBe('');
+    const response = await browser.post(
+      '/api/v1/test/canary',
+      { email: 'ana.perez@dominio.com', password: values.password, otp: values.otp, nested: { token: values.token } },
+      {
+        cookie: `${browser.cookieHeader}; __Host-mtw_sid=${values.cookie}`,
         authorization: `Bearer ${values.authorization}`,
         'x-platform-session': values.platformSession,
         'x-session-signature': values.sessionSignature,
-        'x-csrf-token': values.csrf,
-        'content-type': 'application/json',
       },
-      payload: {
-        email: 'ana.perez@dominio.com',
-        password: values.password,
-        otp: values.otp,
-        nested: { token: values.token },
-      },
-    });
+    );
     expect(response.statusCode).toBe(200);
     const output = captured.output();
-    for (const value of Object.values(values)) expect(output).not.toContain(value);
+    for (const value of [...Object.values(values), csrf, anonCookie, decodeURIComponent(anonCookie)]) {
+      expect(output).not.toContain(value);
+    }
     expect(output).not.toContain('ana.perez@dominio.com');
     expect(output).toContain('a***@dominio.com');
-    const completed = captured.lines().find((l) => l.msg === 'request completado');
+    const completed = captured
+      .lines()
+      .find(
+        (l) => l.msg === 'request completado' && (l.req as { url?: string } | undefined)?.url === '/api/v1/test/canary',
+      );
     expect(completed?.req).toMatchObject({ method: 'POST', url: '/api/v1/test/canary' });
     expect(JSON.stringify(completed?.req)).not.toContain('headers');
   });

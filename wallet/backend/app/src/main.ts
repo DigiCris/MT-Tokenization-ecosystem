@@ -18,6 +18,7 @@ import { createOutboxWorker } from './queue/outbox-consumer.ts';
 import { OutboxDispatcher } from './queue/outbox-dispatcher.ts';
 import { closeQueues, createQueues, queueCounts, QUEUES } from './queue/queues.ts';
 import { createRedis } from './queue/redis.ts';
+import { createAccountServices } from './services.ts';
 import { serviceVersion } from './version.ts';
 
 type Role = 'api' | 'worker';
@@ -82,7 +83,19 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       outboxLagSeconds: () => outbox.oldestUndispatchedAgeSeconds(),
       operationsByStatus: () => operationsByStatus(db),
     });
-    const api = await startApi({ config, logger, metrics, db, redis, rpc, idempotency, version: serviceVersion() });
+    const { sessions, account } = createAccountServices({ config, db, redis, outbox, metrics, logger });
+    const api = await startApi({
+      config,
+      logger,
+      metrics,
+      db,
+      redis,
+      rpc,
+      idempotency,
+      sessions,
+      account,
+      version: serviceVersion(),
+    });
     closers.unshift(() => api.close());
     metricsServer = await startMetricsServer(metrics.registry, config.metrics.bindHost, config.metrics.port);
     logger.info(

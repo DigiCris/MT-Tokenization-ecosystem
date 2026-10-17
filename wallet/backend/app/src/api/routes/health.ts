@@ -50,6 +50,7 @@ export const healthRoutes: FastifyPluginCallbackZod<HealthRoutesOptions> = (app,
   app.get(
     '/health',
     {
+      config: { auth: 'public' },
       schema: {
         operationId: 'getHealth',
         tags: ['health'],
@@ -68,6 +69,7 @@ export const healthRoutes: FastifyPluginCallbackZod<HealthRoutesOptions> = (app,
   app.get(
     '/health/live',
     {
+      config: { auth: 'public' },
       schema: {
         operationId: 'getLiveness',
         tags: ['health'],
@@ -81,6 +83,7 @@ export const healthRoutes: FastifyPluginCallbackZod<HealthRoutesOptions> = (app,
   app.get(
     '/health/ready',
     {
+      config: { auth: 'public' },
       schema: {
         operationId: 'getReadiness',
         tags: ['health'],

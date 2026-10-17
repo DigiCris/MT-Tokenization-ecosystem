@@ -11,6 +11,22 @@ export interface AccessPolicy {
   readonlyExcludedColumns: Readonly<Record<string, readonly string[]>>;
 }
 
+/**
+ * Política vigente: cada migración desde 0002 la reaplica completa (convergente). 0001 conserva su copia literal: una
+ * migración aplicada no se modifica.
+ */
+export const ACCESS_POLICY: AccessPolicy = {
+  appendOnly: ['audit_events', 'operator_actions'],
+  // mtw_readonly (soporte, análisis) nunca lee hashes de password ni secretos cifrados.
+  readonlyExcludedColumns: {
+    users: ['password_hash'],
+    totp_factors: ['secret_ciphertext', 'recovery_code_hashes'],
+    opaque_records: ['registration_record'],
+    operator_users: ['totp_secret_ciphertext'],
+    sessions: ['token_hash'],
+  },
+};
+
 const ident = (name: string): string => {
   if (!/^[a-z_][a-z0-9_]*$/.test(name)) throw new Error(`identificador inválido: ${name}`);
   return `"${name}"`;

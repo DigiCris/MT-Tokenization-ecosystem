@@ -82,7 +82,7 @@ describe('health', () => {
     expect(ready.statusCode).toBe(503);
     expect(ready.json()).toMatchObject({
       status: 'not_ready',
-      checks: { migrations: { ok: false, pending: ['0001_initial_schema'] } },
+      checks: { migrations: { ok: false, pending: ['0001_initial_schema', '0002_account_preferences'] } },
     });
   });
 
