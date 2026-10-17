@@ -1,0 +1,35 @@
+rules:
+  - id: mtw-no-eval
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: eval/new Function ejecutan código arbitrario; prohibidos en wallet/ (CSP sin unsafe-eval).
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+  - id: mtw-no-math-random
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Math.random() no es criptográfico; usar crypto.getRandomValues / randomBytes.
+    pattern: Math.random()
+  - id: mtw-no-inner-html
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: asignar innerHTML/outerHTML o usar dangerouslySetInnerHTML permite XSS en origins criptográficos.
+    pattern-either:
+      - pattern: $EL.innerHTML = $X
+      - pattern: $EL.outerHTML = $X
+      - pattern: <$TAG dangerouslySetInnerHTML={...} />
+  - id: mtw-no-secret-logging
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: no loguear secretos, claves, passwords ni tokens.
+    patterns:
+      - pattern-either:
+          - pattern: console.$LOG(..., $V, ...)
+          - pattern: $LOGGER.$LEVEL(..., $V, ...)
+      - metavariable-regex:
+          metavariable: $LEVEL
+          regex: ^(trace|debug|info|warn|error|fatal|log)$
+      - metavariable-regex:
+          metavariable: $V
+          regex: (?i)^[a-z_.]*(password|passphrase|privatekey|private_key|secret|mnemonic|seed|refreshtoken|refresh_token|authsecret)[a-z_]*$

@@ -1,0 +1,49 @@
+# E2E Playwright y acceptance full-system sobre el fork (P02, P22–P23): en PRs con label `e2e` y nightly.
+name: wallet-e2e
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: e2e
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'e2e')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    environment: wallet-ci-e2e
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm foundry
+          foundry-rpc-cache: "true"
+      - name: ci-e2e
+        env:
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+          WALLETCONNECT_PROJECT_ID: ${{ secrets.WALLETCONNECT_PROJECT_ID }}
+          EMAIL_PROVIDER_API_KEY: ${{ secrets.EMAIL_PROVIDER_API_KEY }}
+          EMAIL_PROVIDER_DOMAIN: ${{ secrets.EMAIL_PROVIDER_DOMAIN }}
+          EMAIL_PROVIDER_BASE_URL: ${{ secrets.EMAIL_PROVIDER_BASE_URL }}
+          EMAIL_TEST_ADDRESS: ${{ secrets.EMAIL_TEST_ADDRESS }}
+          EMAIL_TEST_GOOGLE_CLIENT_ID: ${{ secrets.EMAIL_TEST_GOOGLE_CLIENT_ID }}
+          EMAIL_TEST_GOOGLE_CLIENT_SECRET: ${{ secrets.EMAIL_TEST_GOOGLE_CLIENT_SECRET }}
+          EMAIL_TEST_GOOGLE_REFRESH_TOKEN: ${{ secrets.EMAIL_TEST_GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_TEST_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_TEST_CLIENT_ID }}
+          GOOGLE_DRIVE_TEST_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_TEST_CLIENT_SECRET }}
+          GOOGLE_DRIVE_TEST_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_TEST_REFRESH_TOKEN }}
+        run: bash wallet/ci/scripts/ci-e2e.sh

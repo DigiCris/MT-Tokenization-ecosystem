@@ -1,0 +1,16 @@
+rules:
+  - id: mtw-sol-no-tx-origin
+    languages: [solidity]
+    severity: ERROR
+    message: tx.origin no se usa para autorización en los contratos del sistema.
+    pattern: tx.origin
+  - id: mtw-sol-no-selfdestruct
+    languages: [solidity]
+    severity: ERROR
+    message: los contratos del sistema son inmutables; selfdestruct está prohibido.
+    pattern: selfdestruct(...)
+  - id: mtw-sol-no-delegatecall
+    languages: [solidity]
+    severity: ERROR
+    message: ningún contrato propio ejecuta DELEGATECALL (SafeBootstrap es el objetivo de un DELEGATECALL de la Safe, no lo emite).
+    pattern: $X.delegatecall(...)

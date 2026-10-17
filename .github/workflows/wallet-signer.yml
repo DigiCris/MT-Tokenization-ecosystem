@@ -1,0 +1,52 @@
+# CI del signer-service S (P02): install congelado, lint, typecheck, tests, cobertura y build.
+name: wallet-signer
+
+on:
+  push:
+    branches:
+      - "feat/walletWeb/**"
+      - main
+    paths:
+      - "wallet/backend/signer/**"
+      - "wallet/contracts/test/vectors/**"
+      - "wallet/config/**"
+      - "wallet/ci/**"
+      - "wallet/scripts/tools/**"
+      - ".github/workflows/wallet-signer.yml"
+  pull_request:
+    paths:
+      - "wallet/backend/signer/**"
+      - "wallet/contracts/test/vectors/**"
+      - "wallet/config/**"
+      - "wallet/ci/**"
+      - "wallet/scripts/tools/**"
+      - ".github/workflows/wallet-signer.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  signer:
+    name: signer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: wallet-ci-signer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm foundry
+          foundry-rpc-cache: "true"
+      - name: ci-signer
+        env:
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+        run: bash wallet/ci/scripts/ci-signer.sh

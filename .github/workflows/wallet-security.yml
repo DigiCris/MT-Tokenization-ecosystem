@@ -1,0 +1,61 @@
+# Seguridad y documentación de wallet/ (P02): gitleaks (historia completa), OSV-Scanner, pnpm audit, Semgrep, zizmor, tests del preflight, docs y wordlist.
+name: wallet-security
+
+on:
+  push:
+    branches:
+      - "feat/walletWeb/**"
+      - main
+    paths:
+      - "wallet/**"
+      - ".github/workflows/wallet-*.yml"
+      - ".github/CODEOWNERS"
+  pull_request:
+    paths:
+      - "wallet/**"
+      - ".github/workflows/wallet-*.yml"
+      - ".github/CODEOWNERS"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm
+      - name: ci-docs
+        run: bash wallet/ci/scripts/ci-docs.sh
+
+  security:
+    name: security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm gitleaks
+      - name: ci-security
+        run: bash wallet/ci/scripts/ci-security.sh

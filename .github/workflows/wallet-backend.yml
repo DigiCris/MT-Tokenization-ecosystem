@@ -1,0 +1,77 @@
+# CI del backend (API, worker, watcher, indexer, gas tank) y del integrity monitor (P02): install congelado, lint, typecheck, tests, cobertura y build.
+name: wallet-backend
+
+on:
+  push:
+    branches:
+      - "feat/walletWeb/**"
+      - main
+    paths:
+      - "wallet/backend/app/**"
+      - "wallet/backend/integrity-monitor/**"
+      - "wallet/contracts/test/vectors/**"
+      - "wallet/config/**"
+      - "wallet/ci/**"
+      - "wallet/scripts/tools/**"
+      - ".github/workflows/wallet-backend.yml"
+  pull_request:
+    paths:
+      - "wallet/backend/app/**"
+      - "wallet/backend/integrity-monitor/**"
+      - "wallet/contracts/test/vectors/**"
+      - "wallet/config/**"
+      - "wallet/ci/**"
+      - "wallet/scripts/tools/**"
+      - ".github/workflows/wallet-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: wallet-ci-backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm foundry
+          foundry-rpc-cache: "true"
+      - name: ci-backend
+        env:
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+          EMAIL_PROVIDER_API_KEY: ${{ secrets.EMAIL_PROVIDER_API_KEY }}
+          EMAIL_PROVIDER_DOMAIN: ${{ secrets.EMAIL_PROVIDER_DOMAIN }}
+          EMAIL_PROVIDER_BASE_URL: ${{ secrets.EMAIL_PROVIDER_BASE_URL }}
+          EMAIL_TEST_ADDRESS: ${{ secrets.EMAIL_TEST_ADDRESS }}
+          EMAIL_TEST_GOOGLE_CLIENT_ID: ${{ secrets.EMAIL_TEST_GOOGLE_CLIENT_ID }}
+          EMAIL_TEST_GOOGLE_CLIENT_SECRET: ${{ secrets.EMAIL_TEST_GOOGLE_CLIENT_SECRET }}
+          EMAIL_TEST_GOOGLE_REFRESH_TOKEN: ${{ secrets.EMAIL_TEST_GOOGLE_REFRESH_TOKEN }}
+        run: bash wallet/ci/scripts/ci-backend.sh
+
+  integrity-monitor:
+    name: integrity-monitor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm
+      - name: ci-integrity-monitor
+        run: bash wallet/ci/scripts/ci-integrity-monitor.sh

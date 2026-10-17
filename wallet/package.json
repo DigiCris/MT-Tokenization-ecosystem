@@ -14,6 +14,8 @@
     "fork:start": "bash scripts/start-fork",
     "fork:stop": "bash scripts/stop-fork",
     "fork:reset": "bash scripts/reset-fork",
-    "test:preflight": "node --test scripts/preflight.d/__tests__/"
+    "test:preflight": "node --test scripts/preflight.d/__tests__/",
+    "ci:local": "bash ci/scripts/ci-all.sh",
+    "test:ci": "node --test ci/tests/"
   }
 }

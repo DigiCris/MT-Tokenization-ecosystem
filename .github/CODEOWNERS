@@ -1,0 +1,22 @@
+# Revisores por trust domain de wallet/ (P02.T01). El repositorio es de un usuario (sin equipos de
+# organización), así que cada dominio apunta al owner; al sumar revisores, reemplazar por el usuario o
+# equipo de cada dominio (contracts, backend/signer, frontend-wallet, frontend-recovery, infra).
+
+# infra (CI, scripts, configuración, documentación)
+/.github/workflows/wallet-*.yml          @DigiCris
+/.github/CODEOWNERS                      @DigiCris
+/wallet/                                 @DigiCris
+
+# contracts
+/wallet/contracts/                       @DigiCris
+/wallet/config/chains/                   @DigiCris
+
+# backend/signer
+/wallet/backend/                         @DigiCris
+/wallet/config/policy/                   @DigiCris
+
+# frontend-wallet
+/wallet/frontend/wallet/                 @DigiCris
+
+# frontend-recovery
+/wallet/frontend/recovery/               @DigiCris

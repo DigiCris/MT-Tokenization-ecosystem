@@ -1,0 +1,12 @@
+{
+  "$comment": "Áreas de CI (P02): workflow y rutas que lo disparan. Fuente única para ci-gate.sh; workflows.test.mjs verifica que los filtros `paths` de cada workflow coincidan.",
+  "areas": {
+    "wallet-contracts": ["wallet/contracts/**", "wallet/config/chains/**", "wallet/ci/**", "wallet/scripts/tools/**", ".github/workflows/wallet-contracts.yml"],
+    "wallet-backend": ["wallet/backend/app/**", "wallet/backend/integrity-monitor/**", "wallet/contracts/test/vectors/**", "wallet/config/**", "wallet/ci/**", "wallet/scripts/tools/**", ".github/workflows/wallet-backend.yml"],
+    "wallet-signer": ["wallet/backend/signer/**", "wallet/contracts/test/vectors/**", "wallet/config/**", "wallet/ci/**", "wallet/scripts/tools/**", ".github/workflows/wallet-signer.yml"],
+    "wallet-frontend-wallet": ["wallet/frontend/wallet/**", "wallet/frontend/design-tokens/**", "wallet/contracts/test/vectors/**", "wallet/config/**", "wallet/ci/**", "wallet/scripts/tools/**", ".github/workflows/wallet-frontend-wallet.yml"],
+    "wallet-frontend-recovery": ["wallet/frontend/recovery/**", "wallet/frontend/design-tokens/**", "wallet/contracts/test/vectors/**", "wallet/config/**", "wallet/ci/**", "wallet/scripts/tools/**", ".github/workflows/wallet-frontend-recovery.yml"],
+    "wallet-security": ["wallet/**", ".github/workflows/wallet-*.yml", ".github/CODEOWNERS"],
+    "wallet-repro-build": ["wallet/frontend/**", "wallet/ci/**", "wallet/scripts/tools/**", ".github/workflows/wallet-repro-build.yml"]
+  }
+}

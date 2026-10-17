@@ -1,0 +1,40 @@
+name: wallet setup-toolchain
+description: Instala la toolchain fijada de wallet/ con scripts/tools/bootstrap (checksums verificados) y restaura las cachés.
+inputs:
+  tools:
+    description: Herramientas separadas por espacio (node pnpm foundry gitleaks slither)
+    required: true
+  foundry-rpc-cache:
+    description: Restaura y guarda la caché RPC de Foundry del bloque de fork
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Caché de la toolchain
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          wallet/.tools
+          !wallet/.tools/.cache
+        key: mtw-tools-${{ runner.os }}-${{ inputs.tools }}-${{ hashFiles('wallet/scripts/tools/versions.json', 'wallet/scripts/tools/slither-constraints.txt', 'wallet/scripts/tools/bootstrap') }}
+    - name: Instalar toolchain fijada
+      shell: bash
+      env:
+        TOOLS: ${{ inputs.tools }}
+      run: |
+        read -r -a tools <<< "$TOOLS"
+        bash wallet/scripts/tools/bootstrap "${tools[@]}"
+    - name: Bloque de fork
+      id: fork
+      if: inputs.foundry-rpc-cache == 'true'
+      shell: bash
+      run: echo "block=$(jq -r .fork.blockNumber wallet/config/chains/base-mainnet.json)" >> "$GITHUB_OUTPUT"
+    - name: Caché RPC de Foundry por FORK_BLOCK_NUMBER
+      if: inputs.foundry-rpc-cache == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.foundry/cache/rpc
+        key: foundry-rpc-base-${{ steps.fork.outputs.block }}-${{ github.run_id }}
+        restore-keys: |
+          foundry-rpc-base-${{ steps.fork.outputs.block }}-

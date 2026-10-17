@@ -1,0 +1,33 @@
+# Check requerido de la protección de main (P02.T04): espera los workflows de las áreas que toca el PR
+# (wallet/ci/areas.json) y pasa enseguida si el PR no toca wallet/.
+name: wallet-ci-gate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: wallet-ci-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Esperar workflows de las áreas tocadas
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash wallet/ci/scripts/ci-gate.sh
