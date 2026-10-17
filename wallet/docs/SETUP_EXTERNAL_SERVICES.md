@@ -11,9 +11,9 @@ Este documento lista **cada** dato, credencial y secreto que necesita el sistema
 5. Las interfaces de los proveedores cambian: si un menú no coincide, seguir la documentación oficial enlazada respetando los permisos mínimos indicados.
 6. Verificado el 2026-10-16.
 
-## Estado al 2026-10-16
+## Estado al 2026-10-17
 
-Búsqueda realizada en las variables de entorno del proceso y en `wallet/.env` (sin mostrar valores): **ninguna** de las credenciales externas existe todavía. Todo lo demás está resuelto automáticamente (ver las tres secciones finales).
+Credenciales de local provistas por el owner y validadas sin mostrar valores: `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY` y `ETHERSCAN_API_KEY`. CI usa la misma `BASE_RPC_URL` como secret del repo. Para ejecutar el planner completo sólo faltan las credenciales de los tests contra servicios reales (`GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`). Todo lo de staging/producción es parte del despliegue final.
 
 ---
 
@@ -62,31 +62,68 @@ Secretos y claves que se generan criptográficamente: **no son acciones del usua
 | Clave de policy (`POLICY_SIGNING_*`) | firma de snapshots de policy | Ed25519; en staging/prod se genera en una máquina offline y la privada nunca está en servidores | todos | Sí | backend y signer (pública) |
 | Par de claves de backup (`age`) | cifrado de backups off-host | `age-keygen`; la pública queda en la config del host, la privada en custodia offline | staging/prod | Sí | scripts de backup (pública) |
 | `LOCAL_SEED`, credencial y keystores del shard `dev-1`, `*_LOCAL`, `GRAFANA_ADMIN_PASSWORD` | sólo desarrollo local | `pnpm secrets:local` | local | Sí (local) | procesos locales |
+| Claves de ensayo de staging y producción: deployer, 3 owners de la Governance Safe y 2 guardianes por entorno | deploys de staging y producción sobre el fork (P25, P30) | `cast wallet new` → keystore cifrado en `~/.config/mtw/keys/<entorno>/` y contraseña en `~/.config/mtw/secrets/<entorno>/` (generadas el 2026-10-17); direcciones en `~/.config/mtw/<entorno>.env` | ensayo sobre el fork | Sí | scripts de deploy del agente; **nunca** se usan en Base mainnet |
+| Claves de policy de staging y producción | firma de los snapshots de policy del ensayo (P25.T07, P30.T03) | Ed25519 en `~/.config/mtw/secrets/<entorno>/` | ensayo sobre el fork | Sí | backend y signer (pública) |
+| Secrets de CI: `BASE_RPC_URL`, `GOOGLE_DRIVE_TEST_*`, `EMAIL_TEST_*` | tests de fork y contra servicios reales en GitHub Actions | `gh secret set` con los valores de `wallet/.env` (P02.T04) | CI | Sí | workflows de CI |
 
 ---
 
 ## USER ACTION REQUIRED
 
-Sólo lo que no se puede conseguir ni generar automáticamente. Antes de pedir cualquier ítem, el preflight lo busca y lo valida sin mostrarlo; si ya existe, se reutiliza.
+### Para ejecutar el planner
 
-| Ítem | Proveedor | Local (P00) | Staging / Producción | Estado 2026-10-16 |
-|---|---|---|---|---|
-| [`BASE_RPC_URL`](#base_rpc_url) | Alchemy | **Obligatoria** | Obligatoria | no existe |
-| [`WALLETCONNECT_PROJECT_ID`](#walletconnect_project_id) | Reown | **Obligatoria** | Obligatoria (un proyecto por entorno) | no existe |
-| [`GOOGLE_CLIENT_ID_WALLET`](#google_client_id_wallet) | Google Cloud | **Obligatoria** | Obligatoria (cliente por entorno) | no existe |
-| [`GOOGLE_CLIENT_ID_RECOVERY`](#google_client_id_recovery) | Google Cloud | **Obligatoria** | Obligatoria (cliente por entorno) | no existe |
-| [`BASE_RPC_URL_SECONDARY`](#base_rpc_url_secondary) | QuickNode | Opcional | Obligatoria | no existe |
-| [RPC por componente](#rpc_primary_url--rpc_secondary_url) | Alchemy / QuickNode | No (fork) | Obligatorias | no existen |
-| [`EMAIL_PROVIDER_API_KEY` / `EMAIL_FROM`](#email_provider_api_key--email_from) | Postmark | Opcional (local usa Mailpit) | Obligatorias | no existe |
-| [`ETHERSCAN_API_KEY`](#etherscan_api_key) | Etherscan | No | Obligatoria para verificar contratos | no existe |
-| [Dominios de producción](#wallet_domain--recovery_domain) | registrador a elección | No | Obligatorios al desplegar | pendiente |
-| [Governance Safe y guardianes](#governance_safe_address--policy_guardians) | Safe{Wallet} + hardware wallets | No (lo crea el seed) | Obligatorios | pendiente |
-| [`ALERT_EMAIL`](#alert_email--alert_webhook_url) | casilla propia | No (Mailpit) | Obligatoria | pendiente |
-| [Fondeo de ETH](#fondeo-de-eth-gas-tank) | — | No (fork) | Obligatorio | pendiente |
-| [Aprobaciones en Base mainnet](#aprobaciones-en-base-mainnet) | owner | No | Obligatorias | pendiente |
-| [Custodia offline y copia off-host](#custodia-offline-y-copia-off-host) | owner / equipo | No | Obligatorias al desplegar | pendiente |
+Lo de local ya está provisto. Falta sólo esto, para que los tests usen servicios reales (R-14 del planner):
 
-Condicionales (sólo si el preflight detecta que hacen falta): [Docker](#docker-sólo-si-falta), [branch protection](#branch-protection-sólo-si-gh-no-tiene-permisos), [tests opcionales](#tests-opcionales-con-servicios-reales).
+| Ítem | Proveedor | Estado 2026-10-17 |
+|---|---|---|
+| [`GOOGLE_DRIVE_TEST_*`](#google_drive_test_client_id--google_drive_test_client_secret--google_drive_test_refresh_token) | Google Cloud | pendiente |
+| [`EMAIL_TEST_*`](#email_test_address--email_test_app_password) | Gmail (cuenta de prueba) | pendiente |
+| `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `ETHERSCAN_API_KEY` | Alchemy, QuickNode, Reown, Google Cloud, Etherscan | provistas |
+
+Resueltos sin acción: Docker está instalado (modo rootless; el preflight levanta el daemon si está detenido) y `gh` tiene permisos de administrador (la branch protection y los secrets de CI los configura el agente).
+
+### GOOGLE_DRIVE_TEST_CLIENT_ID / GOOGLE_DRIVE_TEST_CLIENT_SECRET / GOOGLE_DRIVE_TEST_REFRESH_TOKEN
+
+| Campo | Valor |
+|---|---|
+| Para qué sirve | Que los tests del cliente Drive de ambas apps usen la **API real** de Google Drive (`appDataFolder`) en cada `pnpm ci:local` y en CI. El login de Google no se puede automatizar, así que se autoriza una vez una cuenta de prueba. El producto nunca usa estas credenciales. |
+| Proveedor | Google Cloud |
+| URL | https://console.cloud.google.com · https://developers.google.com/oauthplayground |
+| Pasos | 1) Proyecto `mtw-wallet-local` → *Clients* → *Create client* → **Web application**, nombre `drive-tests`, *Authorized redirect URIs*: `https://developers.google.com/oauthplayground`; copiar **Client ID** y **Client secret**. 2) *Audience* → **Publish app** (así el refresh token no vence a los 7 días; con sólo `drive.appdata`, que es no sensible, no hay verificación). 3) OAuth Playground → engranaje → *Use your own OAuth credentials* → pegar ID y secret. 4) Paso 1: `https://www.googleapis.com/auth/drive.appdata` → *Authorize APIs* → iniciar sesión con la cuenta Google de prueba → *Allow*. 5) Paso 2: *Exchange authorization code for tokens* → copiar el **Refresh token**. 6) Cargar los tres valores en `wallet/.env`; PF-30 los valida sin mostrarlos. |
+| Permisos mínimos | Sólo `drive.appdata`, con una cuenta Google dedicada a pruebas. |
+| Entorno | local y CI (el agente los carga como secrets del repo) |
+| Obligatoria | Sí |
+
+### EMAIL_TEST_ADDRESS / EMAIL_TEST_APP_PASSWORD
+
+| Campo | Valor |
+|---|---|
+| Para qué sirve | Probar la **entrega real** de los emails del producto (verificación, OTP, reset): el backend los envía por SMTP a esta casilla y el test lee los códigos por IMAP (P09.TST.h, P22.T06). |
+| Proveedor | Gmail (cuenta de prueba; puede ser la misma de Drive) |
+| URL | https://myaccount.google.com/security · https://myaccount.google.com/apppasswords |
+| Pasos | 1) Activar la verificación en 2 pasos de la cuenta. 2) En *App passwords* crear una llamada `mtw-tests` y copiar la contraseña de 16 letras. 3) Cargar `EMAIL_TEST_ADDRESS` (la dirección) y `EMAIL_TEST_APP_PASSWORD` en `wallet/.env`; PF-31 valida SMTP (`smtp.gmail.com:587`) e IMAP (`imap.gmail.com:993`) sin mostrarla. |
+| Permisos mínimos | Cuenta dedicada a pruebas; la contraseña de aplicación se revoca en cualquier momento desde la misma página. |
+| Entorno | local y CI (secrets del repo) |
+| Obligatoria | Sí |
+
+### Despliegue final (fuera del planner)
+
+Se hace con `docs/runbooks/go-live.md` cuando existan los dominios y la VPS. Las claves de ensayo del fork nunca se reutilizan en Base mainnet: el fork conserva chainId 8453 y una transacción firmada ahí sería válida en mainnet.
+
+| Ítem | Proveedor | Staging / Producción |
+|---|---|---|
+| [Dominios](#wallet_domain--recovery_domain) | registradores a elección | Wallet y Recovery administrativamente independientes (V9) |
+| [`GOOGLE_CLIENT_ID_WALLET` / `_RECOVERY`](#google_client_id_wallet) | Google Cloud | cliente por entorno; publicación con verificación de marca |
+| [`WALLETCONNECT_PROJECT_ID`](#walletconnect_project_id) | Reown | proyecto por entorno con allowlist del dominio |
+| [RPC por componente](#rpc_primary_url--rpc_secondary_url) y [`BASE_RPC_URL_SECONDARY`](#base_rpc_url_secondary) | Alchemy / QuickNode | una clave por componente y entorno |
+| [`EMAIL_PROVIDER_API_KEY` / `EMAIL_FROM`](#email_provider_api_key--email_from) | Postmark | servidor por entorno, dominio verificado, cuenta aprobada |
+| [`ETHERSCAN_API_KEY`](#etherscan_api_key) | Etherscan | ya provista; verificación pública en BaseScan |
+| [Governance Safe y guardianes](#governance_safe_address--policy_guardians) | hardware wallets | claves reales nuevas |
+| [`ALERT_EMAIL`](#alert_email--alert_webhook_url) | casilla propia | por entorno |
+| [Fondeo de ETH](#fondeo-de-eth-gas-tank) y [aprobaciones](#aprobaciones-en-base-mainnet) | owner | deploy real y gas tank |
+| [Custodia offline y copia off-host](#custodia-offline-y-copia-off-host) | owner / equipo | al desplegar |
+
+Si algún día faltara Docker o `gh` perdiera permisos: [Docker](#docker-sólo-si-falta), [branch protection](#branch-protection-sólo-si-gh-no-tiene-permisos).
 
 ### BASE_RPC_URL
 
@@ -205,7 +242,7 @@ Nota: `GOOGLE_CLIENT_SECRET_WALLET` y `GOOGLE_CLIENT_SECRET_RECOVERY` **no se us
 | Para qué sirve | `GOVERNANCE_SAFE_ADDRESS` administra el `PolicyRegistry` (propone permisos con timelock de 24 h y autoriza migraciones excepcionales); `POLICY_GUARDIANS` pueden cancelar propuestas pendientes y revocar permisos. |
 | Proveedor | Safe{Wallet} (https://app.safe.global) + hardware wallets de los firmantes |
 | URL | https://app.safe.global |
-| Pasos | 1) Conseguir hardware wallets (una por firmante). 2) Crear en red **Base** una Safe multisig (2-de-3 o 3-de-5) con esos firmantes. 3) Registrar la dirección. 4) Elegir guardianes independientes del equipo que opera el backend y registrar sus direcciones. |
+| Pasos | Durante el planner: el agente usa claves de ensayo propias (`~/.config/mtw/<entorno>.env`) y crea la Safe en el fork. En el despliegue final: 1) conseguir hardware wallets (una por firmante); 2) crear en red **Base** una Safe multisig (2-de-3 o 3-de-5) con esos firmantes; 3) registrar la dirección; 4) elegir guardianes independientes del equipo que opera el backend y registrar sus direcciones. |
 | Permisos mínimos | Ningún firmante es operador del backend ni custodio de claves de release. |
 | Entorno | staging (Safe propia), production (Safe distinta) |
 | Obligatoria | Sí |
@@ -228,7 +265,7 @@ La cuenta gas tank/relayer (clave en un keystore del shard `platform`, generada 
 
 ### Aprobaciones en Base mainnet
 
-Toda acción que despliegue contratos o mueva fondos reales en Base mainnet (staging en P25.T06, producción en P30.T02) requiere la **aprobación explícita y escrita del owner**, registrada en el Registro de ejecución del planner.
+Durante el planner todo corre sobre el fork. En el despliegue final (`go-live.md`), toda acción que despliegue contratos o mueva fondos reales en Base mainnet requiere la **aprobación explícita y escrita del owner**, registrada en el Registro de ejecución del planner.
 
 ### Custodia offline y copia off-host
 
@@ -242,9 +279,8 @@ Docker Engine con Compose v2 es la única dependencia de sistema que el prefligh
 
 El planner aplica la protección de la rama principal con `gh api` (P02.T04). Sólo si las credenciales de `gh` del entorno no tienen permisos de administrador del repositorio, esa configuración puntual la hace el owner en GitHub (required checks, revisión de CODEOWNERS, "include administrators", commits firmados).
 
-### Tests opcionales con servicios reales
+### POSTMARK_TEST_RECIPIENT
 
 | Variable | Para qué sirve | Cómo obtenerla | Entorno | Obligatoria |
 |---|---|---|---|---|
-| `GOOGLE_DRIVE_TEST_CLIENT_ID` / `GOOGLE_DRIVE_TEST_CLIENT_SECRET` / `GOOGLE_DRIVE_TEST_REFRESH_TOKEN` | Probar el cliente Drive contra la API real en CI nightly (Google no permite automatizar su login en E2E). | Proyecto de Google Cloud **de test** separado, cliente OAuth propio para tests y cuenta Google de pruebas; refresh token con scope `drive.appdata`. El producto nunca usa este cliente. | CI | Opcional |
-| `POSTMARK_TEST_RECIPIENT` | Smoke test real de email | Casilla propia de pruebas | local, staging | Opcional |
+| `POSTMARK_TEST_RECIPIENT` | Smoke test de entrega por Postmark en el despliegue final, con el dominio ya verificado | Casilla propia de pruebas | staging, production | Sí, en el despliegue final |

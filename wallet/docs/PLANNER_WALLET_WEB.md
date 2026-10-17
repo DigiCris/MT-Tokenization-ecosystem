@@ -48,11 +48,12 @@
 - **R-06** Nunca commitear secretos. `wallet/.env`, keystores, certificados privados y cualquier archivo bajo `wallet/.secrets/` están gitignored. Antes de cada commit: `gitleaks protect --staged --redact` (o `gitleaks git --staged` según la versión fijada en P01).
 - **R-07** Commits profesionales, en formato Conventional Commits, **sin mencionar Claude, Anthropic, AI ni agregar `Co-Authored-By`/coautores**.
 - **R-08** Push a `origin feat/walletWeb/cmarchese` como mínimo al cerrar cada CHECKPOINT.
-- **R-09** No desplegar nada en Base mainnet ni mover fondos reales (staging o producción) sin **aprobación explícita y escrita del owner** registrada en el Registro de ejecución. Ninguna fase accede a la VPS, despliega en ella ni configura reverse proxy, DNS o TLS reales: eso se hace a mano después, siguiendo `docs/DEPLOYMENT_VPS.md`.
+- **R-09** Ninguna fase despliega en Base mainnet ni mueve fondos reales: staging y producción se despliegan y se prueban completos **sobre el fork de Anvil** (P25 y P30). El despliegue real —contratos en Base mainnet, servicios en la VPS, reverse proxy, DNS y TLS— es el **despliegue final**: manual, fuera del planner, con aprobación escrita del owner, siguiendo `docs/runbooks/go-live.md` y `docs/DEPLOYMENT_VPS.md`. Ninguna fase accede a la VPS.
 - **R-10** No fijar versiones "de memoria": toda versión/dirección/codehash se verifica contra fuente oficial o lectura on-chain y se registra con fecha y URL (ver §3 y P01/P03).
 - **R-11** Si algo obligatorio falta: primero **autodiscovery** (buscar en el repo y en la configuración existente, verificar on-chain, consultar documentación oficial) y **auto-remediación** (instalar la herramienta fijada en `wallet/.tools/`, generar el secreto); sólo si no se puede obtener así: **STOP**, informando qué falta, qué variable, cómo obtenerla y en qué sección de `wallet/docs/SETUP_EXTERNAL_SERVICES.md` ("USER ACTION REQUIRED") están los pasos. No continuar dejando funcionalidades falsas o desactivadas "temporalmente".
-- **R-12** Toda decisión de diseño nueva que no esté en este planner se documenta como ADR en `wallet/docs/adr/` antes de implementarse. No se rediseña la arquitectura sin ADR aprobado por el owner.
+- **R-12** Toda decisión de diseño nueva que no esté en este planner se documenta como ADR en `wallet/docs/adr/` antes de implementarse. Las decisiones de implementación dentro de esta arquitectura no requieren aprobación; un cambio de arquitectura no se hace durante la ejecución (si resultara inevitable, es un STOP real con el motivo documentado).
 - **R-13** Toda fase que crea o modifica un proyecto actualiza su script `wallet/ci/scripts/ci-<área>.sh` (y su workflow si P02 fue aprobado); el CHECKPOINT de cada fase exige `pnpm ci:local` en verde.
+- **R-14** **Producto final, sin pendientes ni frenos.** Después de `PREFLIGHT PASSED` el planner corre de punta a punta (prompt §25) sin pedir nada al owner. Toda funcionalidad se implementa completa y se prueba contra los servicios reales: fork de Base mainnet con los contratos reales, Alchemy/QuickNode, relay de WalletConnect, API de Google Drive, API de Postmark y entrega real de email a una casilla. Nada queda opcional, simulado ni diferido. Los `Pxx.MAN` los ejecuta el agente con herramientas (navegador automatizado, `cast`, `curl`) y, donde se pide un segundo par de ojos, un **agente revisor independiente** (contexto nuevo, sin el razonamiento del ejecutor) cuyo informe queda en §13. Fuera del planner queda sólo el despliegue final y la configuración de los servicios de staging/producción para los dominios reales (§13.1, `docs/runbooks/go-live.md`).
 
 ### 0.2 Formato de las tareas
 
@@ -63,7 +64,7 @@
 
 Las subtareas usan sufijo de letra (`P07.T01.a`). Las referencias a especificación usan IDs de §6–§8 (por ejemplo `[C-GRD-05]`, `[B-NONCE-02]`, `[F-KEY-04]`).
 
-En cada fase, además de las tareas `Pxx.Tyy`, son checkboxes las acciones de verificación: `Pxx.TST` (tests a implementar, con su comando), `Pxx.MAN` (checks manuales, cuyo resultado se anota en §13) y `Pxx.SEC` (security checks). Toda tarea tiene una línea `Verificación:`; RES-4 re-ejecuta esas líneas.
+En cada fase, además de las tareas `Pxx.Tyy`, son checkboxes las acciones de verificación: `Pxx.TST` (tests a implementar, con su comando), `Pxx.MAN` (checks manuales que ejecuta el propio agente con herramientas o un agente revisor independiente —R-14—, con resultado y evidencia en §13; ninguno requiere al owner) y `Pxx.SEC` (security checks). Toda tarea tiene una línea `Verificación:`; RES-4 re-ejecuta esas líneas.
 
 ### 0.3 Protocolo de reanudación (si la ejecución se detiene)
 
@@ -305,7 +306,7 @@ Cada ADR se materializa como archivo en `wallet/docs/adr/` en P01. Ninguna decis
 | ADR-013 | Criptografía cliente: CSPRNG WebCrypto; secp256k1 con `@noble/curves`; Argon2id con `@noble/hashes` en Web Worker, 64 MiB/t=3/p=4 (presupuesto: desbloqueo ≤ 3 s p95 en el perfil móvil de referencia; si no se cumple, en Wallet se adopta `hash-wasm` 4.12.0 fijado tras revisión — Recovery no habilita WASM y acepta el desbloqueo más lento); HKDF y AES-256-GCM con WebCrypto; wordlist `MTW-WORDLIST-V1` = niceware 4.0.0 (2^16). | V9 §4/§5; librerías mantenidas y ya presentes en el árbol de viem. |
 | ADR-014 | Signer S **self-hosted**: signer-service independiente por shard (mTLS sobre red Docker interna, política propia con snapshot firmado, DB propia, atestación de cada S creada) con **`SelfHostedSoftwareSignerProvider`**: una clave secp256k1 por Safe, generada con CSPRNG dentro del signer y guardada como **keystore Ethereum V3 cifrado** (scrypt + AES-128-CTR, formato estándar interoperable con geth, Foundry y Web3Signer) en el volumen del shard; la contraseña de cada keystore se deriva con HKDF-SHA256 de una **credencial de desbloqueo** por shard que vive aparte (secret de Docker Compose), nunca junto a los keystores; firma del hash EIP-712 de la SafeTx y del hash de la tx EIP-1559 con `@noble/curves` (low-s, RFC 6979). Ciclo de vida completo en [B-SIG-08]. `DevelopmentSignerProvider` = el mismo provider con guardas de desarrollo; `HardwareSignerProvider` (HSM físico propio vía PKCS#11/YubiHSM) queda como hardening futuro opcional. | Verificado 2026-10-16: **Clef** fue retirado de go-ethereum (v1.17.4) y su repo standalone `ethereum/clef` no tiene releases ni commits desde el 2026-06-02; además `account_new` exige UI. **Web3Signer** (Consensys, Apache-2.0, 26.9.0, mantenido) firma digests de 32 bytes (`applyHash: false`), soporta `eth_signTransaction` EIP-1559, `/reload` y miles de claves, pero **no crea claves** y no tiene política: nuestro servicio igual tendría que generar y cifrar cada keystore con la misma credencial, sumando una JVM por shard sin aislamiento real. Por la regla del owner (ciclo de vida dinámico no cubierto) se elige el provider propio, que conserva el formato V3 para migrar a Web3Signer o a un HSM más adelante sin rotar claves. Un KMS cloud quedó descartado: producción sin cloud. |
 | ADR-015 | Swap: `SwapExecutorV3` propio contra el **pool canónico Uniswap v3 USDC/USDT 0,01 %** (`0xD56d…5DA1`) por llamada directa al pool con callback validado; sin router, sin Permit2, sin calldata arbitraria. Dos SafeTx (nonce N `approve(executor, amountIn)` exacto; nonce N+1 `swap`). El Guard impone post-condiciones on-chain: la Safe pierde ≤ `amountIn` del token de entrada, recibe ≥ `minAmountOut` del otro, `minAmountOut ≥ amountIn·(1−1 %)`, y la allowance Safe→executor queda en 0. Executors registrados en `PolicyRegistry` (permite un `SwapExecutorV4` futuro con timelock). | Menor superficie: el pool v3 es inmutable y verificable por codehash; v4 (PoolManager singleton) tiene más complejidad por una mejora de precio de ~0,006 %. Las post-condiciones del Guard acotan lo que puede pasar **dentro** de la SafeTx del swap (pérdida ≤ amountIn, recepción ≥ piso); la allowance residual entre N y N+1 es segura sólo porque todo executor registrado debe debitar exclusivamente a `msg.sender` ([C-SWP-05], requisito de registro testeado). Riesgo residual documentado: MEV/sandwich acotado por el piso de 0,5 %. |
-| ADR-016 | Email transaccional: **Postmark** (servidores separados staging/producción, stream `outbound`, dominio verificado con DKIM + Return-Path). Local/CI: **Mailpit** (SMTP real local). | Proveedor real con separación por servidor/entorno; Mailpit permite E2E que leen OTPs sin mocks del producto. |
+| ADR-016 | Email transaccional: **Postmark** (servidores separados staging/producción, stream `outbound`, dominio verificado con DKIM + Return-Path). Local/CI: **Mailpit** (SMTP real local) para los flujos deterministas, más tests obligatorios contra la API real de Postmark (`POSTMARK_API_TEST`) y de entrega real a una casilla de prueba (`EMAIL_TEST_*`). | Proveedor real con separación por servidor/entorno; Mailpit permite E2E que leen OTPs sin mocks del producto. |
 | ADR-017 | RPC: **Alchemy** (primario, archive, también para el fork) + **QuickNode** (secundario) en backend; el signer usa **sus propias** claves de ambos; cada frontend usa su propia clave Alchemy con allowlist de dominio. Lecturas sensibles con quórum en bloque fijo. | Prompt §17; independencia entre trust domains. |
 | ADR-018 | Finalidad en Base: `SUBMITTED` → `MINED` (receipt) → `CONFIRMED` (bloque ≤ head `safe` y hash re-verificado por quórum; típico 1–2 min) → `FINALIZED` (bloque ≤ head `finalized`; ~20 min). **Sin umbrales por cantidad de bloques en mainnet** (Denim: bloques de 200 ms). Local/fork: profundidad configurable. | Docs de Base (§3.5). |
 | ADR-019 | **Sin batching en V1**: una `execTransaction` por tx; paralelo entre Safes, secuencial por Safe. | Cross-Safe imposible (S distinta por Safe y `msg.sender == S`); intra-Safe requiere DELEGATECALL (prohibido). Base es barato; el riesgo no compensa (CF-05). |
@@ -313,7 +314,7 @@ Cada ADR se materializa como archivo en `wallet/docs/adr/` en P01. Ninguna decis
 | ADR-021 | Postgres es la fuente de verdad; outbox transaccional hacia BullMQ; la cola es sólo transporte. | Pérdida de Valkey no pierde operaciones. |
 | ADR-022 | Producción **self-hosted** en una VPS Linux estándar (target: Hostinger), **sin dependencia de ningún cloud**: todos los servicios como contenedores Docker en `infra/production/docker-compose.production.yml` (api, worker, watcher, indexer, gas-tank, integrity-monitor, signer shards, `postgres` del backend, `signer-postgres`, `valkey`, `wallet-web`, `recovery-web` y perfil opcional de observabilidad), redes Docker separadas por dominio (`edge`, `backend`, `signer` con `internal: true`), sin puertos publicados salvo binds configurables de `wallet-web`, `recovery-web` y la API hacia el **reverse proxy existente**, que se configura a mano al desplegar (el producto no incluye ni hardcodea Nginx); imágenes construidas en CI, publicadas en GHCR por digest y firmadas; el despliegue a la VPS es manual, fuera de este planner, siguiendo `docs/DEPLOYMENT_VPS.md` (P26). | Decisión del owner (2026-10-16): producción en VPS propia, sin AWS/GCP/Azure. Se mantiene la separación lógica de trust domains (contenedores, redes, usuarios, secretos, claves de release fuera del host); el riesgo residual de un host único está en CF-10. (Histórico: un diseño previo en AWS quedó descartado.) |
 | ADR-023 | Integridad de releases: builds reproducibles, SRI, CSP estricta, Trusted Types (una política con allowlist de workers), sin service workers, manifest firmado Ed25519 por app (claves de release distintas, guardadas sólo en el GitHub Environment de cada app, nunca en la VPS), SBOM CycloneDX (syft), contratos del sistema embebidos por entorno; **integrity monitor** (contenedor propio, clave propia) emite atestaciones firmadas que el signer exige para cooperar (MISMATCH pausa de inmediato; UNREACHABLE pausa tras 15 min de gracia con alerta) y un **chequeo off-host** programado en GitHub Actions verifica los mismos manifests y alerta aunque el host esté comprometido. Riesgo residual: servir JS distinto sólo a ciertos usuarios no es detectable por los monitores. | V9 §17. |
-| ADR-024 | Entornos: `local` (fork Anvil), `staging` (Base mainnet con despliegue de contratos propio, fondos mínimos, sólo testers internos; requiere aprobación igual que producción; infraestructura = proyecto Docker Compose separado con secretos, volúmenes y claves propios, en el host que se elija al desplegar) y `production` (VPS). Nada se reutiliza entre staging y producción (DB, OAuth, keystores y credenciales del signer, secretos de sesión, email, RPC). | Prompt §37; contratos y tokens reales en staging sin depender de testnets sin USDT/liquidez. |
+| ADR-024 | Entornos: `local` (fork Anvil), `staging` y `production`. Durante la ejecución del planner, staging y producción se despliegan y prueban completos **sobre el fork** con su configuración propia (Governance Safe, guardianes, deployer y claves de policy de ensayo generados en `~/.config/mtw/`, fuera del repo, que nunca se reutilizan en Base mainnet). Su despliegue real (contratos en Base mainnet; servicios como proyectos Docker Compose separados en la VPS) es el despliegue final, manual y con aprobación del owner. Nada se reutiliza entre staging y producción (DB, OAuth, keystores y credenciales del signer, secretos de sesión, email, RPC, claves de gobernanza). | Prompt §37; contratos y tokens reales (fork de Base mainnet) sin depender de testnets sin USDT/liquidez. |
 | ADR-025 | Límites por defecto en el snapshot de policy: 10.000 por operación, 20.000 por Safe cada 24 h, 2FA desde 1.000 (TOTP o email OTP), swap ≤ 10.000 por operación, slippage default 30 bps / máx. 50 bps (= piso on-chain), deadline 10 min. Swaps se deshabilitan por policy si la cotización se desvía > 0,5 % de 1:1 o la liquidez del pool cae bajo el umbral de monitoreo. | Parámetros de negocio iniciales (modificables por snapshot firmado); coherentes con la liquidez observada (§3.4). |
 | ADR-026 | Migración excepcional (credencial que veta su rotación): doble aprobación interna de operadores + autorización on-chain en `PolicyRegistry` por la Governance Safe (24 h, guardianes) + regla del Guard: destino = Safe registrada en el Guard cuyo rol correspondiente coincide con la credencial sana firmante. | V9 §14/A5 con enforcement on-chain. |
 | ADR-027 | PostgreSQL 18 y **Valkey 9** self-hosted (contenedores con volúmenes persistentes, usuarios separados, healthchecks, backups de ADR-031); PostgreSQL es la fuente de verdad y Valkey el transporte de BullMQ. | Valkey es compatible con el protocolo Redis (la preferencia "Redis" del prompt se cumple) y tiene licencia BSD; Redis 8 es AGPL. |
@@ -637,7 +638,7 @@ Inmutable, sin owner, compartido por todas las Safes. Inmutables: `POLICY_REGIST
 - **[C-SCR-01]** `DeployCore.s.sol` (orden de §6.1) parametrizado por red; escribe `deployments/<red>.json` con: addresses, codehash de runtime, argumentos de constructor, versión de solc, settings de optimizer/evm, commit git, timestamp, chainId, deployer.
 - **[C-SCR-02]** `VerifyDeployment.s.sol`: re-lee todo on-chain y compara contra el JSON y `config/chains/base-mainnet.json`.
 - **[C-SCR-03]** `DeployLocal.s.sol` + `SeedLocal.s.sol` (P07): deploy en el fork, Governance Safe local, usuario de prueba, U/R/S determinísticas desde `LOCAL_SEED` (claves nuevas, nunca cuentas públicas de Anvil), Safe creada por la factory, fondeo con USDC/USDT **reales** del fork (`deal` sobre el storage real del token o impersonación de un holder real, sólo en el script de seed).
-- **[C-SCR-04]** `DeployBase.s.sol` (P25): sólo con hardware wallet (`--ledger`/`--trezor`), nunca con private key en env; requiere flag `--broadcast` explícito y aprobación registrada.
+- **[C-SCR-04]** `DeployBase.s.sol` (P25/P30): firma con keystore cifrado (`--keystore` + `--password-file`) o con hardware wallet (`--ledger`/`--trezor`); nunca con private key en env; requiere `--broadcast` explícito. Durante la ejecución sólo transmite al fork; contra Base mainnet sólo en el despliegue final, con claves nuevas y aprobación escrita del owner.
 
 ## 7. Especificación backend y signer
 
@@ -1126,12 +1127,12 @@ Resumen de fases:
 | P22 | Tests frontend y E2E Playwright | P21 |
 | P23 | Acceptance tests full-system sobre el fork | P22 |
 | P24 | Observabilidad, audit trail y abuse prevention (cierre) | P23 |
-| P25 | Entornos y scripts de despliegue/verificación de contratos (sin mainnet sin aprobación) | P24 |
+| P25 | Entornos, scripts de despliegue/verificación y deploy de staging sobre el fork | P24 |
 | P26 | PRODUCTION READINESS: preparación para la VPS (artefactos, compose, scripts, runbooks, ensayo local; sin desplegar) | P25 |
 | P27 | SECURITY AUDIT | P26 |
 | P28 | SECURITY REMEDIATION (gate) | P27 |
 | P29 | Documentación final, trazabilidad y release candidate | P28 |
-| P30 | PRODUCTION READINESS: gate final y go-live | P29 |
+| P30 | PRODUCTION READINESS: gate final, producción completa sobre el fork y paquete de go-live | P29 |
 
 Checklist estándar de CHECKPOINT (cada fase lo incluye con comandos concretos):
 
@@ -1154,7 +1155,7 @@ CHECKPOINT Pxx
 
 **Archivos/componentes:** `wallet/package.json` (orquestación), `wallet/docker-compose.yml`, `wallet/scripts/preflight` (bash) y `wallet/scripts/preflight.d/*.mjs`, `wallet/scripts/tools/{bootstrap,versions.json}`, `wallet/scripts/env.sh`, `wallet/scripts/lib/*.sh`, `wallet/scripts/start-fork`, `stop-fork`, `reset-fork`, `wallet/scripts/secrets-local`, `wallet/.env.example`, `wallet/.env`, `wallet/docs/SETUP_EXTERNAL_SERVICES.md`.
 
-**Dependencias:** ninguna. Las únicas credenciales externas necesarias en local son `BASE_RPC_URL` (archive), `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET` y `GOOGLE_CLIENT_ID_RECOVERY`; el preflight primero las busca y valida (P00.T08) y sólo pide las que no encuentre (`SETUP_EXTERNAL_SERVICES.md` → USER ACTION REQUIRED).
+**Dependencias:** ninguna. Credenciales externas de local: `BASE_RPC_URL` (archive), `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY` y `ETHERSCAN_API_KEY` (provistas por el owner el 2026-10-17), más las de los tests contra servicios reales: `GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`. El preflight las busca y valida (P00.T08) y sólo pide las que no encuentre (`SETUP_EXTERNAL_SERVICES.md` → USER ACTION REQUIRED).
 
 **Implementación requerida:**
 
@@ -1170,14 +1171,14 @@ CHECKPOINT Pxx
       Verificación: `node scripts/preflight.d/validate-chain-config.mjs` (valida contra el schema) y PF-15 en verde.
 - [ ] **P00.T04** — `scripts/secrets-local`: sólo si `APP_ENV=local`, completa en `wallet/.env` los secretos **locales** vacíos con valores aleatorios (`openssl rand`, `node:crypto` para Ed25519): `POSTGRES_PASSWORD`, passwords de los roles de DB, `DATABASE_URL`, `DATABASE_MIGRATION_URL`, `SIGNER_DATABASE_URL`, `REDIS_PASSWORD`, `REDIS_URL`, `LOCAL_SEED`, `SESSION_SECRET`, `CSRF_SECRET`, `SESSION_ISSUER_PRIVATE_KEY/PUBLIC_KEY`, `APP_FIELD_ENCRYPTION_KEY`, `OTP_HMAC_KEY`, `PASSWORD_PEPPER_V1`, `AUDIT_CHAIN_KEY`, credencial de desbloqueo del shard de desarrollo (`wallet/.secrets/signer/dev-1/unlock.key`, fuera del directorio de keystores), clave Ed25519 de atestación del signer, pares Ed25519 de desarrollo para policy, integrity monitor y releases; genera CA y certificados mTLS de desarrollo en `wallet/.secrets/mtls/` (gitignored). Nunca sobrescribe valores existentes; se niega a correr si `APP_ENV != local`.
       Verificación: correrlo dos veces no cambia valores; `git status` no muestra `.env` ni `.secrets/`.
-- [ ] **P00.T05** — `scripts/preflight` (bash) + `scripts/preflight.d/*.mjs` (Node, sin dependencias externas) implementando los checks PF-01…PF-30 de abajo con el ciclo **detect → auto-remediar → verificar** (por defecto remedia lo remediable: toolchain con `scripts/tools/bootstrap`, secretos locales con `secrets-local`, servicios compose caídos con `docker compose up -d`, imágenes faltantes con `docker pull` por digest; `--no-fix` sólo diagnostica), con flags `--env local|staging|production` y `--json`. El `.env` se lee con un parser propio (nunca `source`) que respeta comillas y comentarios en línea, sin imprimir valores. Los checks marcados "desde Pxx" se activan solos cuando existe el artefacto correspondiente (p. ej. PF-25 por cada `package.json`/`foundry.toml` de proyecto presente, PF-29 si existe `backend/app/package.json`, PF-26 si existe `e2e/package.json`); el resumen indica qué checks se omitieron y por qué. Cada FAIL imprime: **qué falta**, **variable**, **cómo obtenerla**, **documento interno** (`docs/SETUP_EXTERNAL_SERVICES.md#<ancla>`) y termina con código ≠ 0 ("STOP"). Si todo pasa imprime exactamente `PREFLIGHT PASSED`.
+- [ ] **P00.T05** — `scripts/preflight` (bash) + `scripts/preflight.d/*.mjs` (Node, sin dependencias externas) implementando los checks PF-01…PF-33 de abajo con el ciclo **detect → auto-remediar → verificar** (por defecto remedia lo remediable: toolchain con `scripts/tools/bootstrap`, secretos locales con `secrets-local`, servicios compose caídos con `docker compose up -d`, imágenes faltantes con `docker pull` por digest; `--no-fix` sólo diagnostica), con flags `--env local|staging|production` y `--json`. El `.env` se lee con un parser propio (nunca `source`) que respeta comillas y comentarios en línea, sin imprimir valores. Los checks marcados "desde Pxx" se activan solos cuando existe el artefacto correspondiente (p. ej. PF-25 por cada `package.json`/`foundry.toml` de proyecto presente, PF-29 si existe `backend/app/package.json`, PF-26 si existe `e2e/package.json`); el resumen indica qué checks se omitieron y por qué. Cada FAIL imprime: **qué falta**, **variable**, **cómo obtenerla**, **documento interno** (`docs/SETUP_EXTERNAL_SERVICES.md#<ancla>`) y termina con código ≠ 0 ("STOP"). Si todo pasa imprime exactamente `PREFLIGHT PASSED`.
       Verificación: casos de prueba de P00.T06 en verde.
 - [ ] **P00.T06** — Tests del preflight (`scripts/preflight.d/__tests__/*.test.mjs` con `node --test`): variable faltante → FAIL con ancla correcta; formato inválido de URL/ID → FAIL; RPC con chainId incorrecto → FAIL; puerto ocupado → FAIL; `.env` no ignorado → FAIL; todo correcto → `PREFLIGHT PASSED`.
       Verificación: `node --test scripts/preflight.d/__tests__/`.
 - [ ] **P00.T07** — Actualizar `SETUP_EXTERNAL_SERVICES.md` para que cada ancla citada por el preflight exista (test que compara anclas).
       Verificación: `node --test scripts/preflight.d/__tests__/anchors.test.mjs`.
-- [ ] **P00.T08** — Credenciales externas con autodiscovery: el preflight busca `BASE_RPC_URL`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET` y `GOOGLE_CLIENT_ID_RECOVERY` en las variables de entorno del proceso y en `wallet/.env`, las valida **sin mostrarlas** (PF-13, PF-14, PF-19, PF-20) y las reutiliza; sólo las que falten o no validen se informan como **USER ACTION REQUIRED** (con su sección de `SETUP_EXTERNAL_SERVICES.md`) y en ese caso STOP.
-      Verificación: PF-11, PF-13, PF-14, PF-19 y PF-20 en verde (credencial encontrada y validada sin mostrarla) o reporte USER ACTION REQUIRED con la sección exacta de SETUP; nunca se pegan valores en el planner.
+- [ ] **P00.T08** — Credenciales externas con autodiscovery: el preflight busca `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*` en las variables de entorno del proceso y en `wallet/.env`, las valida **sin mostrarlas** (PF-13, PF-14, PF-19, PF-20, PF-30, PF-31) y las reutiliza; sólo las que falten o no validen se informan como **USER ACTION REQUIRED** (con su sección de `SETUP_EXTERNAL_SERVICES.md`) y en ese caso STOP.
+      Verificación: PF-11, PF-13, PF-14, PF-19, PF-20, PF-30 y PF-31 en verde (credencial encontrada y validada sin mostrarla) o reporte USER ACTION REQUIRED con la sección exacta de SETUP; nunca se pegan valores en el planner.
 - [ ] **P00.T09** — Ejecutar `cd wallet && docker compose up -d && pnpm preflight` hasta obtener `PREFLIGHT PASSED`; pegar el resumen (sin secretos) en el Registro de ejecución.
       Verificación: salida `PREFLIGHT PASSED` y resumen pegado (sin secretos) en §13.
 
@@ -1214,7 +1215,10 @@ Checks del preflight:
 | PF-27 | Signer: directorio de keystores escribible por el UID del signer, credencial de desbloqueo presente en una ubicación **distinta** de la de los keystores, y `credentialFingerprint` coincidente con la DB del signer si ya hay claves (local: `wallet/.secrets/signer/dev-1/`, generado si falta) | todos |
 | PF-28 | Certificados mTLS presentes, no vencidos, CA correcta (local: regenerados automáticamente si faltan o vencen) | todos |
 | PF-29 | `OPAQUE_SERVER_SETUP` presente (desde P10; se genera con `pnpm --dir backend/app opaque:setup`) | desde P10 |
-| PF-30 | Resumen final y código de salida | todos |
+| PF-30 | `GOOGLE_DRIVE_TEST_*`: el refresh token obtiene un access token (`POST https://oauth2.googleapis.com/token` → 200) y `GET https://www.googleapis.com/drive/v3/files?spaces=appDataFolder` responde 200 | local/CI |
+| PF-31 | `EMAIL_TEST_*`: la casilla de prueba acepta la contraseña de aplicación por SMTP (`smtp.gmail.com:587`, STARTTLS) e IMAP (`imap.gmail.com:993`) | local/CI |
+| PF-32 | API real de Postmark con el token oficial de pruebas: `POST https://api.postmarkapp.com/email` con `X-Postmark-Server-Token: POSTMARK_API_TEST` → 200 y `ErrorCode: 0` | local/CI |
+| PF-33 | Resumen final y código de salida | todos |
 
 **Tests a implementar:**
 
@@ -1274,10 +1278,10 @@ Checks del preflight:
 - [ ] **P01.T06.a** — `scripts/check-docs.mjs` (sin dependencias): valida anclas y links internos de todos los `.md` bajo `wallet/`, que todo ID `[C-…]`, `[B-…]`, `[F-…]`, `ADR-…` y `Pxx.Tyy` citado esté definido, y que cada tarea del planner tenga línea `Verificación:`. Se usa en todos los CHECKPOINT ("documentación actualizada").
       Verificación: `node scripts/check-docs.mjs` → `DOCS OK`.
 - [ ] **P01.T07** — `wallet/docs/THREAT_MODEL.md` v1 a partir de §9 (activos, adversarios, escenarios, assertions A1–A21, comportamientos deliberados).
-      Verificación: `node scripts/check-docs.mjs` y revisión del owner registrada en §13.
+      Verificación: `node scripts/check-docs.mjs` y revisión de un agente revisor independiente registrada en §13.
 - [ ] **P01.T08** — Wordlist: vendorizar la lista niceware 4.0.0 (npm `niceware@4.0.0`, tarball con integridad verificada) como `config/wordlist/mtw-wordlist-v1.txt` (una palabra por línea, LF, orden original) + `mtw-wordlist-v1.sha256` = `c2bf4e5b768581bc101620e9ec735e1b91b9b3e33d10535c5fbcada87b1e7e1e` + `LICENSE-niceware` (MIT). Script de verificación: 65.536 entradas, únicas, `[a-z]+`, ordenadas, hash exacto.
       Verificación: `node scripts/verify-wordlist.mjs` → OK.
-- [ ] **P01.T09** — `wallet/.gitleaks.toml` (reglas por defecto + patrones propios: claves Ed25519 PEM, `OPAQUE_SERVER_SETUP`, keystores) y hook opcional `scripts/hooks/pre-commit` (gitleaks sobre staged + lint del archivo tocado).
+- [ ] **P01.T09** — `wallet/.gitleaks.toml` (reglas por defecto + patrones propios: claves Ed25519 PEM, `OPAQUE_SERVER_SETUP`, keystores) y hook `scripts/hooks/pre-commit` (lo instala `scripts/tools/bootstrap`) (gitleaks sobre staged + lint del archivo tocado).
       Verificación: `gitleaks git --redact` (o subcomando equivalente de la versión fijada) sin hallazgos y prueba con un secreto de mentira en un archivo temporal no commiteado → el hook lo detecta.
 
 **Tests a implementar:**
@@ -1317,7 +1321,7 @@ Checks del preflight:
 
 **Objetivo:** que cada área tenga pipeline reproducible desde el inicio, separada por trust domain, y un runner local equivalente.
 
-**Archivos/componentes:** `wallet/ci/scripts/*.sh`, `wallet/ci/actions/*/action.yml` (composite), `wallet/package.json` (`ci:local`), y —**sólo con aprobación del owner**— `.github/workflows/wallet-*.yml`.
+**Archivos/componentes:** `wallet/ci/scripts/*.sh`, `wallet/ci/actions/*/action.yml` (composite), `wallet/package.json` (`ci:local`), y `.github/workflows/wallet-*.yml` (aprobados por el owner el 2026-10-16).
 
 **Dependencias:** P01.
 
@@ -1329,7 +1333,7 @@ Checks del preflight:
       Verificación: `pnpm ci:local` corre todos los scripts y termina en verde.
 - [ ] **P02.T03** — Workflows: acciones fijadas por **SHA de commit**, `permissions: contents: read` por defecto, sin `pull_request_target`, `concurrency` por ref, caché de Foundry RPC por `FORK_BLOCK_NUMBER`, secretos por **GitHub Environment** separado por área (el workflow de Recovery no puede leer secretos de Wallet y viceversa), runners efímeros. `wallet-e2e.yml` en PR con label `e2e` y nightly. `wallet-repro-build.yml` compila cada frontend dos veces en jobs distintos y compara manifests. Jobs cubiertos: lint, typecheck, tests, fork tests, fuzz/invariants, Slither, security scans, builds y builds reproducibles. **Ningún workflow despliega** (los artefactos de release se agregan en P26.T02.a, también sin deploy).
       Verificación: un PR de prueba dispara sólo los workflows del área tocada.
-- [ ] **P02.T04** — `wallet/docs/CI.md`: matriz de jobs, secretos por Environment y required checks; branch protection de la rama principal (required checks, revisión de CODEOWNERS, "include administrators", commits firmados) aplicada con `gh api` si `gh auth status` tiene permisos de administrador del repo (si no, esa configuración puntual queda en USER ACTION REQUIRED).
+- [ ] **P02.T04** — `wallet/docs/CI.md`: matriz de jobs, secretos por Environment y required checks. El agente aplica con `gh api` la branch protection de la rama principal (required checks, revisión de CODEOWNERS, "include administrators", commits firmados; el `gh` del entorno tiene permisos de administrador, verificado el 2026-10-17), carga con `gh secret set` los secrets que usa CI (`BASE_RPC_URL` —la misma URL de local—, `GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`) y crea los Environments sin reviewer obligatorio, restringidos a tags `wallet-v*` protegidos por un ruleset, para que la ejecución no frene.
       Verificación: `node scripts/check-docs.mjs` (incluye `docs/CI.md`).
 
 **Tests a implementar:**
@@ -1339,7 +1343,7 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P02.MAN** — verificar en GitHub que los Environments tienen secretos separados y reviewers requeridos para `production`.
+- [ ] **P02.MAN** — verificar con `gh api` que los Environments tienen secretos separados, que `production` sólo acepta tags `wallet-v*` protegidos y que existen los secrets de CI (`BASE_RPC_URL`, `GOOGLE_DRIVE_TEST_*`, `EMAIL_TEST_*`).
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** `pnpm ci:local` verde y workflows verdes en el branch.
@@ -1639,7 +1643,7 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P07.MAN** — revisar el triage de Slither con un segundo par de ojos (owner o reviewer designado).
+- [ ] **P07.MAN** — revisión independiente del triage de Slither por un agente revisor (contexto nuevo); cada objeción se resuelve o se documenta con su justificación.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** todos los ataques del prompt §28 con test que **falla el ataque**; invariantes verdes en perfil `ci`; cobertura en umbral; seed reproducible.
@@ -1773,6 +1777,10 @@ Checks del preflight:
       Verificación: `pnpm --dir backend/app vitest run test/security/bruteforce-totp.test.ts`.
 - [ ] **P09.TST.f** — atributos de cookies (`__Host-`, HttpOnly, Secure, SameSite=Strict, Path=/) y que la API nunca devuelve tokens de sesión en el body.
       Verificación: `pnpm --dir backend/app vitest run test/security/cookies.test.ts`.
+- [ ] **P09.TST.g** — adaptador `postmark` contra la **API real de Postmark** con el token oficial de pruebas `POSTMARK_API_TEST`: cada plantilla se envía y Postmark la valida (`ErrorCode: 0`) sin entregarla.
+      Verificación: `pnpm --dir backend/app vitest run test/email/postmark.live.test.ts`.
+- [ ] **P09.TST.h** — entrega real: el adaptador `smtp` envía la verificación de email, los OTP y el reset de password a una **casilla real** (`EMAIL_TEST_ADDRESS`, SMTP de Gmail con contraseña de aplicación) y el test lee cada código por IMAP y completa el flujo.
+      Verificación: `pnpm --dir backend/app vitest run test/email/real-delivery.live.test.ts`.
 
 **Checks manuales:**
 
@@ -1876,7 +1884,7 @@ Checks del preflight:
       Verificación: `pnpm --dir backend/signer vitest run test/server-mtls.test.ts`.
 - [ ] **P11.T03** — Política independiente del signer: decodificación desde bytes de SafeTx, tabla de operaciones por rol y scope [B-POL-03]/[W-07], límites y ledger 24 h, verificación de PlatformSession token (clave pública del emisor fijada) con validez al momento del envío y antigüedad ≤ 24 h [B-PSES-06], envelope de envío, atestación de challenge (whitelist/2FA), lectura on-chain con su RPC (nonce, roles del Guard, **configuración de la Safe — paso 7b de [B-Q-02]**, whitelist activa, saldo, rotaciones), simulación `eth_call`, regla "una SafeTx activa por (safe, nonce)" [B-SIG-03], rotación de S sólo hacia claves propias, `KeyAcceptance` para U'/R', emparejamiento approve/swap, pausa por integridad (atestación vigente requerida cuando `INTEGRITY_REQUIRED=true`).
       Verificación: `pnpm --dir backend/signer vitest run test/policy` (tabla completa de rechazos) y vectores compartidos.
-- [ ] **P11.T04** — Snapshot de policy firmado [B-POL-01]: `config/policy/local/policy-snapshot.json` (los de staging/production se generan en P25.T07, cuando existen sus direcciones); herramienta `pnpm --dir backend/signer policy:sign` (sólo con clave local de dev; en staging/prod la firma la hace el equipo de seguridad offline) y `policy:verify`; anti-rollback.
+- [ ] **P11.T04** — Snapshot de policy firmado [B-POL-01]: `config/policy/local/policy-snapshot.json` (los de staging/production se generan en P25.T07, cuando existen sus direcciones); herramienta `pnpm --dir backend/signer policy:sign` (sólo con clave local de dev; en staging/producción, durante la ejecución, firma con la clave de policy de cada entorno generada en `~/.config/mtw/secrets/<entorno>/` (fuera del repo); en el despliegue final se re-firma offline) y `policy:verify`; anti-rollback.
       Verificación: `pnpm --dir backend/signer policy:verify config/policy/local/policy-snapshot.json` y test de anti-rollback.
 - [ ] **P11.T05** — Reglas estáticas restrictivas [B-SIG-06] evaluadas antes de cualquier I/O: typed data `SafeTx` con `chainId == 8453`, `operation == 0`, gas params en cero, `to`/selector dentro de la allowlist del sistema; tx a firmar por la clave S con `to == Safe asociada`, selector `execTransaction`, `value == 0`, tope de gas/fees; para la cuenta gas tank sólo transferencias de ETH a S registradas (≤ tope), `WalletFactory.createWallet` y `RotationTimelock.cancelWithSignature`. Tabla de casos de rechazo en tests.
       Verificación: `pnpm --dir backend/signer vitest run test/policy/static-rules.test.ts`.
@@ -2295,14 +2303,14 @@ Checks del preflight:
       Verificación: `pnpm --dir frontend/wallet vitest run src/unlock`.
 - [ ] **P17.T07** — Cambio de Password U [F-KEY-08] y flujo "perdí mi Password U" (step-up → U' → handoff a Recovery con QR/link).
       Verificación: `pnpm --dir frontend/wallet vitest run src/security/password-u`.
-- [ ] **P17.T08** — Medición de rendimiento de Argon2id en el perfil móvil de referencia (Playwright con throttling de CPU 4× y dispositivo móvil real de QA): registrar p95 en ADR-013; aplicar la regla de fallback si supera 3 s.
+- [ ] **P17.T08** — Medición de rendimiento de Argon2id en el perfil móvil de referencia (Playwright con emulación de dispositivo móvil y throttling de CPU 4×, en Chromium y WebKit): registrar p95 en ADR-013; aplicar la regla de fallback si supera 3 s.
       Verificación: p95 registrado en ADR-013 (`pnpm --dir frontend/wallet test:browser -- perf/argon2` con throttling de CPU).
 - [ ] **P17.T09** — Restauración de U en un dispositivo nuevo [F-KEY-10]: desde Drive, archivo, QR y 17 palabras; verificación contra el rol U on-chain; flujo `KEY_RESTORE` (prueba de posesión + reemplazo del registro OPAQUE) para la restauración por palabras.
       Verificación: `pnpm --dir frontend/wallet vitest run src/restore` + `pnpm --dir frontend/wallet test:browser -- restore`.
 
 **Tests a implementar:**
 
-- [ ] **P17.TST** — vectores (RFC 9106 Argon2id, RFC 5869 HKDF, AES-GCM con AAD), alteración de AAD/ciphertext → falla, password errónea → falla sin oráculo, checksum de 17 palabras detecta errores de tipeo, wordlist con hash correcto, zeroización best-effort, integración con backend real (OPAQUE), Drive contra la API real con cuenta de prueba (job nightly con credenciales de test).
+- [ ] **P17.TST** — vectores (RFC 9106 Argon2id, RFC 5869 HKDF, AES-GCM con AAD), alteración de AAD/ciphertext → falla, password errónea → falla sin oráculo, checksum de 17 palabras detecta errores de tipeo, wordlist con hash correcto, zeroización best-effort, integración con backend real (OPAQUE), Drive contra la API real con la cuenta de prueba (`GOOGLE_DRIVE_TEST_*`, obligatorio en cada `pnpm ci:local` y en CI).
       Verificación: `pnpm --dir frontend/wallet test && pnpm --dir frontend/wallet test:browser`.
 
 **Checks manuales:**
@@ -2441,8 +2449,8 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P19.MAN** — probar al menos MetaMask (extensión), Coinbase Wallet (EOA) y una wallet móvil por WalletConnect en el fork (red personalizada apuntando al RPC local) — registrar resultado.
-      Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
+- [ ] **P19.MAN** — WalletConnect real: test automatizado que conecta Recovery con una wallet headless (`@reown/walletkit`, versión fijada) a través del **relay real de Reown** con `WALLETCONNECT_PROJECT_ID`, firma el proof-of-control y una cancelación de rotación en el fork; más los conectores `injected`, `metaMask` y `coinbaseWallet` con el provider EIP-6963 de test.
+      Verificación: `pnpm --dir frontend/recovery test:browser -- walletconnect.live` en verde; resultado registrado en §13.
 
 **Acceptance criteria:** Recovery cumple su función mínima sin compartir runtime con Wallet; modo soberano operativo sin plataforma.
 
@@ -2537,7 +2545,7 @@ Checks del preflight:
       Verificación: `node scripts/dev-healthcheck.mjs` (health de cada servicio, contratos desplegados y ambos frontends respondiendo).
 - [ ] **P21.T03** — `pnpm dev:fresh`: `fork:reset` + reset de DBs + deploy + seed → escenario determinístico (mismas direcciones de contratos y de la Safe de prueba, mismos saldos reales de USDC/USDT del fork).
       Verificación: `pnpm dev:fresh` dos veces → mismas direcciones y saldos (`diff` de los reportes de seed).
-- [ ] **P21.T04** — Seed completo (prompt §27), extendiendo la parte on-chain de P07.T07 con la off-chain: usuario de prueba con email verificado en DB, U/R generadas de forma determinística **sólo en local** desde `LOCAL_SEED` (los flujos de producto siguen generando claves con CSPRNG), sobres `U.enc`/`R.enc` de prueba cifrados con Passwords de prueba en `wallet/.secrets/seed/` (para importarlos en los frontends), registro OPAQUE del usuario, S en signer dev, Safe creada por `WalletFactory` y registrada en DB como ACTIVE tras la verificación normal, USDC fondeado (y USDT opcional) con tokens reales del fork, destino de prueba whitelisteado y activado (warp de 24 h en el fork). Imprime credenciales de prueba (sólo local).
+- [ ] **P21.T04** — Seed completo (prompt §27), extendiendo la parte on-chain de P07.T07 con la off-chain: usuario de prueba con email verificado en DB, U/R generadas de forma determinística **sólo en local** desde `LOCAL_SEED` (los flujos de producto siguen generando claves con CSPRNG), sobres `U.enc`/`R.enc` de prueba cifrados con Passwords de prueba en `wallet/.secrets/seed/` (para importarlos en los frontends), registro OPAQUE del usuario, S en signer dev, Safe creada por `WalletFactory` y registrada en DB como ACTIVE tras la verificación normal, USDC y USDT fondeados con tokens reales del fork, destino de prueba whitelisteado y activado (warp de 24 h en el fork). Imprime credenciales de prueba (sólo local).
       Verificación: `node scripts/seed-check.mjs` (login por API del usuario seed, Safe ACTIVE y saldo on-chain esperado).
 - [ ] **P21.T05** — Runbook local + troubleshooting (puertos ocupados, RPC archive, caché del fork, reset).
       Verificación: `node scripts/check-docs.mjs`.
@@ -2610,10 +2618,12 @@ Checks del preflight:
   - [ ] **P22.T02.s** — restaurar R en dispositivo nuevo (archivo, QR y 17 palabras).
 - [ ] **P22.T03** — Specs de seguridad: cero requests a hosts fuera de la allowlist; cero violaciones CSP/TT; sin service workers; U/R/Passwords U-R ausentes de localStorage, sessionStorage, IndexedDB, cookies y de todos los requests; **tokens** (PlatformSession JWS, material de la session key, token CSRF, access token de Drive) ausentes de localStorage/sessionStorage/IndexedDB (sólo memoria); bloqueo por inactividad; sesión expirada.
       Verificación: `pnpm --dir e2e test specs/security`.
-- [ ] **P22.T04** — Drive: el spec de onboarding usa backup por archivo; el cliente Drive se prueba contra la API real con una cuenta de test (job nightly con `GOOGLE_DRIVE_TEST_*`), porque Google no permite automatizar su login de forma estable.
-      Verificación: job nightly `drive-client` en verde (o registro en §13 si no hay credenciales de test).
-- [ ] **P22.T05** — Matriz: Chromium en cada PR; Firefox y WebKit nightly.
-      Verificación: `pnpm --dir e2e test --project=firefox --project=webkit` en nightly.
+- [ ] **P22.T04** — Drive real: como el login de Google no se puede automatizar, el cliente Drive de cada app se prueba **contra la API real** con una cuenta de prueba autorizada una vez (`GOOGLE_DRIVE_TEST_*`): subir, leer, reemplazar y borrar `U.enc`/`R.enc` en `appDataFolder`, en cada `pnpm ci:local` y en CI (obligatorio, nunca se saltea); el spec E2E de onboarding cubre además el backup por archivo.
+      Verificación: `pnpm --dir frontend/wallet test:drive-live && pnpm --dir frontend/recovery test:drive-live` en verde (sin credenciales → STOP en el preflight).
+- [ ] **P22.T05** — Matriz: Chromium, Firefox y WebKit en cada `pnpm ci:local` y en CI (PR con label `e2e` y nightly).
+      Verificación: `pnpm --dir e2e test --project=chromium --project=firefox --project=webkit`.
+- [ ] **P22.T06** — Spec E2E `real-email.spec.ts`: crear cuenta, verificar email y recuperar password con **entrega real** (backend con el adaptador `smtp` hacia la casilla de `EMAIL_TEST_*`; el test lee los códigos por IMAP). El resto de los specs usa Mailpit para ser determinista.
+      Verificación: `pnpm --dir e2e test specs/real-email.spec.ts`.
 
 **Tests a implementar:**
 
@@ -2766,29 +2776,29 @@ Checks del preflight:
 
 ---
 
-### P25 — Entornos y despliegue/verificación de contratos
+### P25 — Entornos y despliegue de staging sobre el fork
 
-**Objetivo:** separar local/staging/producción (prompt §37) y preparar scripts de deploy/verificación para Base mainnet (prompt §39–§40) **sin desplegar sin aprobación**.
+**Objetivo:** separar local/staging/producción (prompt §37), dejar listos los scripts de deploy/verificación para Base mainnet (prompt §39–§40) y **desplegar staging completo sobre el fork** con su configuración propia (Governance Safe, guardianes, deployer, policy). Nada se transmite a Base mainnet (R-09).
 
-**Archivos/componentes:** `docs/ENVIRONMENTS.md`, `contracts/script/DeployBase.s.sol`, `contracts/script/verify-base.sh`, `contracts/deployments/schema.json`, `contracts/deployments/{base-mainnet-staging.json,base-mainnet.json}` (se crean al desplegar), `config/policy/{staging,production}/*`.
+**Archivos/componentes:** `docs/ENVIRONMENTS.md`, `contracts/script/DeployBase.s.sol`, `contracts/script/verify-base.sh`, `contracts/deployments/schema.json`, `contracts/deployments/fork/staging.json` (los `base-mainnet*.json` se crean en el despliegue final), `config/policy/{staging,production}/*`.
 
-**Dependencias:** P24; GitHub Actions activo (gate de P02).
+**Dependencias:** P24; GitHub Actions activo (gate de P02); claves de ensayo de staging en `~/.config/mtw/` (fuera del repo).
 
 **Implementación requerida:**
 
 - [ ] **P25.T01** — Matriz de entornos (local / staging / production) en `docs/ENVIRONMENTS.md`: por entorno, proyecto de Docker Compose y directorio de secrets propios, DB y volúmenes, Valkey, clientes OAuth (proyectos Google distintos), shards del signer con keystores y credenciales de desbloqueo propios, secretos de sesión/CSRF/OPAQUE/pepper/field key/audit key, servidor de Postmark, claves RPC, dominios, Governance Safe, guardianes, claves de release y de policy. **Nada se comparte entre staging y producción**; si conviven en un mismo host lo hacen como proyectos Compose separados (decisión de despliegue, no del planner).
-      Verificación: `node scripts/check-docs.mjs` y revisión del owner registrada en §13.
-- [ ] **P25.T02** — `DeployBase.s.sol` [C-SCR-04]: hardware wallet, `--broadcast` explícito, `PolicyRegistry` en RESTRICTED con el set V1 [C-POL-04], registro de tokens y executor; escribe el JSON de deployment con, por contrato: address, `proxy: false` e `implementation: null` (ningún contrato propio usa proxy; se deja explícito), codehash, constructor args, compiler y settings, commit, deployer, tx hash, bloque, URL de verificación.
+      Verificación: `node scripts/check-docs.mjs` y revisión de un agente revisor independiente registrada en §13.
+- [ ] **P25.T02** — `DeployBase.s.sol` [C-SCR-04]: keystore cifrado o hardware wallet, `--broadcast` explícito, `PolicyRegistry` en RESTRICTED con el set V1 [C-POL-04], registro de tokens y executor; escribe el JSON de deployment con, por contrato: address, `proxy: false` e `implementation: null` (ningún contrato propio usa proxy; se deja explícito), codehash, constructor args, compiler y settings, commit, deployer, tx hash, bloque, URL de verificación.
       Verificación: `forge script script/DeployBase.s.sol --fork-url $LOCAL_RPC_URL` (sin `--broadcast` a mainnet) genera el JSON válido contra `deployments/schema.json`.
-- [ ] **P25.T03** — Ensayo completo contra el fork **con el mismo script** usando `anvil_impersonateAccount` del deployer o una clave descartable (nunca la hardware wallet de producción: el fork conserva chainId 8453 y una tx firmada filtrada sería reproducible en mainnet) + `VerifyDeployment.s.sol`.
+- [ ] **P25.T03** — Ensayo con el mismo script usando una clave descartable o `anvil_impersonateAccount` + `VerifyDeployment.s.sol`. Las claves usadas en el fork (incluidas las de ensayo de staging/producción de `~/.config/mtw/keys/`) **nunca se reutilizan en Base mainnet**: el fork conserva chainId 8453 y una tx firmada en el fork sería válida en mainnet.
       Verificación: `forge script script/VerifyDeployment.s.sol --rpc-url $LOCAL_RPC_URL` OK tras el ensayo.
 - [ ] **P25.T04** — `verify-base.sh`: `forge verify-contract --chain 8453 --watch` con `ETHERSCAN_API_KEY` (API V2) para cada contrato, incluido `RotationTimelock` (creado por el constructor del `SecurityGuard`: se verifica con `--constructor-args` = dirección del Guard); registra la URL de verificación de cada uno en el JSON; fallback a Sourcify si Etherscan falla.
-      Verificación: URLs de verificación de staging accesibles y registradas en `deployments/base-mainnet-staging.json` (o, sin staging aprobado, `verify-base.sh --dry-run`).
-- [ ] **P25.T05** — **Acción del owner**: crear la Governance Safe (multisig con hardware wallets, p. ej. 2-de-3 o 3-de-5) y definir guardianes; registrar direcciones.
-      Verificación: dirección de la Governance Safe y guardianes registrados en §13 y verificados on-chain (owners/threshold).
-- [ ] **P25.T06** — **Gate**: aprobación explícita y escrita del owner para desplegar **staging** en Base mainnet → deploy → verificación en explorer → registro en §13. (La aprobación y el despliegue de **producción** son parte de P30.)
-      Verificación: aprobación escrita del owner en §13 y deployment de staging verificado (o registro de "no aprobado aún").
-- [ ] **P25.T07** — Snapshots de policy de staging y production (`config/policy/{staging,production}/`) con las direcciones desplegadas, firmados offline por seguridad.
+      Verificación: `verify-base.sh --dry-run` genera el payload de cada contrato y `forge verify-bytecode --rpc-url $LOCAL_RPC_URL` confirma que coincide con lo desplegado en el fork (la verificación pública en BaseScan es parte del despliegue final).
+- [ ] **P25.T05** — Governance Safe de staging (2-de-3) creada en el fork con los owners `GOVERNANCE_SAFE_OWNERS` y los guardianes `POLICY_GUARDIANS` de `~/.config/mtw/staging.env` (claves de ensayo generadas por el agente).
+      Verificación: owners, threshold y guardianes leídos on-chain en el fork y registrados en §13.
+- [ ] **P25.T06** — Deploy de **staging** sobre el fork con `DeployBase.s.sol` y el deployer de staging (fondeado con `anvil_setBalance`) → `VerifyDeployment.s.sol` → `deployments/fork/staging.json` → registro en §13.
+      Verificación: `forge script script/VerifyDeployment.s.sol --rpc-url $LOCAL_RPC_URL` OK contra `deployments/fork/staging.json`.
+- [ ] **P25.T07** — Snapshots de policy de staging y production (`config/policy/{staging,production}/`) con las direcciones desplegadas en el fork, firmados con la clave de policy de cada entorno (generada en `~/.config/mtw/secrets/<entorno>/`, fuera del repo).
       Verificación: `pnpm --dir backend/signer policy:verify config/policy/staging/policy-snapshot.json`.
 - [ ] **P25.T08** — `system-contracts.staging.json` (y luego `production` en P30) generados desde los deployments para los builds de los frontends [F-SEC-08].
       Verificación: el build de staging de ambas apps embebe el archivo y su hash figura en el manifest.
@@ -2800,17 +2810,17 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P25.MAN** — revisar cada transacción de deploy en el explorer.
+- [ ] **P25.MAN** — revisar cada transacción de deploy en el fork (`cast receipt` / `cast run`) contra `deployments/fork/staging.json`.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
-**Acceptance criteria:** scripts ensayados en fork; staging desplegado y verificado **sólo** si hubo aprobación.
+**Acceptance criteria:** staging desplegado y verificado sobre el fork con su configuración propia; scripts listos para Base mainnet.
 
 **Security checks:**
 
-- [ ] **P25.SEC** — ningún private key de deploy en env; hardware wallet obligatoria; `RESTRICTED` verificado.
+- [ ] **P25.SEC** — ninguna private key en env (sólo keystores cifrados fuera del repo); claves de ensayo marcadas como no reutilizables en mainnet; `RESTRICTED` verificado; el deployer no conserva permisos.
       Verificación: test de configuración RESTRICTED + `bash ci/scripts/ci-security.sh`.
 
-**Commits:** `feat(contracts): add base mainnet deployment and verification scripts`.
+**Commits:** `feat(contracts): add deployment scripts and deploy staging on the Base fork`.
 
 #### CHECKPOINT P25
 
@@ -2822,7 +2832,7 @@ Checks del preflight:
 - [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
 - [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
-**Condición para pasar a P26:** ensayo en fork OK (y staging desplegado si el owner lo aprobó).
+**Condición para pasar a P26:** staging desplegado y verificado sobre el fork.
 
 ---
 
@@ -2845,7 +2855,7 @@ Checks del preflight:
 - [ ] **P26.T03** — `infra/production/.env.production.example`: sólo variables **no secretas** (dominios, URLs públicas, binds, `TRUSTED_PROXY_CIDRS`, digests de imágenes, shards y parámetros) y la lista de archivos de secrets que cada servicio espera (`*_FILE`); todos los servicios leen secretos sólo por `*_FILE` en producción (P08.T02).
       Verificación: `node scripts/check-env-production.mjs` (cada variable del compose está documentada y ninguna es secreta).
 - [ ] **P26.T04** — **Contrato con el reverse proxy existente** (sólo documentación en `DEPLOYMENT_VPS.md`; no se configura nada): hosts y rutas por servicio, terminación TLS en el proxy, reenvío de `X-Forwarded-For`/`X-Forwarded-Proto`, límites de body y timeouts, que **no** reescriba los headers de seguridad que emiten nuestros servicios, y cómo validarlo con `scripts/deploy/healthcheck.sh`.
-      Verificación: `node scripts/check-docs.mjs` y revisión de la sección por un segundo revisor (registro en §13).
+      Verificación: `node scripts/check-docs.mjs` y revisión de la sección por un agente revisor independiente (registro en §13).
 - [ ] **P26.T05** — **Migraciones**: `scripts/deploy/migrate.sh` ejecuta un contenedor efímero con el rol `mtw_migrator` (expand/contract) y verifica `db:status`.
       Verificación: en el ensayo local (P26.T16.b) `bash scripts/deploy/migrate.sh` aplica migraciones sobre una DB vacía y es idempotente en una segunda corrida.
 - [ ] **P26.T06** — **PostgreSQL y Valkey self-hosted**: volúmenes persistentes; usuarios separados (superusuario sólo para bootstrap; `mtw_migrator`, `mtw_app`, `mtw_readonly`; roles por shard en `signer-postgres`); Valkey con AOF + RDB, `maxmemory-policy noeviction`, usuario ACL con los comandos que necesita BullMQ y usuario `default` deshabilitado; healthchecks; documentado que Postgres es la fuente de verdad y que el outbox re-encola si se pierde Valkey.
@@ -2860,7 +2870,7 @@ Checks del preflight:
       Verificación: `node scripts/check-docs.mjs` (sección presente en `DEPLOYMENT_VPS.md`).
 - [ ] **P26.T11** — **Headers de seguridad** verificados en el ensayo local de producción (respuestas de `wallet-web`, `recovery-web` y API: CSP, Trusted Types, HSTS, COOP/COEP/CORP, Referrer-Policy, Permissions-Policy, nosniff).
       Verificación: `pnpm --dir e2e test specs/security/headers.spec.ts --config=prod-rehearsal`.
-- [ ] **P26.T12** — **Monitoreo self-hosted**: perfil `observability` en el compose de producción (Prometheus, Alertmanager con email por SMTP de Postmark y webhook opcional, Grafana opcional) con las reglas y dashboards de P24.
+- [ ] **P26.T12** — **Monitoreo self-hosted**: perfil `observability` en el compose de producción (Prometheus, Alertmanager con email por SMTP de Postmark y webhook si se configura `ALERT_WEBHOOK_URL`, y Grafana) con las reglas y dashboards de P24.
       Verificación: en el ensayo local una alerta provocada llega al receptor de prueba (Mailpit).
 - [ ] **P26.T13** — **Retención de logs**: driver `local` con rotación (tamaño y cantidad de archivos por servicio), logs de aplicación 90 días por defecto (configurable), exports de auditoría con retención de 7 años en la copia off-host (valor por defecto ajustable).
       Verificación: `node scripts/check-compose-hardening.mjs` verifica la configuración de logging de cada servicio.
@@ -2880,7 +2890,7 @@ Checks del preflight:
   - [ ] **P26.T17.b** — evaluación documentada de separar Wallet, Recovery y backend en repositorios propios (decisión registrada; no bloquea la implementación).
   - [ ] **P26.T17.c** — CI con required checks y artefactos de release firmados (sin deploy desde CI).
   - [ ] **P26.T17.d** — Node 26 LTS fijado en todos los proyectos e imágenes.
-  - [ ] **P26.T17.e** — `PolicyRegistry` en RESTRICTED con exactamente el set V1 en el ensayo local (y en staging si se desplegó).
+  - [ ] **P26.T17.e** — `PolicyRegistry` en RESTRICTED con exactamente el set V1 en los deploys de staging y producción sobre el fork.
   - [ ] **P26.T17.f** — integrity monitor fail-closed y chequeo off-host activos.
   - [ ] **P26.T17.g** — backups y restore ensayados (Postgres PITR, keystores del signer, auditoría) y custodia offline de las credenciales de desbloqueo documentada.
   - [ ] **P26.T17.h** — ensayo local del layout de producción en verde (P26.T16.b).
@@ -2894,7 +2904,7 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P26.MAN** — un segundo revisor recorre `DEPLOYMENT_VPS.md`, los permisos de los directorios de secretos y la separación de redes del compose.
+- [ ] **P26.MAN** — un agente revisor independiente recorre `DEPLOYMENT_VPS.md`, los permisos de los directorios de secretos y la separación de redes del compose.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** todo lo listado en prompt §38 queda preparado o ensayado en local; ningún componente depende de un proveedor cloud; ningún paso requiere acceso a la VPS.
@@ -2959,7 +2969,7 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P27.MAN** — revisión del documento por el owner.
+- [ ] **P27.MAN** — revisión independiente del documento por un agente revisor (contexto nuevo); el owner lo recibe en el paquete de go-live.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** documento completo y trazable a evidencia.
@@ -3000,9 +3010,9 @@ Checks del preflight:
 - [ ] **P28.T02** — Retest completo (CI + acceptance P23) y **re-ejecutar la auditoría** (P27.T01–T02) sobre los cambios.
       Verificación: `pnpm ci:local` + `pnpm --dir e2e test:acceptance` + re-ejecución de P27.T01 sin nuevos Critical/High.
 - [ ] **P28.T03** — Documentar riesgos residuales en `SECURITY_AUDIT.md#residual-risks` (incluye la decisión registrada sobre CF-01, el host único de producción CF-10, la dependencia del USDT bridged y del bridge de Base, Circle, la liquidez de Uniswap y la deprecación del flujo OAuth elegido).
-      Verificación: `SECURITY_AUDIT.md#residual-risks` completo y revisado por el owner.
-- [ ] **P28.T04** — Gate: **no production-ready** mientras exista un Critical o High abierto, salvo decisión explícita y documentada del owner (nombre, fecha, alcance, justificación) en el propio documento.
-      Verificación: 0 Critical/High abiertos (o decisión documentada y firmada por el owner).
+      Verificación: `SECURITY_AUDIT.md#residual-risks` completo y revisado por un agente revisor independiente.
+- [ ] **P28.T04** — Gate automático: **no production-ready** mientras exista un Critical o High abierto. Durante la ejecución no hay excepciones: todo Critical/High se remedia; si alguno no se puede remediar es un STOP real.
+      Verificación: 0 Critical/High abiertos.
 
 **Tests a implementar:**
 
@@ -3011,7 +3021,7 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P28.MAN** — el owner revisa y firma (nombre y fecha en el documento) la lista final de findings y riesgos residuales.
+- [ ] **P28.MAN** — un agente revisor independiente re-verifica la lista final de findings y riesgos residuales; la firma del owner sobre los riesgos residuales es un paso del despliegue final (`go-live.md`).
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** 0 Critical/High abiertos (o decisión documentada); re-auditoría sin nuevos Critical/High.
@@ -3057,8 +3067,8 @@ Checks del preflight:
       Verificación: `node scripts/check-docs.mjs` y ensayo del procedimiento con `tools/sovereign-exit` en el fork.
 - [ ] **P29.T05** — Revisión final de §12 (todas las filas con evidencia: fase, tarea, test) y del Registro de ejecución.
       Verificación: `node scripts/check-docs.mjs` (toda fila de §12 con evidencia).
-- [ ] **P29.T06** — Release candidate: tag `wallet-v1.0.0-rc.1` (push del tag sólo con aprobación del owner) y release notes.
-      Verificación: tag creado localmente y release notes; push del tag sólo con aprobación registrada en §13.
+- [ ] **P29.T06** — Release candidate: tag `wallet-v1.0.0-rc.1` y release notes; el push del tag está aprobado por el owner (2026-10-17) y se hace cuando todos los gates están verdes.
+      Verificación: tag pusheado (`git ls-remote --tags origin wallet-v1.0.0-rc.1`) y release notes publicadas.
 
 **Tests a implementar:**
 
@@ -3067,7 +3077,7 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P29.MAN** — una persona que no participó del desarrollo sigue el README y `HOW_IT_WORKS.md` y levanta el entorno sin ayuda.
+- [ ] **P29.MAN** — un agente revisor independiente, sin contexto del desarrollo, sigue el README y `HOW_IT_WORKS.md` desde un clon limpio en un contenedor nuevo y levanta el entorno sin ayuda.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** documentación completa; trazabilidad 100 % con evidencia.
@@ -3089,65 +3099,63 @@ Checks del preflight:
 - [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
 - [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
-**Condición para pasar a P30:** el owner aprueba el release candidate.
+**Condición para pasar a P30:** release candidate con todos los gates verdes y el tag pusheado.
 
 ---
 
-### P30 — PRODUCTION READINESS: GATE FINAL Y GO-LIVE
+### P30 — PRODUCTION READINESS: GATE FINAL, PRODUCCIÓN SOBRE EL FORK Y PAQUETE DE GO-LIVE
 
-**Objetivo:** cerrar el planner con la fase de PRODUCTION READINESS exigida por el prompt §38 (CF-09): re-verificar **todos** los gates después de auditoría, remediación y documentación; los despliegues en Base mainnet y en la VPS sólo ocurren con aprobación explícita y, en el caso de la VPS, a mano siguiendo `DEPLOYMENT_VPS.md`.
+**Objetivo:** cerrar el planner con la fase de PRODUCTION READINESS (prompt §38, CF-09): re-verificar **todos** los gates después de auditoría, remediación y documentación, desplegar y probar **producción completa sobre el fork** y dejar listo el paquete del despliegue final (`docs/runbooks/go-live.md`). El despliegue real en Base mainnet y en la VPS es manual y queda fuera del planner (R-09, R-14).
 
-**Archivos/componentes:** `contracts/deployments/base-mainnet.json`, `infra/production/*`, `release/images.lock`, `config/policy/production/*`, `docs/runbooks/go-live.md`, §13 de este planner (aprobaciones y evidencia).
+**Archivos/componentes:** `contracts/deployments/fork/production.json`, `infra/production/*`, `release/images.lock`, `config/policy/production/*`, `docs/runbooks/go-live.md`, §13 de este planner (evidencia).
 
 **Dependencias:** P29 (y P26–P28 completos).
 
 **Implementación requerida:**
 
-- [ ] **P30.T01** — Re-verificar los gates de P26.T17.a–j, el gate de P28.T04 (sin Critical/High abiertos o decisión documentada) y que CI esté verde en el commit candidato.
+- [ ] **P30.T01** — Re-verificar los gates de P26.T17.a–j, el gate de P28.T04 (sin Critical/High abiertos) y que CI esté verde en el commit candidato.
       Verificación: checklist de `docs/runbooks/go-live.md` completo con links a evidencia; `gh run list --branch <rama-de-release>` muestra todos los required checks en verde.
-- [ ] **P30.T02** — **Aprobación explícita y escrita del owner** para producción (H-06), registrada en §13 con fecha, alcance y commit.
-      Verificación: entrada en §13 firmada por el owner.
-- [ ] **P30.T03** — Despliegue de contratos de producción con `DeployBase.s.sol` (hardware wallet), verificación en explorer de **todos** los contratos (incluido `RotationTimelock`), `deployments/base-mainnet.json` completo (address, implementation `null`/proxy `false`, compiler, settings, commit, codehash, URL de verificación) y `VerifyDeployment.s.sol` contra mainnet.
-      Verificación: `forge script script/VerifyDeployment.s.sol --rpc-url $BASE_RPC_URL` OK y URLs de verificación accesibles.
-- [ ] **P30.T04** — `PolicyRegistry` de producción en RESTRICTED con exactamente el set V1, Governance Safe y guardianes de producción configurados; snapshot de policy de producción firmado por seguridad.
-      Verificación: test de configuración de P25 ejecutado contra mainnet (`mode == RESTRICTED`, permisos exactos).
-- [ ] **P30.T05** — `system-contracts.production.json` generado desde `deployments/base-mainnet.json` y builds/imágenes de producción de ambos frontends (reproducibles, firmados con sus claves de release) incluidos en un `images.lock` de release; luego **despliegue manual en la VPS por el equipo**, fuera de la ejecución automática del planner y sólo tras P30.T02, siguiendo `docs/DEPLOYMENT_VPS.md` (secrets con `init-secrets.sh`, imágenes por digest, migraciones, reverse proxy existente configurado a mano, alta de shards, backups off-host), y verificación de headers, integridad (monitor local + off-host) y alertas.
-      Verificación: tests de headers e integridad contra producción en verde; alerta de prueba recibida; evidencia registrada en §13.
-- [ ] **P30.T06** — Smoke test de producción con montos mínimos por un usuario interno: onboarding, recepción, whitelist (24 h), send, swap ida y vuelta, cancelación de rotación; y ejecución soberana U+R de prueba.
-      Verificación: registro de tx hashes en §13.
-- [ ] **P30.T07** — Apertura controlada (lista de usuarios habilitados) y monitoreo reforzado durante 7 días; criterio de rollback definido en `go-live.md`.
-      Verificación: reporte diario en §13 durante 7 días sin incidentes Critical/High.
+- [ ] **P30.T02** — Deploy de contratos de **producción** sobre el fork con `DeployBase.s.sol`, el deployer y la Governance Safe 2-de-3 de ensayo de `~/.config/mtw/production.env` (creada en el fork), `VerifyDeployment.s.sol` y `forge verify-bytecode` → `deployments/fork/production.json` completo (address, implementation `null`/proxy `false`, compiler, settings, commit, codehash).
+      Verificación: `forge script script/VerifyDeployment.s.sol --rpc-url $LOCAL_RPC_URL` OK contra `deployments/fork/production.json`.
+- [ ] **P30.T03** — `PolicyRegistry` de producción en RESTRICTED con exactamente el set V1, Governance Safe y guardianes de ensayo configurados; snapshot de policy de producción firmado con su clave de policy (fuera del repo).
+      Verificación: test de configuración de P25 ejecutado contra el deploy de producción en el fork (`mode == RESTRICTED`, permisos exactos).
+- [ ] **P30.T04** — Ensayo de producción completo en local: `infra/production/docker-compose.production.yml` contra el fork, con `system-contracts.production.json` generado desde `deployments/fork/production.json`, imágenes de release por digest de `images.lock` firmadas con cosign y frontends construidos con dominios de ensayo (`*.mtw.test` resueltos localmente); headers, integridad (monitor local y el script del chequeo off-host contra el ensayo), alertas a Mailpit y backups/restore.
+      Verificación: tests de headers, integridad, alertas y restore en verde contra el ensayo; evidencia en §13.
+- [ ] **P30.T05** — Smoke test de producción sobre el ensayo, automatizado con Playwright y la API (mismos pasos que el smoke real de `go-live.md`): onboarding con Drive real y email real, recepción, whitelist (24 h con warp), send, swap ida y vuelta contra el pool real del fork, cancelación de rotación y ejecución soberana U+R.
+      Verificación: `pnpm --dir e2e test --project=production-rehearsal` en verde; tx hashes del fork en §13.
+- [ ] **P30.T06** — `docs/runbooks/go-live.md` completo con el despliegue final paso a paso: configuración de los servicios de staging/producción para los dominios reales (§13.1), aprobación escrita del owner, claves nuevas para Base mainnet (hardware wallets recomendadas; **nunca** las de ensayo del fork), deploy y verificación pública en BaseScan con `verify-base.sh` y `ETHERSCAN_API_KEY`, Governance Safe y guardianes reales, re-firma offline del snapshot de policy, build de los frontends con los dominios reales, despliegue en la VPS según `DEPLOYMENT_VPS.md`, fondeo del gas tank, smoke test real (incluido un celular real), apertura controlada con monitoreo de 7 días y criterio de rollback, y firma del owner sobre los riesgos residuales.
+      Verificación: `node scripts/check-docs.mjs` (`go-live.md`) y revisión de un agente revisor independiente registrada en §13.
 
 **Tests a implementar:**
 
-- [ ] **P30.TST** — tests de configuración de producción (policy, roles, codehash de contratos propios y externos) y smoke tests de P30.T06 automatizados donde sea posible.
-      Verificación: tests de configuración de producción + smoke P30.T06.
+- [ ] **P30.TST** — tests de configuración de producción (policy, roles, codehash de contratos propios y externos) contra el deploy del fork y smoke de P30.T05.
+      Verificación: tests de configuración de producción + smoke P30.T05.
 
 **Checks manuales:**
 
-- [ ] **P30.MAN** — el owner y un segundo revisor recorren `go-live.md` y confirman cada ítem.
+- [ ] **P30.MAN** — un agente revisor independiente recorre `go-live.md` contra el ensayo de P30.T04–T05 y confirma que cada paso es ejecutable tal como está escrito.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
-**Acceptance criteria:** producción desplegada, verificada y operando con todos los gates cumplidos y evidencia registrada.
+**Acceptance criteria:** producción desplegada y probada completa sobre el fork, todos los gates cumplidos y el paquete de go-live listo; sólo queda el despliegue final, fuera del planner.
 
 **Security checks:**
 
-- [ ] **P30.SEC** — `VerifyDeployment` contra mainnet; integrity monitor en verde; ninguna clave de deploy en env; RESTRICTED verificado; kill-switch de cooperación probado en producción con una Safe de prueba.
-      Verificación: integrity monitor en verde + kill-switch probado.
+- [ ] **P30.SEC** — `VerifyDeployment` contra el deploy del fork; integrity monitor en verde; ninguna clave en env; RESTRICTED verificado; kill-switch de cooperación probado en el ensayo con una Safe de prueba.
+      Verificación: integrity monitor en verde + kill-switch probado en el ensayo.
 
-**Commits:** `chore(release): record production deployment`, `docs(wallet): add go-live runbook`.
+**Commits:** `chore(release): record production rehearsal on the fork`, `docs(wallet): add go-live runbook`.
 
 #### CHECKPOINT P30
 
-- [ ] build pasa: `forge script script/VerifyDeployment.s.sol --rpc-url $BASE_RPC_URL`.
-- [ ] tests pasan: tests de configuración de producción + smoke P30.T06.
-- [ ] security tests pasan: integrity monitor en verde + kill-switch probado.
-- [ ] integración anterior sigue funcionando: `pnpm ci:local` en el commit desplegado.
+- [ ] build pasa: `forge script script/VerifyDeployment.s.sol --rpc-url $LOCAL_RPC_URL`.
+- [ ] tests pasan: tests de configuración de producción + smoke P30.T05.
+- [ ] security tests pasan: integrity monitor en verde + kill-switch probado en el ensayo.
+- [ ] integración anterior sigue funcionando: `pnpm ci:local`.
 - [ ] documentación actualizada: `node scripts/check-docs.mjs` (`go-live.md`).
 - [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
 - [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
-**Condición de cierre:** producción operativa con los gates cumplidos; el planner queda completo cuando todas las casillas de P00–P30 están marcadas.
+**Condición de cierre:** todas las casillas de P00–P30 marcadas; lo único pendiente es el despliegue final de `go-live.md`, fuera del planner (R-09, R-14).
 
 ---
 
@@ -3224,8 +3232,8 @@ Mapa de cada requisito importante del prompt (`wallet/prompts/promptV1.md`, secc
 | RQ-65 | Audit trail append-oriented de eventos de seguridad | §35 | [B-AUD] | P08.T12, P24.T03 |
 | RQ-66 | Rate limiting y abuso por IP/usuario/sesión/Safe | §36 | [B-RL] | P08.T11, P24.T04 |
 | RQ-67 | Entornos local/staging/production sin reutilizar DB, OAuth, signer keys, session secrets, email, RPC keys | §37 | ADR-024 | P25.T01 |
-| RQ-68 | PRODUCTION READINESS con todos los ítems de §38, como fase final | §38 | ADR-022, ADR-030, ADR-031, CF-09 | P26 (preparación para la VPS y ensayo local, sin desplegar) y **P30** (gate final; despliegue manual) |
-| RQ-69 | Scripts de deploy/verify mainnet que registran addresses, bytecode hashes, compiler, commit; `deployments/base-mainnet.json`; sin deploy mainnet sin aprobación | §39 | [C-SCR-01/04] | P25.T02–T06 (staging), P30.T02–T03 (producción), R-09 |
+| RQ-68 | PRODUCTION READINESS con todos los ítems de §38, como fase final | §38 | ADR-022, ADR-030, ADR-031, CF-09 | P26 (preparación para la VPS y ensayo local) y **P30** (gate final, producción completa sobre el fork y paquete de go-live; despliegue real manual fuera del planner) |
+| RQ-69 | Scripts de deploy/verify mainnet que registran addresses, bytecode hashes, compiler, commit; `deployments/base-mainnet.json`; sin deploy mainnet sin aprobación | §39 | [C-SCR-01/04] | P25.T02–T06 (staging sobre el fork), P30.T02–T03 (producción sobre el fork), P30.T06 (`go-live.md`: deploy real con aprobación), R-09 |
 | RQ-70 | Verificación en explorer de todo contrato con address, implementation, compiler, commit, codehash, URL | §40 | §3.5 (Etherscan V2) | P25.T02 (campos `proxy`/`implementation`), P25.T04 (incluye `RotationTimelock`), P30.T03 |
 | RQ-71 | `SECURITY_AUDIT.md` adversarial con formato y filtros pedidos | §41 | §2.3 | P27 |
 | RQ-72 | SECURITY REMEDIATION: sin Critical/High abiertos salvo decisión documentada; retest; re-audit; riesgos residuales | §42 | — | P28 |
@@ -3249,11 +3257,12 @@ Mapa de cada requisito importante del prompt (`wallet/prompts/promptV1.md`, secc
 | RQ-90 | Vía de upgrade del Guard para Safes existentes | V9 §16 (Guard inmutable) + continuidad operativa | [C-GRD-17], [C-POL-06], ADR-029 | P05.T06, P07.T01.r, P15.T08 |
 | RQ-91 | Formatos de intercambio compartidos entre apps independientes | V9 §6/§8/§17 | §7.15 [W-01…W-07] | P07.T05 (vectores), P11.T11, P12, P18, P19 |
 | RQ-92 | Separación de los tres dominios (proyectos, CODEOWNERS, claves de release fuera del host, contenedores y redes separadas) | V9 §2/§17 | CF-01, CF-10, ADR-022 | P02.T01, P26.T02, P26.T17.a, P26.T17.b, P26.T17.j |
-| RQ-93 | Producción self-hosted en VPS Linux, sin dependencias de proveedores cloud; preparar artefactos y documentación sin desplegar | instrucción del owner (2026-10-16) | ADR-022, §5.5, R-09 | P26 (T01–T16.b), P30.T05 |
+| RQ-93 | Producción self-hosted en VPS Linux, sin dependencias de proveedores cloud; preparar artefactos y documentación sin desplegar | instrucción del owner (2026-10-16) | ADR-022, §5.5, R-09 | P26 (T01–T16.b), P30.T04, P30.T06 |
 | RQ-94 | Inyección segura de secretos self-hosted; credenciales de desbloqueo del signer separadas de los keystores | instrucción del owner | ADR-030, [B-SIG-08] | P08.T02, P26.T09, P11.T06 |
 | RQ-95 | Backups agnósticos (PostgreSQL, keystores cifrados del signer, auditoría, configuración) con copia off-host cifrada | instrucción del owner, §38 | ADR-031, [B-DB-BK] | P26.T07, P26.T08, P11.T10 |
 | RQ-96 | Toolchain reproducible con detección y auto-remediación antes de STOP | instrucción del owner | ADR-032, P00 (PF-01…PF-08) | P00.T01.a, P00.T05, P01.T01 |
 | RQ-97 | USDT: representación canónica verificada automáticamente (fuentes oficiales + on-chain) | instrucción del owner | §3.3 | P03.T03, P03.T05 |
+| RQ-98 | Producto final sin pendientes: ejecución de punta a punta sin frenos y tests obligatorios contra servicios reales (Drive, email, Postmark, WalletConnect, RPC, fork de Base) | instrucción del owner (2026-10-17) | R-14, ADR-016, ADR-024 | P00.T08 (PF-30–PF-32), P09.TST.g–h, P19.MAN, P22.T04, P22.T06, P25, P30 |
 
 ## 13. Registro de ejecución
 
@@ -3263,18 +3272,20 @@ Agregar una fila por sesión de trabajo, por cada CHECKPOINT y ante cualquier bl
 |---|---|---|---|---|
 | 2026-10-16 | Preparación (prompt §47) | Completado | commit de preparación (`git log -1 -- wallet/docs/PLANNER_WALLET_WEB.md`) | Branch `feat/walletWeb/cmarchese` creado desde `main` (`4ed7bf4`). V9 leída completa. Verificación oficial de Safe 1.5.0, Uniswap, USDC/USDT, Base, librerías y servicios (§3). Creados: este planner, `SETUP_EXTERNAL_SERVICES.md`, `.env.example`, `.env` (local, gitignored), `wallet/.gitignore`. Sin implementación de producto. |
 | 2026-10-16 | Corrección del planner (instrucción del owner) | Completado | commit `docs(wallet): adapt planner to self-hosted VPS architecture` | Producción self-hosted en VPS (sin dependencias cloud); signer `SelfHostedSoftwareSignerProvider` tras evaluar Clef y Web3Signer; secretos por Docker Compose secrets; backups con pgBackRest + age; toolchain local con auto-remediación; USDT canónico verificado; CI en raíz aprobado; blockers reducidos a acciones humanas reales (§13.1). |
+| 2026-10-17 | Ajuste del planner (instrucción del owner) | Completado | commit `docs(wallet): run the whole planner on the Base fork with real services` | Ejecución de punta a punta sin frenos (R-14): staging y producción desplegados y probados sobre el fork (P25/P30); `Pxx.MAN` ejecutados por el agente o por un agente revisor independiente; tests obligatorios contra servicios reales (API de Postmark con `POSTMARK_API_TEST`, entrega real de email, API de Drive, relay de WalletConnect); claves de ensayo generadas fuera del repo; fuera del planner sólo queda el despliegue final (§13.1). |
 | | P00 — PREFLIGHT | Pendiente | | |
 
-### 13.1 Acciones humanas pendientes (sólo lo que no se puede obtener ni generar automáticamente)
+### 13.1 Fuera del planner: despliegue final y servicios
 
-| ID | Acción | Necesaria antes de | Estado |
+Para ejecutar el planner de punta a punta sólo hace falta lo de `wallet/.env` (H-01). Todo lo demás es el despliegue final, manual, guiado por `docs/runbooks/go-live.md` (P30.T06):
+
+| ID | Acción | Cuándo | Estado |
 |---|---|---|---|
-| H-01 | Credenciales externas de local que no existen todavía (verificado 2026-10-16: ausentes en el entorno y en `wallet/.env`): `BASE_RPC_URL` (Alchemy), `WALLETCONNECT_PROJECT_ID` (Reown), `GOOGLE_CLIENT_ID_WALLET` y `GOOGLE_CLIENT_ID_RECOVERY` (Google Cloud) — ver USER ACTION REQUIRED en `SETUP_EXTERNAL_SERVICES.md` | P00 | Pendiente |
-| H-02 | Credenciales externas de staging/producción: QuickNode, claves RPC separadas por componente, Postmark (y verificación de su dominio), Etherscan | P25 | Pendiente |
-| H-03 | Dominios de producción para Wallet y Recovery | P30 (despliegue) | Pendiente |
-| H-04 | Hardware wallets y direcciones de la Governance Safe y de los guardianes del `PolicyRegistry` | P25.T05 | Pendiente |
-| H-05 | Fondeo real de ETH en Base (gas tank) | P25/P30 | Pendiente |
-| H-06 | Aprobación explícita y escrita antes de desplegar o mover fondos en Base mainnet (staging: P25.T06; producción: P30.T02) | P25.T06 / P30.T02 | Pendiente |
-| H-07 | Custodia offline de las credenciales de desbloqueo del signer de producción (dos custodios) y destino de la copia off-host de backups | P30 (despliegue) | Pendiente |
+| H-01 | Credenciales de los tests contra servicios reales: `GOOGLE_DRIVE_TEST_CLIENT_ID`, `GOOGLE_DRIVE_TEST_CLIENT_SECRET`, `GOOGLE_DRIVE_TEST_REFRESH_TOKEN`, `EMAIL_TEST_ADDRESS` y `EMAIL_TEST_APP_PASSWORD` (pasos en `SETUP_EXTERNAL_SERVICES.md`) | antes de P00 | Pendiente |
+| H-02 | Dominios de Wallet y Recovery. V9 exige que sean administrativamente independientes: con subdominios de un mismo dominio la cuenta de DNS queda compartida y quien la controle puede redirigir ambas apps (riesgo documentado en `THREAT_MODEL.md`) | despliegue final | Pendiente |
+| H-03 | Servicios de staging/producción para esos dominios: clientes Google OAuth (publicación con verificación de marca), proyectos Reown, apps de Alchemy y endpoints de QuickNode por componente, Postmark (servidores, dominio verificado, aprobación de cuenta) y `ALERT_EMAIL` | despliegue final | Pendiente |
+| H-04 | Claves reales para Base mainnet (deployer, owners de la Governance Safe —hardware wallets recomendadas— y guardianes independientes); nunca las de ensayo del fork | despliegue final | Pendiente |
+| H-05 | Aprobación escrita del owner y ETH real para el deploy y el gas tank | despliegue final | Pendiente |
+| H-06 | VPS: DNS, reverse proxy y TLS, custodia offline de las credenciales de desbloqueo del signer (dos custodios) y destino off-host de los backups | despliegue final | Pendiente |
 
-Ya resuelto y fuera de esta lista: archivos de CI en la raíz (aprobados 2026-10-16), representación de USDT (verificada automáticamente, §3.3), separación física de repositorios (evaluación no bloqueante en P26.T17.b), toolchain (auto-remediación en P00), región o cuentas cloud (no aplica: producción self-hosted).
+Ya resuelto: credenciales de local provistas el 2026-10-17 (`BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `ETHERSCAN_API_KEY`); CI usa la misma `BASE_RPC_URL` como secret; claves de ensayo de staging/producción generadas por el agente en `~/.config/mtw/` (fuera del repo); push del tag de release aprobado (2026-10-17); archivos de CI en la raíz aprobados (2026-10-16); representación de USDT verificada (§3.3); separación física de repositorios (no bloqueante, P26.T17.b); toolchain con auto-remediación (P00); sin dependencias cloud.
