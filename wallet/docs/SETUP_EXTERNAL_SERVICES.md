@@ -77,7 +77,7 @@ Lo de local ya está provisto. Falta sólo esto, para que los tests usen servici
 | Ítem | Proveedor | Estado 2026-10-17 |
 |---|---|---|
 | [`GOOGLE_DRIVE_TEST_*`](#google_drive_test_client_id--google_drive_test_client_secret--google_drive_test_refresh_token) | Google Cloud | pendiente |
-| [`EMAIL_TEST_*`](#email_test_address--email_test_app_password) | Gmail (cuenta de prueba) | pendiente |
+| [`EMAIL_TEST_*`](#email_test_address--email_test_google_refresh_token) | Gmail API (cuenta de prueba) + Mailgun | pendiente |
 | `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `ETHERSCAN_API_KEY`, `EMAIL_PROVIDER_*` (Mailgun, dominio sandbox) | Alchemy, QuickNode, Reown, Google Cloud, Etherscan, Mailgun | provistas |
 
 Resueltos sin acción: Docker está instalado (modo rootless; el preflight levanta el daemon si está detenido) y `gh` tiene permisos de administrador (la branch protection y los secrets de CI los configura el agente).
@@ -94,15 +94,15 @@ Resueltos sin acción: Docker está instalado (modo rootless; el preflight levan
 | Entorno | local y CI (el agente los carga como secrets del repo) |
 | Obligatoria | Sí |
 
-### EMAIL_TEST_ADDRESS / EMAIL_TEST_APP_PASSWORD
+### EMAIL_TEST_ADDRESS / EMAIL_TEST_GOOGLE_REFRESH_TOKEN
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | Probar la **entrega real** de los emails del producto (verificación, OTP, reset): el backend los envía por Mailgun (dominio sandbox) a esta casilla y el test lee los códigos por IMAP (P09.TST.g–h, P22.T06). |
-| Proveedor | Gmail (cuenta de prueba; puede ser la misma de Drive) + Mailgun |
-| URL | https://myaccount.google.com/apppasswords · https://app.mailgun.com |
-| Pasos | 1) En la cuenta de Gmail: activar la verificación en 2 pasos y, en *App passwords*, crear una llamada `mtw-tests` (16 letras). 2) En Mailgun: *Sending → Domain settings* del dominio sandbox → *Authorized recipients* → agregar esa dirección y aceptar la invitación que llega a la casilla (el sandbox sólo envía a destinatarios autorizados, máx. 5). 3) Cargar `EMAIL_TEST_ADDRESS` y `EMAIL_TEST_APP_PASSWORD` en `wallet/.env`; PF-31 valida el acceso IMAP (`imap.gmail.com:993`) sin mostrar la contraseña. |
-| Permisos mínimos | Cuenta dedicada a pruebas; la contraseña de aplicación se revoca en cualquier momento desde la misma página. |
+| Para qué sirve | Probar la **entrega real** de los emails del producto (verificación, OTP, reset): el backend los envía por Mailgun (dominio sandbox) a esta casilla y el test lee los códigos con la **Gmail API** (OAuth 2.0, scope `gmail.readonly`) (P09.TST.g–h, P22.T06). Variables: `EMAIL_TEST_ADDRESS`, `EMAIL_TEST_GOOGLE_CLIENT_ID`, `EMAIL_TEST_GOOGLE_CLIENT_SECRET` y `EMAIL_TEST_GOOGLE_REFRESH_TOKEN`. |
+| Proveedor | Google Cloud (Gmail API) + Mailgun |
+| URL | https://console.cloud.google.com · https://developers.google.com/oauthplayground · https://app.mailgun.com |
+| Pasos | 1) En el proyecto `mtw-wallet-local`: *APIs & Services → Library* → habilitar **Gmail API**. 2) Con el cliente `drive-tests` en OAuth Playground (*Use your own OAuth credentials*): scope `https://www.googleapis.com/auth/gmail.readonly` → *Authorize APIs* con la cuenta de prueba → *Exchange authorization code for tokens* → copiar el refresh token. 3) Cargar en `wallet/.env` `EMAIL_TEST_ADDRESS` (la cuenta de prueba), `EMAIL_TEST_GOOGLE_CLIENT_ID` y `EMAIL_TEST_GOOGLE_CLIENT_SECRET` (los de `drive-tests`) y `EMAIL_TEST_GOOGLE_REFRESH_TOKEN`. 4) En Mailgun, la dirección tiene que ser destinataria autorizada del sandbox (aceptar la invitación). PF-31 valida el token y que corresponda a `EMAIL_TEST_ADDRESS`, sin mostrar valores. |
+| Permisos mínimos | Sólo `gmail.readonly`, con una cuenta dedicada a pruebas. Es un scope restringido: con el proyecto publicado y sin verificar, Google muestra la advertencia de app no verificada y limita a 100 usuarios (alcanza para la cuenta de prueba); en modo *Testing* el refresh token vence a los 7 días. |
 | Entorno | local y CI (secrets del repo) |
 | Obligatoria | Sí |
 
