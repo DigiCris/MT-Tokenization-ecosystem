@@ -127,9 +127,10 @@ library DeploymentJson {
         );
     }
 
-    /// @notice Escribe el JSON de la red (crea `deployments/fork/` si hace falta).
+    /// @notice Escribe el JSON de la red. Crea `deployments/` (o `deployments/fork/`) si no existe: git no versiona
+    ///         directorios vacíos y un checkout limpio (CI) no lo trae.
     function write(string memory n, string memory json) internal {
-        if (!isSeedNetwork(n)) VM.createDir(string.concat(VM.projectRoot(), "/deployments/fork"), true);
+        VM.createDir(string.concat(VM.projectRoot(), isSeedNetwork(n) ? "/deployments" : "/deployments/fork"), true);
         VM.writeJson(json, path(n));
     }
 
