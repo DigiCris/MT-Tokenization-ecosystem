@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Preflight (P00): detecta, auto-remedia y verifica todo lo obligatorio. Imprime "PREFLIGHT PASSED"
+# o un STOP con instrucciones exactas. Uso: pnpm preflight [--env local|staging|production] [--json]
+#                                                          [--no-fix] [--only PF-01,PF-13]
+set -euo pipefail
+WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=env.sh
+source "$WALLET_ROOT/scripts/env.sh"
+# shellcheck source=lib/common.sh
+source "$WALLET_ROOT/scripts/lib/common.sh"
+
+want="$(tr -d '[:space:]' < "$WALLET_ROOT/.node-version")"
+have="$(node -v 2>/dev/null | sed 's/^v//' || true)"
+nofix=0
+for a in "$@"; do [ "$a" = "--no-fix" ] && nofix=1; done
+
+# PF-02 se resuelve acá porque el resto del preflight corre en Node.
+if [ "$have" != "$want" ]; then
+  if [ "$nofix" = 1 ]; then
+    command -v node >/dev/null 2>&1 || die "PF-02: Node $want ausente → ejecutar: bash scripts/tools/bootstrap node (docs/SETUP_EXTERNAL_SERVICES.md#toolchain-local-del-proyecto)"
+  else
+    info "PF-02: Node ${have:-ausente} ≠ $want → auto-remediación: scripts/tools/bootstrap node"
+    bash "$WALLET_ROOT/scripts/tools/bootstrap" node
+    export PREFLIGHT_FIXED_NODE=1
+    hash -r
+  fi
+fi
+
+exec node "$WALLET_ROOT/scripts/preflight.d/main.mjs" "$@"

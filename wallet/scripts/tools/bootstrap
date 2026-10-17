@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# Instala la toolchain fijada del proyecto en wallet/.tools (ADR-032), sin sudo y con verificación
+# de checksum/integridad de cada descarga oficial. Versiones: scripts/tools/versions.json.
+#
+# Uso: scripts/tools/bootstrap [all|node|pnpm|foundry|gitleaks|slither]...   (por defecto: all)
+#      Cada herramienta se instala sólo si falta o su versión difiere (idempotente).
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WALLET_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export WALLET_ROOT
+# shellcheck source=../lib/common.sh
+source "$WALLET_ROOT/scripts/lib/common.sh"
+
+CACHE="$WALLET_TOOLS/.cache"
+mkdir -p "$WALLET_TOOLS" "$CACHE"
+PLATFORM="$(detect_platform)"
+
+installed_version() {
+  case "$1" in
+    node)     [ -x "$WALLET_TOOLS/node/bin/node" ] && "$WALLET_TOOLS/node/bin/node" -v 2>/dev/null | sed 's/^v//' ;;
+    pnpm)     [ -x "$WALLET_TOOLS/pnpm/bin/pnpm" ] && PATH="$WALLET_TOOLS/node/bin:$PATH" "$WALLET_TOOLS/pnpm/bin/pnpm" -v 2>/dev/null ;;
+    foundry)  [ -x "$WALLET_TOOLS/foundry/bin/forge" ] && "$WALLET_TOOLS/foundry/bin/forge" --version 2>/dev/null | sed -n 's/^forge Version: \([0-9][0-9.]*\).*/\1/p' ;;
+    gitleaks) [ -x "$WALLET_TOOLS/gitleaks/bin/gitleaks" ] && "$WALLET_TOOLS/gitleaks/bin/gitleaks" version 2>/dev/null | sed 's/^v//' ;;
+    slither)  [ -x "$WALLET_TOOLS/slither-bin/slither" ] && "$WALLET_TOOLS/slither-bin/slither" --version 2>/dev/null ;;
+  esac
+}
+
+wanted_version() {
+  case "$1" in
+    foundry) json_get "$VERSIONS_JSON" foundry.semver ;;
+    *)       json_get "$VERSIONS_JSON" "$1.version" ;;
+  esac
+}
+
+install_node() {
+  local ver url sha tarball tmp
+  ver="$(wanted_version node)"
+  url="$(json_get "$VERSIONS_JSON" "node.dist.$PLATFORM.url")"
+  sha="$(json_get "$VERSIONS_JSON" "node.dist.$PLATFORM.sha256")"
+  tarball="$CACHE/$(basename "$url")"
+  [ -f "$tarball" ] || download "$url" "$tarball"
+  verify_sha256 "$tarball" "$sha"
+  tmp="$(mktemp -d "$WALLET_TOOLS/.node.XXXXXX")"
+  tar -xJf "$tarball" -C "$tmp" --strip-components=1
+  rm -rf "$WALLET_TOOLS/node"
+  mv "$tmp" "$WALLET_TOOLS/node"
+}
+
+install_pnpm() {
+  local ver tarball_url integrity tarball
+  [ "$(installed_version node || true)" = "$(wanted_version node)" ] || install_node
+  ver="$(wanted_version pnpm)"
+  tarball_url="$(json_get "$VERSIONS_JSON" pnpm.tarball)"
+  integrity="$(json_get "$VERSIONS_JSON" pnpm.integrity)"
+  tarball="$CACHE/pnpm-$ver.tgz"
+  [ -f "$tarball" ] || download "$tarball_url" "$tarball"
+  verify_sri_sha512 "$tarball" "$integrity"
+  rm -rf "$WALLET_TOOLS/pnpm"
+  PATH="$WALLET_TOOLS/node/bin:$PATH" npm install --global --prefix "$WALLET_TOOLS/pnpm" --no-audit --no-fund --loglevel=error "$tarball" >/dev/null
+}
+
+install_tarball_binaries() { # <tool> <binarios...>
+  local tool="$1"; shift
+  local url sha tarball tmp b
+  url="$(json_get "$VERSIONS_JSON" "$tool.dist.$PLATFORM.url")"
+  sha="$(json_get "$VERSIONS_JSON" "$tool.dist.$PLATFORM.sha256")"
+  tarball="$CACHE/$(basename "$url")"
+  [ -f "$tarball" ] || download "$url" "$tarball"
+  verify_sha256 "$tarball" "$sha"
+  tmp="$(mktemp -d "$WALLET_TOOLS/.$tool.XXXXXX")"
+  tar -xzf "$tarball" -C "$tmp"
+  mkdir -p "$tmp/bin"
+  for b in "$@"; do
+    [ -f "$tmp/$b" ] || die "el paquete de $tool no contiene $b"
+    mv "$tmp/$b" "$tmp/bin/$b"; chmod 0755 "$tmp/bin/$b"
+  done
+  rm -rf "$WALLET_TOOLS/$tool"
+  mkdir -p "$WALLET_TOOLS/$tool"
+  mv "$tmp/bin" "$WALLET_TOOLS/$tool/bin"
+  rm -rf "$tmp"
+}
+
+install_foundry()  { install_tarball_binaries foundry forge cast anvil chisel; }
+install_gitleaks() { install_tarball_binaries gitleaks gitleaks; }
+
+python_ok() {
+  local pyver
+  pyver="$(json_get "$VERSIONS_JSON" minimums.python)"
+  command -v python3 >/dev/null 2>&1 && version_ge "$(python3 -c 'import sys;print("%d.%d"%sys.version_info[:2])')" "$pyver"
+}
+
+# Sin Python >= 3.10: Slither corre desde la imagen oficial fijada por digest, con el forge de .tools
+# montado (crytic-compile lo usa para compilar el proyecto Foundry) y la caché de solc del host.
+install_slither_docker() {
+  local ref
+  ref="$(json_get "$VERSIONS_JSON" fallbackImages.slither)"
+  command -v docker >/dev/null 2>&1 || die "Slither necesita python3 >= $(json_get "$VERSIONS_JSON" minimums.python) o Docker (PF-01/PF-05)"
+  docker image inspect "$ref" >/dev/null 2>&1 || docker pull -q "$ref" >/dev/null
+  rm -rf "$WALLET_TOOLS/slither" "$WALLET_TOOLS/slither-bin"
+  mkdir -p "$WALLET_TOOLS/slither-bin" "$HOME/.svm"
+  cat > "$WALLET_TOOLS/slither-bin/slither" <<WRAPPER
+#!/usr/bin/env bash
+# Generado por scripts/tools/bootstrap (alternativa sin Python, ADR-032).
+exec docker run --rm -v "$WALLET_ROOT:$WALLET_ROOT" -w "\$PWD" \\
+  -v "$WALLET_TOOLS/foundry/bin:/opt/foundry/bin:ro" -v "$HOME/.svm:/tmp/.svm" \\
+  -e HOME=/tmp -e PATH=/opt/foundry/bin:/usr/local/bin:/usr/bin:/bin \\
+  "$ref" slither "\$@"
+WRAPPER
+  chmod 0755 "$WALLET_TOOLS/slither-bin/slither"
+}
+
+install_slither() {
+  local ver whl_url whl_sha whl venv
+  ver="$(wanted_version slither)"
+  if [ "${BOOTSTRAP_SLITHER_MODE:-auto}" = docker ] || ! python_ok; then
+    install_slither_docker
+    return
+  fi
+  whl_url="$(json_get "$VERSIONS_JSON" slither.pipWheel.url)"
+  whl_sha="$(json_get "$VERSIONS_JSON" slither.pipWheel.sha256)"
+  whl="$CACHE/$(basename "$whl_url")"
+  [ -f "$whl" ] || download "$whl_url" "$whl"
+  verify_sha256 "$whl" "$whl_sha"
+  venv="$WALLET_TOOLS/slither"
+  rm -rf "$venv" "$WALLET_TOOLS/slither-bin"
+  # --without-pip: algunas distribuciones no traen ensurepip; pip se instala desde su wheel verificado.
+  python3 -m venv --without-pip "$venv"
+  "$venv/bin/python" "$whl/pip" install --cache-dir "$CACHE/pip" --no-input --quiet "$whl"
+  "$venv/bin/pip" install --cache-dir "$CACHE/pip" --no-input --quiet --disable-pip-version-check \
+    -c "$SCRIPT_DIR/slither-constraints.txt" "slither-analyzer==$ver"
+  mkdir -p "$WALLET_TOOLS/slither-bin"
+  ln -sf "$venv/bin/slither" "$WALLET_TOOLS/slither-bin/slither"
+  ln -sf "$venv/bin/crytic-compile" "$WALLET_TOOLS/slither-bin/crytic-compile"
+}
+
+ensure() {
+  local tool="$1" want have
+  want="$(wanted_version "$tool")"
+  have="$(installed_version "$tool" || true)"
+  if [ "$have" = "$want" ]; then
+    info "$tool $want: ya instalado"
+    return 0
+  fi
+  info "$tool: instalando $want (encontrado: ${have:-ninguno})"
+  "install_$tool"
+  have="$(installed_version "$tool" || true)"
+  [ "$have" = "$want" ] || die "$tool: tras instalar se obtuvo '${have:-nada}' en lugar de $want"
+  ok "$tool $want: instalado y verificado"
+}
+
+main() {
+  local targets=("$@")
+  [ ${#targets[@]} -gt 0 ] || targets=(all)
+  local t
+  for t in "${targets[@]}"; do
+    case "$t" in
+      all) ensure node; ensure pnpm; ensure foundry; ensure gitleaks; ensure slither ;;
+      node|pnpm|foundry|gitleaks|slither) ensure "$t" ;;
+      *) die "herramienta desconocida: $t (válidas: all node pnpm foundry gitleaks slither)" ;;
+    esac
+  done
+}
+
+main "$@"

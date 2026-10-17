@@ -273,7 +273,27 @@ Al desplegar: definir quiénes custodian (dos personas distintas) las copias sel
 
 ### Docker (sólo si falta)
 
-Docker Engine con Compose v2 es la única dependencia de sistema que el preflight no puede instalar sin privilegios (PF-05). Si falta, instalarlo con la guía oficial de Docker para la distribución usada.
+Docker Engine con Compose v2 es la única dependencia de sistema que el preflight no puede instalar sin privilegios (PF-05). Si el daemon está detenido, el preflight lo inicia solo cuando puede hacerlo sin sudo (Docker rootless con `dockerd-rootless.sh`, o `systemctl --user start docker`). Si Docker no está instalado, instalarlo con la guía oficial de Docker para la distribución usada.
+
+### Herramientas del sistema (sólo si faltan)
+
+PF-01 exige `bash` ≥ 4, `git` ≥ 2.34, `curl`, `openssl`, `tar` y `xz` (y recomienda `python3` ≥ 3.10 para Slither). Son paquetes estándar del sistema operativo: si alguno falta, instalarlo con el gestor de paquetes (requiere privilegios) y volver a correr `pnpm preflight`. Los mínimos exactos están en `scripts/tools/versions.json` (`minimums`).
+
+### Toolchain local del proyecto
+
+Node, pnpm, Foundry, gitleaks y Slither **no se instalan a mano**: el preflight (PF-02 a PF-07) ejecuta `bash scripts/tools/bootstrap <herramienta>`, que descarga la versión fijada desde la fuente oficial, verifica su checksum o integridad y la deja en `wallet/.tools/` (gitignored, sin sudo; ADR-032). Las imágenes de seguridad (PF-08) se descargan por digest. Si el bootstrap falla (sin red, plataforma no soportada o checksum distinto), revisar el error que imprime y reintentar; las versiones y checksums están en `scripts/tools/versions.json`. Para usar la toolchain en un shell: `source scripts/env.sh`.
+
+### Puertos locales ocupados
+
+El stack local usa 5173, 5174, 8080, 8081, 8090, 8545, 55432, 56379, 1025, 8025 y 9464–9470 (planner §5.3). PF-09 acepta los puertos usados por los propios servicios (docker compose de `wallet/` o procesos lanzados desde `wallet/`); si otro proceso ocupa uno, identificarlo con `ss -ltnp`, detenerlo o cambiar el puerto correspondiente (`*_PORT`) en `wallet/.env`.
+
+### Servicios locales (docker compose)
+
+PF-17 y PF-18 verifican Postgres 18, Valkey, el fork de Anvil y Mailpit. El preflight los levanta solo (`docker compose up -d --wait`). Si alguno no queda saludable: `docker compose logs <servicio>`. Si cambiaron las passwords locales después de crear los volúmenes, recrearlos con `docker compose down -v && docker compose up -d` (borra los datos locales).
+
+### Variables de configuración local
+
+Las variables no secretas (puertos, origins, URLs locales, modos) tienen su valor por defecto en `wallet/.env.example`. Si PF-11 informa una ausente o inválida, copiar la línea correspondiente de `.env.example` a `wallet/.env`. `FORK_BLOCK_NUMBER` debe coincidir con `config/chains/base-mainnet.json` y `APP_ENV` con el entorno del preflight (`--env`).
 
 ### Branch protection (sólo si `gh` no tiene permisos)
 
