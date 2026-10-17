@@ -1,0 +1,35 @@
+{
+  "format": "[W-04] release-manifest.json = bytes JCS del manifest; release-manifest.json.sig = base64 de la firma Ed25519 de esos bytes",
+  "publicJwk": {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "ZA0JIXk9t9KKgjFi7zwDfvh3366TjYFzoAN_9iYoLno"
+  },
+  "manifest": {
+    "app": "wallet",
+    "environment": "staging",
+    "releaseId": "wallet-v1.0.0-rc.1",
+    "gitCommit": "17afffa171bd3d28f5096dab302e2f8e9a4d9835",
+    "sourceDateEpoch": 1792189347,
+    "files": [
+      {
+        "path": "index.html",
+        "sha256": "16dda4401bbb61dc3f2199c35a8e30b41659790dca2471c9cf4be9089b400bc8",
+        "size": 40
+      },
+      {
+        "path": "assets/app-3f2a1b.js",
+        "sha256": "e5033f7ca2c5015d04b60884a467d409bd5a2afffc741f7195de2d847ce9bfff",
+        "size": 25
+      },
+      {
+        "path": "assets/app-9c8d7e.css",
+        "sha256": "f30b8135ddb9b02337b82fbd4cb0c1ae44abfbd06ef095283ca8ebca70d99ee9",
+        "size": 30
+      }
+    ]
+  },
+  "manifestJson": "{\"app\":\"wallet\",\"environment\":\"staging\",\"files\":[{\"path\":\"index.html\",\"sha256\":\"16dda4401bbb61dc3f2199c35a8e30b41659790dca2471c9cf4be9089b400bc8\",\"size\":40},{\"path\":\"assets/app-3f2a1b.js\",\"sha256\":\"e5033f7ca2c5015d04b60884a467d409bd5a2afffc741f7195de2d847ce9bfff\",\"size\":25},{\"path\":\"assets/app-9c8d7e.css\",\"sha256\":\"f30b8135ddb9b02337b82fbd4cb0c1ae44abfbd06ef095283ca8ebca70d99ee9\",\"size\":30}],\"gitCommit\":\"17afffa171bd3d28f5096dab302e2f8e9a4d9835\",\"releaseId\":\"wallet-v1.0.0-rc.1\",\"sourceDateEpoch\":1792189347}",
+  "manifestSha256": "f499d729d0df4b674907f997c7147c1d571992371da799fb9817091104ed0e08",
+  "signatureBase64": "loGhIiGwrR4iYcUKEn8gzQe+qCuq1AEfOzYRhDqhFkaWUq1PP9xOvR+hW/d+sTFB4f6PbPS0cNb2/QZ3h5XKDQ=="
+}

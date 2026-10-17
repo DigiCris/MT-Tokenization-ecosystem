@@ -1,0 +1,97 @@
+{
+  "format": "[W-03] JWS compacto, alg EdDSA (Ed25519), kid obligatorio; header y payload en JSON canónico JCS",
+  "tokens": [
+    {
+      "name": "PlatformSession",
+      "kid": "mtw-session-issuer-test-1",
+      "publicJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "EL_HJc881QGiFKZP48zN1vQ5J4600BcZY5vf6ZO63Gc"
+      },
+      "claims": {
+        "userId": "4f1c2d9e-6b7a-4c3d-9e8f-0a1b2c3d4e5f",
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "platformId": "mtw",
+        "sessionPublicKey": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "r7c_mT9ccw9bwvO39H2siBRdwp5MGdfam9GqBplvmhQ",
+          "y": "8hxYIz89m7X_OLOKUosW6_7NhKspXUySAYIIEP-lyBU"
+        },
+        "sessionId": "sess_5c1f0e2d3b4a",
+        "issuedAt": 1792189347,
+        "expiresAt": 1792190247,
+        "scope": "OPERATIONS",
+        "authMethod": "OPAQUE_U",
+        "accountSessionId": "acct_8e7d6c5b4a39",
+        "aud": [
+          "mtw-api",
+          "mtw-signer"
+        ]
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6Im10dy1zZXNzaW9uLWlzc3Vlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJhY2NvdW50U2Vzc2lvbklkIjoiYWNjdF84ZTdkNmM1YjRhMzkiLCJhdWQiOlsibXR3LWFwaSIsIm10dy1zaWduZXIiXSwiYXV0aE1ldGhvZCI6Ik9QQVFVRV9VIiwiZXhwaXJlc0F0IjoxNzkyMTkwMjQ3LCJpc3N1ZWRBdCI6MTc5MjE4OTM0NywicGxhdGZvcm1JZCI6Im10dyIsInNhZmUiOiIweDJGZmE4NTNBOTIxM0M5MkExNjI5NUM1NUZBNkE1YjI3QTY0OTg2ODgiLCJzY29wZSI6Ik9QRVJBVElPTlMiLCJzZXNzaW9uSWQiOiJzZXNzXzVjMWYwZTJkM2I0YSIsInNlc3Npb25QdWJsaWNLZXkiOnsiY3J2IjoiUC0yNTYiLCJrdHkiOiJFQyIsIngiOiJyN2NfbVQ5Y2N3OWJ3dk8zOUgyc2lCUmR3cDVNR2RmYW05R3FCcGx2bWhRIiwieSI6IjhoeFlJejg5bTdYX09MT0tVb3NXNl83TmhLc3BYVXlTQVlJSUVQLWx5QlUifSwidXNlcklkIjoiNGYxYzJkOWUtNmI3YS00YzNkLTllOGYtMGExYjJjM2Q0ZTVmIn0.qZKMf_yOcUQ5ARTPBm2QYm6ULs4xL9L_okiVSmabPqjqX-7nVDvWQ0hsXKwLxPrBdiRgilnGYqDm-nAaTP3-BA"
+    },
+    {
+      "name": "ChallengeCompletion",
+      "kid": "mtw-session-issuer-test-1",
+      "publicJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "EL_HJc881QGiFKZP48zN1vQ5J4600BcZY5vf6ZO63Gc"
+      },
+      "claims": {
+        "challengeId": "chl_01a2b3c4d5e6",
+        "type": "HIGH_VALUE_TX",
+        "userId": "4f1c2d9e-6b7a-4c3d-9e8f-0a1b2c3d4e5f",
+        "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "chainId": 8453,
+        "action": "SEND",
+        "destination": "0x0000000000000000000000000000000000000001",
+        "safeTxHash": "0x33e18c560afca8a47c873db1e5d28cba8df5a84873f8d3e2057d637f444ea706",
+        "token": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "amount": "1500000000",
+        "nonce": 1,
+        "completedAt": 1792189400
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6Im10dy1zZXNzaW9uLWlzc3Vlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJhY3Rpb24iOiJTRU5EIiwiYW1vdW50IjoiMTUwMDAwMDAwMCIsImNoYWluSWQiOjg0NTMsImNoYWxsZW5nZUlkIjoiY2hsXzAxYTJiM2M0ZDVlNiIsImNvbXBsZXRlZEF0IjoxNzkyMTg5NDAwLCJkZXN0aW5hdGlvbiI6IjB4MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMSIsIm5vbmNlIjoxLCJzYWZlIjoiMHgyRmZhODUzQTkyMTNDOTJBMTYyOTVDNTVGQTZBNWIyN0E2NDk4Njg4Iiwic2FmZVR4SGFzaCI6IjB4MzNlMThjNTYwYWZjYThhNDdjODczZGIxZTVkMjhjYmE4ZGY1YTg0ODczZjhkM2UyMDU3ZDYzN2Y0NDRlYTcwNiIsInRva2VuIjoiMHg4MzM1ODlmQ0Q2ZURiNkUwOGY0YzdDMzJENGY3MWI1NGJkQTAyOTEzIiwidHlwZSI6IkhJR0hfVkFMVUVfVFgiLCJ1c2VySWQiOiI0ZjFjMmQ5ZS02YjdhLTRjM2QtOWU4Zi0wYTFiMmMzZDRlNWYifQ.p80WvJ6-Mg4KjZYLIn-VcHIk3BLsXlNGMk1YurpSVffkWXbG4cj-dCV3Aj9OiBeAI0sLYbxyivsTpQPmahPDDQ"
+    },
+    {
+      "name": "IntegrityAttestation",
+      "kid": "mtw-integrity-monitor-test-1",
+      "publicJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "BX2hRruQpxIMXGHdxFFcRrY78wPQpmBe6p__txCgI5Q"
+      },
+      "claims": {
+        "platformId": "mtw",
+        "app": "WALLET",
+        "environment": "staging",
+        "releaseId": "wallet-v1.0.0-rc.1",
+        "manifestSha256": "0x691325b9465ff003bbc61a27c42be8de71514bee2483eafb47b33351f7f3d945",
+        "status": "OK",
+        "observedAt": 1792189347,
+        "expiresAt": 1792189947
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6Im10dy1pbnRlZ3JpdHktbW9uaXRvci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJhcHAiOiJXQUxMRVQiLCJlbnZpcm9ubWVudCI6InN0YWdpbmciLCJleHBpcmVzQXQiOjE3OTIxODk5NDcsIm1hbmlmZXN0U2hhMjU2IjoiMHg2OTEzMjViOTQ2NWZmMDAzYmJjNjFhMjdjNDJiZThkZTcxNTE0YmVlMjQ4M2VhZmI0N2IzMzM1MWY3ZjNkOTQ1Iiwib2JzZXJ2ZWRBdCI6MTc5MjE4OTM0NywicGxhdGZvcm1JZCI6Im10dyIsInJlbGVhc2VJZCI6IndhbGxldC12MS4wLjAtcmMuMSIsInN0YXR1cyI6Ik9LIn0.BMgV9clOIgP4p0lDeg4D9hLIbTLL5fVLCZJxAdWomnKB4ufEv5nvID29A9eUFyd-NoL5FDeroAH8kwYHcTfOBg"
+    },
+    {
+      "name": "SignerKeyAttestation",
+      "kid": "mtw-signer-attestation-test-1",
+      "publicJwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "OoaPsNWchPsgCRLQKa3rEyWXZytNCPWS3xXqMmm-Blg"
+      },
+      "claims": {
+        "walletId": "7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5",
+        "shardId": "dev-1",
+        "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E",
+        "chainId": 8453,
+        "issuedAt": 1792189347
+      },
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6Im10dy1zaWduZXItYXR0ZXN0YXRpb24tdGVzdC0xIiwidHlwIjoiSldUIn0.eyJjaGFpbklkIjo4NDUzLCJleGVjdXRvciI6IjB4YzgwRDM4N2ZDYzU5Y0I1N0FFZjBlQzJiMTM3Qzc3RDI2NDc0Mjg4RSIsImlzc3VlZEF0IjoxNzkyMTg5MzQ3LCJzaGFyZElkIjoiZGV2LTEiLCJ3YWxsZXRJZCI6IjdkMmUzZjQwLTFhMmItNGM1ZC04ZTlmLWEwYjFjMmQzZTRmNSJ9.DRmvFqU-TG6PCC0Hw3moNNMOd8Eeq-KszOdRrOVmpaO1WVZCNL33yQwgcSG58AG8wekHgwTisJVqCqxvY9R9CQ"
+    }
+  ]
+}
