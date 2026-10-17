@@ -54,7 +54,7 @@ interface ISafe {
         uint256 gasPrice,
         address gasToken,
         address refundReceiver,
-        uint256 nonce
+        uint256 _nonce
     ) external view returns (bytes32);
 
     function domainSeparator() external view returns (bytes32);
