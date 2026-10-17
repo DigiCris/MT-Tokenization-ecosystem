@@ -13,7 +13,7 @@ Este documento lista **cada** dato, credencial y secreto que necesita el sistema
 
 ## Estado al 2026-10-17
 
-Credenciales de local provistas por el owner y validadas sin mostrar valores: `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY` y `ETHERSCAN_API_KEY`. CI usa la misma `BASE_RPC_URL` como secret del repo. Para ejecutar el planner completo sólo faltan las credenciales de los tests contra servicios reales (`GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`). Todo lo de staging/producción es parte del despliegue final.
+Credenciales de local provistas por el owner y validadas sin mostrar valores: `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY` y `ETHERSCAN_API_KEY`, más Mailgun (`EMAIL_PROVIDER_*`, dominio sandbox, región US). CI usa la misma `BASE_RPC_URL` como secret del repo. Para ejecutar el planner completo sólo faltan las credenciales de los tests contra servicios reales (`GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`). Todo lo de staging/producción es parte del despliegue final.
 
 ---
 
@@ -35,7 +35,7 @@ Datos públicos verificados con fuentes oficiales y lecturas on-chain; quedan en
 | Versiones de toolchain | Node 26.x, pnpm 12.14.0, Foundry v1.8.5, Slither 0.11.6, gitleaks 8.30.1, TypeScript 6.0.3 y el resto de §3.6 | registries y releases oficiales |
 | Infra self-hosted | PostgreSQL 18.6, Valkey 9.2, pgBackRest 2.59.3, age 1.3.2, Caddy 2.11.7, Prometheus 3.15.0, Alertmanager 0.34.1, Grafana 13.2.4 | Docker Hub y releases oficiales |
 | Signer | Clef sin mantenimiento; Web3Signer evaluado (no genera claves); se usa `SelfHostedSoftwareSignerProvider` (ADR-014) | repos oficiales y docs.web3signer |
-| Servicios | Reown: projectId en `dashboard.reown.com`; Google: scope `drive.appdata` no sensible; Postmark: header `X-Postmark-Server-Token`, stream `outbound`; Etherscan API V2 con `chainid=8453` | documentación oficial de cada proveedor |
+| Servicios | Reown: projectId en `dashboard.reown.com`; Google: scope `drive.appdata` no sensible; Mailgun: API `https://api.mailgun.net` (US) o `https://api.eu.mailgun.net` (EU), autenticación Basic `api:<API key>`, envío `POST /v3/<dominio>/messages`, sandbox sólo a destinatarios autorizados (máx. 5); Etherscan API V2 con `chainid=8453` | documentación oficial de cada proveedor |
 
 ## AUTO-GENERATED
 
@@ -64,7 +64,7 @@ Secretos y claves que se generan criptográficamente: **no son acciones del usua
 | `LOCAL_SEED`, credencial y keystores del shard `dev-1`, `*_LOCAL`, `GRAFANA_ADMIN_PASSWORD` | sólo desarrollo local | `pnpm secrets:local` | local | Sí (local) | procesos locales |
 | Claves de ensayo de staging y producción: deployer, 3 owners de la Governance Safe y 2 guardianes por entorno | deploys de staging y producción sobre el fork (P25, P30) | `cast wallet new` → keystore cifrado en `~/.config/mtw/keys/<entorno>/` y contraseña en `~/.config/mtw/secrets/<entorno>/` (generadas el 2026-10-17); direcciones en `~/.config/mtw/<entorno>.env` | ensayo sobre el fork | Sí | scripts de deploy del agente; **nunca** se usan en Base mainnet |
 | Claves de policy de staging y producción | firma de los snapshots de policy del ensayo (P25.T07, P30.T03) | Ed25519 en `~/.config/mtw/secrets/<entorno>/` | ensayo sobre el fork | Sí | backend y signer (pública) |
-| Secrets de CI: `BASE_RPC_URL`, `GOOGLE_DRIVE_TEST_*`, `EMAIL_TEST_*` | tests de fork y contra servicios reales en GitHub Actions | `gh secret set` con los valores de `wallet/.env` (P02.T04) | CI | Sí | workflows de CI |
+| Secrets de CI: `BASE_RPC_URL`, `GOOGLE_DRIVE_TEST_*`, `EMAIL_TEST_*`, `EMAIL_PROVIDER_*` | tests de fork y contra servicios reales en GitHub Actions | `gh secret set` con los valores de `wallet/.env` (P02.T04) | CI | Sí | workflows de CI |
 
 ---
 
@@ -78,7 +78,7 @@ Lo de local ya está provisto. Falta sólo esto, para que los tests usen servici
 |---|---|---|
 | [`GOOGLE_DRIVE_TEST_*`](#google_drive_test_client_id--google_drive_test_client_secret--google_drive_test_refresh_token) | Google Cloud | pendiente |
 | [`EMAIL_TEST_*`](#email_test_address--email_test_app_password) | Gmail (cuenta de prueba) | pendiente |
-| `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `ETHERSCAN_API_KEY` | Alchemy, QuickNode, Reown, Google Cloud, Etherscan | provistas |
+| `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `ETHERSCAN_API_KEY`, `EMAIL_PROVIDER_*` (Mailgun, dominio sandbox) | Alchemy, QuickNode, Reown, Google Cloud, Etherscan, Mailgun | provistas |
 
 Resueltos sin acción: Docker está instalado (modo rootless; el preflight levanta el daemon si está detenido) y `gh` tiene permisos de administrador (la branch protection y los secrets de CI los configura el agente).
 
@@ -98,10 +98,10 @@ Resueltos sin acción: Docker está instalado (modo rootless; el preflight levan
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | Probar la **entrega real** de los emails del producto (verificación, OTP, reset): el backend los envía por SMTP a esta casilla y el test lee los códigos por IMAP (P09.TST.h, P22.T06). |
-| Proveedor | Gmail (cuenta de prueba; puede ser la misma de Drive) |
-| URL | https://myaccount.google.com/security · https://myaccount.google.com/apppasswords |
-| Pasos | 1) Activar la verificación en 2 pasos de la cuenta. 2) En *App passwords* crear una llamada `mtw-tests` y copiar la contraseña de 16 letras. 3) Cargar `EMAIL_TEST_ADDRESS` (la dirección) y `EMAIL_TEST_APP_PASSWORD` en `wallet/.env`; PF-31 valida SMTP (`smtp.gmail.com:587`) e IMAP (`imap.gmail.com:993`) sin mostrarla. |
+| Para qué sirve | Probar la **entrega real** de los emails del producto (verificación, OTP, reset): el backend los envía por Mailgun (dominio sandbox) a esta casilla y el test lee los códigos por IMAP (P09.TST.g–h, P22.T06). |
+| Proveedor | Gmail (cuenta de prueba; puede ser la misma de Drive) + Mailgun |
+| URL | https://myaccount.google.com/apppasswords · https://app.mailgun.com |
+| Pasos | 1) En la cuenta de Gmail: activar la verificación en 2 pasos y, en *App passwords*, crear una llamada `mtw-tests` (16 letras). 2) En Mailgun: *Sending → Domain settings* del dominio sandbox → *Authorized recipients* → agregar esa dirección y aceptar la invitación que llega a la casilla (el sandbox sólo envía a destinatarios autorizados, máx. 5). 3) Cargar `EMAIL_TEST_ADDRESS` y `EMAIL_TEST_APP_PASSWORD` en `wallet/.env`; PF-31 valida el acceso IMAP (`imap.gmail.com:993`) sin mostrar la contraseña. |
 | Permisos mínimos | Cuenta dedicada a pruebas; la contraseña de aplicación se revoca en cualquier momento desde la misma página. |
 | Entorno | local y CI (secrets del repo) |
 | Obligatoria | Sí |
@@ -116,7 +116,7 @@ Se hace con `docs/runbooks/go-live.md` cuando existan los dominios y la VPS. Las
 | [`GOOGLE_CLIENT_ID_WALLET` / `_RECOVERY`](#google_client_id_wallet) | Google Cloud | cliente por entorno; publicación con verificación de marca |
 | [`WALLETCONNECT_PROJECT_ID`](#walletconnect_project_id) | Reown | proyecto por entorno con allowlist del dominio |
 | [RPC por componente](#rpc_primary_url--rpc_secondary_url) y [`BASE_RPC_URL_SECONDARY`](#base_rpc_url_secondary) | Alchemy / QuickNode | una clave por componente y entorno |
-| [`EMAIL_PROVIDER_API_KEY` / `EMAIL_FROM`](#email_provider_api_key--email_from) | Postmark | servidor por entorno, dominio verificado, cuenta aprobada |
+| [`EMAIL_PROVIDER_API_KEY` / `EMAIL_FROM`](#email_provider_api_key--email_from) | Mailgun | dominio de envío propio por entorno verificado (SPF/DKIM) |
 | [`ETHERSCAN_API_KEY`](#etherscan_api_key) | Etherscan | ya provista; verificación pública en BaseScan |
 | [Governance Safe y guardianes](#governance_safe_address--policy_guardians) | hardware wallets | claves reales nuevas |
 | [`ALERT_EMAIL`](#alert_email--alert_webhook_url) | casilla propia | por entorno |
@@ -203,13 +203,13 @@ Nota: `GOOGLE_CLIENT_SECRET_WALLET` y `GOOGLE_CLIENT_SECRET_RECOVERY` **no se us
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | Envío de OTPs, challenges de whitelist (con la dirección exacta, red y expiración), avisos de rotación/recovery, reset de password y alertas. |
-| Proveedor | Postmark |
-| URL | https://account.postmarkapp.com |
-| Pasos | 1) Crear cuenta. 2) Crear un **Server** por entorno (`mtw-staging`, `mtw-production`). 3) Usar el stream transaccional **`outbound`**. 4) Pestaña **API Tokens** del server → copiar el **Server API Token**. 5) **Sender Signatures / Domains** → agregar el dominio de envío y publicar sus registros DNS (DKIM TXT y Return-Path CNAME `pm-bounces` → `pm.mtasv.net`) cuando existan los dominios. 6) `EMAIL_FROM` = una dirección de ese dominio. 7) Solicitar la aprobación de la cuenta (< 24 h hábiles). En staging/prod el token va como archivo de secrets al desplegar. |
-| Permisos mínimos | Server token (no el Account token), un server por entorno. |
-| Entorno | staging, production (en local se usa Mailpit; `POSTMARK_API_TEST` sirve para tests de formato sin envío) |
-| Obligatoria | Sí en staging/production |
+| Para qué sirve | Envío de los emails transaccionales (verificación, OTP, reset, whitelist, rotaciones, recovery) por **Mailgun**. Variables: `EMAIL_PROVIDER=mailgun`, `EMAIL_PROVIDER_API_KEY`, `EMAIL_PROVIDER_DOMAIN`, `EMAIL_PROVIDER_BASE_URL` y `EMAIL_FROM`. |
+| Proveedor | Mailgun (cuenta del owner) |
+| URL | https://app.mailgun.com |
+| Pasos | Tests: dominio sandbox ya provisto. Despliegue final: 1) *Sending → Domains → Add new domain* con un subdominio de envío del dominio real (p. ej. `mg.<WALLET_DOMAIN>`), en la misma región que `EMAIL_PROVIDER_BASE_URL`. 2) Cargar en el DNS los registros SPF y DKIM que muestra Mailgun (MX y CNAME de tracking no hacen falta: el producto no recibe correo ni usa tracking) y esperar el estado `active`. 3) Crear una API key por entorno (*API Security*) y, para Alertmanager, credenciales SMTP del dominio. 4) `EMAIL_FROM` = `no-reply@<ese dominio>`. 5) PF-21 valida el dominio sin mostrar la clave. |
+| Permisos mínimos | Una API key por entorno; dominio de envío propio por entorno. |
+| Entorno | tests reales (sandbox) y staging/production (dominio propio); en local los flujos deterministas usan Mailpit |
+| Obligatoria | Sí |
 
 ### ETHERSCAN_API_KEY
 
@@ -254,7 +254,7 @@ Nota: `GOOGLE_CLIENT_SECRET_WALLET` y `GOOGLE_CLIENT_SECRET_RECOVERY` **no se us
 | Para qué sirve | Destino de las alertas de Alertmanager (self-hosted); el webhook es opcional. |
 | Proveedor | casilla de guardia propia (lista de distribución); webhook opcional (p. ej. del canal de chat del equipo) |
 | URL | — |
-| Pasos | Definir la casilla de guardia por entorno; el envío usa el SMTP de Postmark. |
+| Pasos | Definir la casilla de guardia por entorno; el envío usa el SMTP del dominio en Mailgun. |
 | Permisos mínimos | Casilla con acceso del equipo de guardia. |
 | Entorno | staging, production |
 | Obligatoria | `ALERT_EMAIL` sí; webhook opcional |
@@ -278,9 +278,3 @@ Docker Engine con Compose v2 es la única dependencia de sistema que el prefligh
 ### Branch protection (sólo si `gh` no tiene permisos)
 
 El planner aplica la protección de la rama principal con `gh api` (P02.T04). Sólo si las credenciales de `gh` del entorno no tienen permisos de administrador del repositorio, esa configuración puntual la hace el owner en GitHub (required checks, revisión de CODEOWNERS, "include administrators", commits firmados).
-
-### POSTMARK_TEST_RECIPIENT
-
-| Variable | Para qué sirve | Cómo obtenerla | Entorno | Obligatoria |
-|---|---|---|---|---|
-| `POSTMARK_TEST_RECIPIENT` | Smoke test de entrega por Postmark en el despliegue final, con el dominio ya verificado | Casilla propia de pruebas | staging, production | Sí, en el despliegue final |

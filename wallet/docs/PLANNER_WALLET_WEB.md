@@ -53,7 +53,7 @@
 - **R-11** Si algo obligatorio falta: primero **autodiscovery** (buscar en el repo y en la configuración existente, verificar on-chain, consultar documentación oficial) y **auto-remediación** (instalar la herramienta fijada en `wallet/.tools/`, generar el secreto); sólo si no se puede obtener así: **STOP**, informando qué falta, qué variable, cómo obtenerla y en qué sección de `wallet/docs/SETUP_EXTERNAL_SERVICES.md` ("USER ACTION REQUIRED") están los pasos. No continuar dejando funcionalidades falsas o desactivadas "temporalmente".
 - **R-12** Toda decisión de diseño nueva que no esté en este planner se documenta como ADR en `wallet/docs/adr/` antes de implementarse. Las decisiones de implementación dentro de esta arquitectura no requieren aprobación; un cambio de arquitectura no se hace durante la ejecución (si resultara inevitable, es un STOP real con el motivo documentado).
 - **R-13** Toda fase que crea o modifica un proyecto actualiza su script `wallet/ci/scripts/ci-<área>.sh` (y su workflow si P02 fue aprobado); el CHECKPOINT de cada fase exige `pnpm ci:local` en verde.
-- **R-14** **Producto final, sin pendientes ni frenos.** Después de `PREFLIGHT PASSED` el planner corre de punta a punta (prompt §25) sin pedir nada al owner. Toda funcionalidad se implementa completa y se prueba contra los servicios reales: fork de Base mainnet con los contratos reales, Alchemy/QuickNode, relay de WalletConnect, API de Google Drive, API de Postmark y entrega real de email a una casilla. Nada queda opcional, simulado ni diferido. Los `Pxx.MAN` los ejecuta el agente con herramientas (navegador automatizado, `cast`, `curl`) y, donde se pide un segundo par de ojos, un **agente revisor independiente** (contexto nuevo, sin el razonamiento del ejecutor) cuyo informe queda en §13. Fuera del planner queda sólo el despliegue final y la configuración de los servicios de staging/producción para los dominios reales (§13.1, `docs/runbooks/go-live.md`).
+- **R-14** **Producto final, sin pendientes ni frenos.** Después de `PREFLIGHT PASSED` el planner corre de punta a punta (prompt §25) sin pedir nada al owner. Toda funcionalidad se implementa completa y se prueba contra los servicios reales: fork de Base mainnet con los contratos reales, Alchemy/QuickNode, relay de WalletConnect, API de Google Drive, API de Mailgun y entrega real de email a una casilla. Nada queda opcional, simulado ni diferido. Los `Pxx.MAN` los ejecuta el agente con herramientas (navegador automatizado, `cast`, `curl`) y, donde se pide un segundo par de ojos, un **agente revisor independiente** (contexto nuevo, sin el razonamiento del ejecutor) cuyo informe queda en §13. Fuera del planner queda sólo el despliegue final y la configuración de los servicios de staging/producción para los dominios reales (§13.1, `docs/runbooks/go-live.md`).
 
 ### 0.2 Formato de las tareas
 
@@ -237,7 +237,7 @@ Liquidez USDC/USDT observada (bloque 52700000 / 52700217): pool v3 0,01 % `liqui
 | Argon2id browser | `@noble/hashes` 2.4.0 (2026-08-27) con `argon2id` estable desde 1.6.0, JS puro; `hash-wasm` 4.12.0 sin releases desde 2024-11. | Se usa `@noble/hashes` en Web Worker con presupuesto de rendimiento (ADR-013). |
 | Argon2id server | `@node-rs/argon2` 2.2.2 (2026-10-06). | Hash de password de cuenta. |
 | Google OAuth browser-only | Flujo implícito (`response_type=token`) **sigue documentado pero marcado inseguro/"legacy"**; GIS token model exige su JS (popup); el doc de web-server marca `client_secret` como opcional (code + PKCE sin backend: **no confirmado**). Scope `drive.appdata` es **no sensible**. appDataFolder se **borra si el usuario desinstala la app** o lo elimina manualmente. | Spike obligatorio code+PKCE sin secret; si no funciona, implícito por redirección sin JS de Google (ADR-012). Proyectos de Google Cloud separados por app. Backups adicionales recomendados y chequeo de salud del backup. |
-| Postmark | Header `X-Postmark-Server-Token`; stream transaccional por defecto `outbound`; token de prueba `POSTMARK_API_TEST`; Sender Signature o Domain (DKIM obligatorio para dominio; Return-Path `pm-bounces` → `pm.mtasv.net`); aprobación de cuenta (< 24 h) antes de enviar a dominios arbitrarios; npm `postmark` 5.1.0. | Proveedor de email (ADR-016). |
+| Mailgun | API `https://api.mailgun.net` (región US; EU: `https://api.eu.mailgun.net`), autenticación HTTP Basic `api:<API key>`, envío `POST /v3/<dominio>/messages`, eventos `GET /v3/<dominio>/events`; dominio sandbox: sólo destinatarios autorizados (máx. 5, cada uno acepta una invitación); dominio propio verificado con registros SPF y DKIM; el adaptador usa `fetch` nativo (sin SDK). Verificado el 2026-10-17 contra la documentación oficial y la API (dominio sandbox del owner en estado `active`). | Proveedor de email (ADR-016). |
 | WalletConnect / Reown | projectId en `https://dashboard.reown.com` (cloud.reown.com redirige); allowlist de dominios por proyecto (localhost siempre permitido; cambios tardan 15 min). wagmi 3.7.7, @wagmi/core 3.6.5, @wagmi/connectors 8.2.0 (SDKs de wallets como peers opcionales); Coinbase EOA-only: `coinbaseWallet({ preference: { options: 'eoaOnly' } })`. | Conectores sólo en Recovery (lazy). |
 | Verificación de contratos | Etherscan API V2 (una key para todas las cadenas, `chainid=8453`); keys de BaseScan ya no sirven; Base es "Paid Tier Only" para la API general pero **verificación y ABI funcionan en free tier**. `forge verify-contract` lee `ETHERSCAN_API_KEY`. | P25. |
 | Base finalidad | Docs oficiales: L2 block ~2 s; inclusión en batch L1 ~2 min (nunca reorgeado); finalidad L1 ~20 min. **Upgrade Denim (bloques de 200 ms) apunta a mainnet en noviembre de 2026**: no medir confirmaciones por cantidad de bloques; usar tags `safe`/`finalized` o tiempo. | ADR-018. |
@@ -270,7 +270,7 @@ Liquidez USDC/USDT observada (bloque 52700000 / 52700217): pool v3 0,01 % `liqui
 | kysely · pg | 0.29.6 · 8.23.1 | registry npm |
 | bullmq · ioredis | 6.3.15 · 6.0.0 | registry npm |
 | pino · prom-client | 10.4.0 · 15.1.3 | registry npm |
-| @node-rs/argon2 · otpauth · postmark · nodemailer | 2.2.2 · 9.5.2 · 5.1.0 · 10.1.2 | registry npm |
+| @node-rs/argon2 · otpauth · nodemailer | 2.2.2 · 9.5.2 · 10.1.2 | registry npm |
 | Vitest · @playwright/test | 5.0.5 · 1.64.1 | registry npm |
 | testcontainers (+ módulos postgresql/redis) | 12.2.1 | registry npm |
 | ESLint · typescript-eslint · Prettier | 10.13.0 · 8.71.2 · 3.9.10 | registry npm |
@@ -306,7 +306,7 @@ Cada ADR se materializa como archivo en `wallet/docs/adr/` en P01. Ninguna decis
 | ADR-013 | Criptografía cliente: CSPRNG WebCrypto; secp256k1 con `@noble/curves`; Argon2id con `@noble/hashes` en Web Worker, 64 MiB/t=3/p=4 (presupuesto: desbloqueo ≤ 3 s p95 en el perfil móvil de referencia; si no se cumple, en Wallet se adopta `hash-wasm` 4.12.0 fijado tras revisión — Recovery no habilita WASM y acepta el desbloqueo más lento); HKDF y AES-256-GCM con WebCrypto; wordlist `MTW-WORDLIST-V1` = niceware 4.0.0 (2^16). | V9 §4/§5; librerías mantenidas y ya presentes en el árbol de viem. |
 | ADR-014 | Signer S **self-hosted**: signer-service independiente por shard (mTLS sobre red Docker interna, política propia con snapshot firmado, DB propia, atestación de cada S creada) con **`SelfHostedSoftwareSignerProvider`**: una clave secp256k1 por Safe, generada con CSPRNG dentro del signer y guardada como **keystore Ethereum V3 cifrado** (scrypt + AES-128-CTR, formato estándar interoperable con geth, Foundry y Web3Signer) en el volumen del shard; la contraseña de cada keystore se deriva con HKDF-SHA256 de una **credencial de desbloqueo** por shard que vive aparte (secret de Docker Compose), nunca junto a los keystores; firma del hash EIP-712 de la SafeTx y del hash de la tx EIP-1559 con `@noble/curves` (low-s, RFC 6979). Ciclo de vida completo en [B-SIG-08]. `DevelopmentSignerProvider` = el mismo provider con guardas de desarrollo; `HardwareSignerProvider` (HSM físico propio vía PKCS#11/YubiHSM) queda como hardening futuro opcional. | Verificado 2026-10-16: **Clef** fue retirado de go-ethereum (v1.17.4) y su repo standalone `ethereum/clef` no tiene releases ni commits desde el 2026-06-02; además `account_new` exige UI. **Web3Signer** (Consensys, Apache-2.0, 26.9.0, mantenido) firma digests de 32 bytes (`applyHash: false`), soporta `eth_signTransaction` EIP-1559, `/reload` y miles de claves, pero **no crea claves** y no tiene política: nuestro servicio igual tendría que generar y cifrar cada keystore con la misma credencial, sumando una JVM por shard sin aislamiento real. Por la regla del owner (ciclo de vida dinámico no cubierto) se elige el provider propio, que conserva el formato V3 para migrar a Web3Signer o a un HSM más adelante sin rotar claves. Un KMS cloud quedó descartado: producción sin cloud. |
 | ADR-015 | Swap: `SwapExecutorV3` propio contra el **pool canónico Uniswap v3 USDC/USDT 0,01 %** (`0xD56d…5DA1`) por llamada directa al pool con callback validado; sin router, sin Permit2, sin calldata arbitraria. Dos SafeTx (nonce N `approve(executor, amountIn)` exacto; nonce N+1 `swap`). El Guard impone post-condiciones on-chain: la Safe pierde ≤ `amountIn` del token de entrada, recibe ≥ `minAmountOut` del otro, `minAmountOut ≥ amountIn·(1−1 %)`, y la allowance Safe→executor queda en 0. Executors registrados en `PolicyRegistry` (permite un `SwapExecutorV4` futuro con timelock). | Menor superficie: el pool v3 es inmutable y verificable por codehash; v4 (PoolManager singleton) tiene más complejidad por una mejora de precio de ~0,006 %. Las post-condiciones del Guard acotan lo que puede pasar **dentro** de la SafeTx del swap (pérdida ≤ amountIn, recepción ≥ piso); la allowance residual entre N y N+1 es segura sólo porque todo executor registrado debe debitar exclusivamente a `msg.sender` ([C-SWP-05], requisito de registro testeado). Riesgo residual documentado: MEV/sandwich acotado por el piso de 0,5 %. |
-| ADR-016 | Email transaccional: **Postmark** (servidores separados staging/producción, stream `outbound`, dominio verificado con DKIM + Return-Path). Local/CI: **Mailpit** (SMTP real local) para los flujos deterministas, más tests obligatorios contra la API real de Postmark (`POSTMARK_API_TEST`) y de entrega real a una casilla de prueba (`EMAIL_TEST_*`). | Proveedor real con separación por servidor/entorno; Mailpit permite E2E que leen OTPs sin mocks del producto. |
+| ADR-016 | Email transaccional: **Mailgun** (cuenta del owner; dominio de envío propio por entorno verificado con SPF y DKIM; API HTTP con `fetch` nativo). Local/CI: **Mailpit** (SMTP real local) para los flujos deterministas, más tests obligatorios contra la API real de Mailgun con el dominio sandbox y de entrega real a una casilla autorizada (`EMAIL_TEST_*`, lectura de códigos por IMAP). | Proveedor real ya contratado por el owner (2026-10-17); separación por entorno y entrega verificable de punta a punta. |
 | ADR-017 | RPC: **Alchemy** (primario, archive, también para el fork) + **QuickNode** (secundario) en backend; el signer usa **sus propias** claves de ambos; cada frontend usa su propia clave Alchemy con allowlist de dominio. Lecturas sensibles con quórum en bloque fijo. | Prompt §17; independencia entre trust domains. |
 | ADR-018 | Finalidad en Base: `SUBMITTED` → `MINED` (receipt) → `CONFIRMED` (bloque ≤ head `safe` y hash re-verificado por quórum; típico 1–2 min) → `FINALIZED` (bloque ≤ head `finalized`; ~20 min). **Sin umbrales por cantidad de bloques en mainnet** (Denim: bloques de 200 ms). Local/fork: profundidad configurable. | Docs de Base (§3.5). |
 | ADR-019 | **Sin batching en V1**: una `execTransaction` por tx; paralelo entre Safes, secuencial por Safe. | Cross-Safe imposible (S distinta por Safe y `msg.sender == S`); intra-Safe requiere DELEGATECALL (prohibido). Base es barato; el riesgo no compensa (CF-05). |
@@ -348,7 +348,7 @@ Cada ADR se materializa como archivo en `wallet/docs/adr/` en P01. Ninguna decis
  ┌──────────────▼─────────────── api.<WALLET_DOM> ─┬─ api.<RECOVERY_DOM> ───────────────────────┐
  │ Backend (Fastify)  ── Postgres (fuente de verdad) ── Valkey/BullMQ (transporte)           │
  │  auth, sesiones, PlatformSession, wallets, whitelist, send, swap, operations,            │
- │  rotations, recovery, policy (snapshot firmado), audit, email (Postmark), RPC quórum     │
+ │  rotations, recovery, policy (snapshot firmado), audit, email (Mailgun), RPC quórum      │
  │ Worker S (pipeline de ejecución) · Chain watcher/reconciler · Indexer de transfers       │
  │ Gas tank / relayer                                                                       │
  │ (Integrity monitor de releases: contenedor propio + chequeo off-host en GitHub Actions)  │
@@ -866,7 +866,7 @@ Swagger: `/docs` (Swagger UI) y `/docs/openapi.json` en ambos listeners. En **lo
 
 ### 7.12 Email [B-MAIL]
 
-- **[B-MAIL-01]** `EmailProvider` con adaptadores `postmark` (staging/producción; stream transaccional) y `smtp` (local/CI → Mailpit). Envío vía outbox (`email_outbox` lógico en `outbox_events`) con reintentos.
+- **[B-MAIL-01]** `EmailProvider` con adaptadores `mailgun` (staging/producción y tests reales; API HTTP con `fetch` nativo y autenticación Basic) y `smtp` (local/CI → Mailpit). Envío vía outbox (`email_outbox` lógico en `outbox_events`) con reintentos.
 - **[B-MAIL-02] Plantillas sensibles** (whitelist, rotaciones, recovery, step-up, reset): muestran **acción**, **dirección completa** (checksum EIP-55, en grupos de 4), **red** ("Base mainnet — chainId 8453"; en local "Base fork local — chainId 8453"), **Safe**, **expiración** (hora local del usuario y UTC), IP/dispositivo de origen y qué hacer si no fue el usuario. Nunca incluyen links que ejecuten acciones; el código se ingresa en la app.
 - **[B-MAIL-03]** Notificaciones: nuevo login, reset de password, whitelist solicitada/activada/removida, rotación propuesta/cancelada/ejecutada, recovery iniciado, operación de alto valor ejecutada, pausa de cooperación por integridad.
 
@@ -1155,7 +1155,7 @@ CHECKPOINT Pxx
 
 **Archivos/componentes:** `wallet/package.json` (orquestación), `wallet/docker-compose.yml`, `wallet/scripts/preflight` (bash) y `wallet/scripts/preflight.d/*.mjs`, `wallet/scripts/tools/{bootstrap,versions.json}`, `wallet/scripts/env.sh`, `wallet/scripts/lib/*.sh`, `wallet/scripts/start-fork`, `stop-fork`, `reset-fork`, `wallet/scripts/secrets-local`, `wallet/.env.example`, `wallet/.env`, `wallet/docs/SETUP_EXTERNAL_SERVICES.md`.
 
-**Dependencias:** ninguna. Credenciales externas de local: `BASE_RPC_URL` (archive), `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY` y `ETHERSCAN_API_KEY` (provistas por el owner el 2026-10-17), más las de los tests contra servicios reales: `GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`. El preflight las busca y valida (P00.T08) y sólo pide las que no encuentre (`SETUP_EXTERNAL_SERVICES.md` → USER ACTION REQUIRED).
+**Dependencias:** ninguna. Credenciales externas de local: `BASE_RPC_URL` (archive), `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY` , `ETHERSCAN_API_KEY` y Mailgun (`EMAIL_PROVIDER_API_KEY`, `EMAIL_PROVIDER_DOMAIN`, `EMAIL_PROVIDER_BASE_URL`; dominio sandbox) (provistas por el owner el 2026-10-17), más las de los tests contra servicios reales: `GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`. El preflight las busca y valida (P00.T08) y sólo pide las que no encuentre (`SETUP_EXTERNAL_SERVICES.md` → USER ACTION REQUIRED).
 
 **Implementación requerida:**
 
@@ -1177,8 +1177,8 @@ CHECKPOINT Pxx
       Verificación: `node --test scripts/preflight.d/__tests__/`.
 - [ ] **P00.T07** — Actualizar `SETUP_EXTERNAL_SERVICES.md` para que cada ancla citada por el preflight exista (test que compara anclas).
       Verificación: `node --test scripts/preflight.d/__tests__/anchors.test.mjs`.
-- [ ] **P00.T08** — Credenciales externas con autodiscovery: el preflight busca `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*` en las variables de entorno del proceso y en `wallet/.env`, las valida **sin mostrarlas** (PF-13, PF-14, PF-19, PF-20, PF-30, PF-31) y las reutiliza; sólo las que falten o no validen se informan como **USER ACTION REQUIRED** (con su sección de `SETUP_EXTERNAL_SERVICES.md`) y en ese caso STOP.
-      Verificación: PF-11, PF-13, PF-14, PF-19, PF-20, PF-30 y PF-31 en verde (credencial encontrada y validada sin mostrarla) o reporte USER ACTION REQUIRED con la sección exacta de SETUP; nunca se pegan valores en el planner.
+- [ ] **P00.T08** — Credenciales externas con autodiscovery: el preflight busca `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `GOOGLE_DRIVE_TEST_*`, `EMAIL_TEST_*` y `EMAIL_PROVIDER_*` (Mailgun) en las variables de entorno del proceso y en `wallet/.env`, las valida **sin mostrarlas** (PF-13, PF-14, PF-19, PF-20, PF-30, PF-31, PF-32) y las reutiliza; sólo las que falten o no validen se informan como **USER ACTION REQUIRED** (con su sección de `SETUP_EXTERNAL_SERVICES.md`) y en ese caso STOP.
+      Verificación: PF-11, PF-13, PF-14, PF-19, PF-20, PF-30, PF-31 y PF-32 en verde (credencial encontrada y validada sin mostrarla) o reporte USER ACTION REQUIRED con la sección exacta de SETUP; nunca se pegan valores en el planner.
 - [ ] **P00.T09** — Ejecutar `cd wallet && docker compose up -d && pnpm preflight` hasta obtener `PREFLIGHT PASSED`; pegar el resumen (sin secretos) en el Registro de ejecución.
       Verificación: salida `PREFLIGHT PASSED` y resumen pegado (sin secretos) en §13.
 
@@ -1206,7 +1206,7 @@ Checks del preflight:
 | PF-18 | `DATABASE_URL` y `REDIS_URL` conectan desde el host | todos |
 | PF-19 | `WALLETCONNECT_PROJECT_ID`: 32 hex + validación online `POST https://rpc.walletconnect.org/v1/?chainId=eip155:8453&projectId=<ID>` con `eth_chainId` y header `Origin: <RECOVERY_ORIGIN>` → debe responder 200 con `0x2105` (un projectId inválido responde 401, verificado el 2026-10-16) | todos |
 | PF-20 | `GOOGLE_CLIENT_ID_WALLET` y `GOOGLE_CLIENT_ID_RECOVERY`: formato, distintos entre sí, y el endpoint de autorización no devuelve `invalid_client`/`redirect_uri_mismatch` para el origin del entorno | todos |
-| PF-21 | Email: local → Mailpit SMTP+API; postmark → `GET https://api.postmarkapp.com/server` con el token devuelve 200 y el remitente está verificado | todos |
+| PF-21 | Email: local → Mailpit SMTP+API; mailgun → `GET <EMAIL_PROVIDER_BASE_URL>/v3/domains/<EMAIL_PROVIDER_DOMAIN>` con la API key devuelve 200 y `state: active` | todos |
 | PF-22 | `ETHERSCAN_API_KEY` válida (API v2, `chainid=8453`) | staging/prod/deploy |
 | PF-23 | Disco libre ≥ 15 GB; RAM ≥ 8 GB (WARN si menor) | local |
 | PF-24 | Branch == `feat/walletWeb/cmarchese` (local) y `gitleaks` sin hallazgos en el índice | local |
@@ -1216,8 +1216,8 @@ Checks del preflight:
 | PF-28 | Certificados mTLS presentes, no vencidos, CA correcta (local: regenerados automáticamente si faltan o vencen) | todos |
 | PF-29 | `OPAQUE_SERVER_SETUP` presente (desde P10; se genera con `pnpm --dir backend/app opaque:setup`) | desde P10 |
 | PF-30 | `GOOGLE_DRIVE_TEST_*`: el refresh token obtiene un access token (`POST https://oauth2.googleapis.com/token` → 200) y `GET https://www.googleapis.com/drive/v3/files?spaces=appDataFolder` responde 200 | local/CI |
-| PF-31 | `EMAIL_TEST_*`: la casilla de prueba acepta la contraseña de aplicación por SMTP (`smtp.gmail.com:587`, STARTTLS) e IMAP (`imap.gmail.com:993`) | local/CI |
-| PF-32 | API real de Postmark con el token oficial de pruebas: `POST https://api.postmarkapp.com/email` con `X-Postmark-Server-Token: POSTMARK_API_TEST` → 200 y `ErrorCode: 0` | local/CI |
+| PF-31 | `EMAIL_TEST_*`: la casilla de prueba acepta la contraseña de aplicación por IMAP (`imap.gmail.com:993`) | local/CI |
+| PF-32 | API real de Mailgun para los tests: `GET <EMAIL_PROVIDER_BASE_URL>/v3/<EMAIL_PROVIDER_DOMAIN>/events?limit=1` con la API key → 200 | local/CI |
 | PF-33 | Resumen final y código de salida | todos |
 
 **Tests a implementar:**
@@ -1333,7 +1333,7 @@ Checks del preflight:
       Verificación: `pnpm ci:local` corre todos los scripts y termina en verde.
 - [ ] **P02.T03** — Workflows: acciones fijadas por **SHA de commit**, `permissions: contents: read` por defecto, sin `pull_request_target`, `concurrency` por ref, caché de Foundry RPC por `FORK_BLOCK_NUMBER`, secretos por **GitHub Environment** separado por área (el workflow de Recovery no puede leer secretos de Wallet y viceversa), runners efímeros. `wallet-e2e.yml` en PR con label `e2e` y nightly. `wallet-repro-build.yml` compila cada frontend dos veces en jobs distintos y compara manifests. Jobs cubiertos: lint, typecheck, tests, fork tests, fuzz/invariants, Slither, security scans, builds y builds reproducibles. **Ningún workflow despliega** (los artefactos de release se agregan en P26.T02.a, también sin deploy).
       Verificación: un PR de prueba dispara sólo los workflows del área tocada.
-- [ ] **P02.T04** — `wallet/docs/CI.md`: matriz de jobs, secretos por Environment y required checks. El agente aplica con `gh api` la branch protection de la rama principal (required checks, revisión de CODEOWNERS, "include administrators", commits firmados; el `gh` del entorno tiene permisos de administrador, verificado el 2026-10-17), carga con `gh secret set` los secrets que usa CI (`BASE_RPC_URL` —la misma URL de local—, `GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`) y crea los Environments sin reviewer obligatorio, restringidos a tags `wallet-v*` protegidos por un ruleset, para que la ejecución no frene.
+- [ ] **P02.T04** — `wallet/docs/CI.md`: matriz de jobs, secretos por Environment y required checks. El agente aplica con `gh api` la branch protection de la rama principal (required checks, revisión de CODEOWNERS, "include administrators", commits firmados; el `gh` del entorno tiene permisos de administrador, verificado el 2026-10-17), carga con `gh secret set` los secrets que usa CI (`BASE_RPC_URL` —la misma URL de local—, `GOOGLE_DRIVE_TEST_*`, `EMAIL_TEST_*` y `EMAIL_PROVIDER_*`) y crea los Environments sin reviewer obligatorio, restringidos a tags `wallet-v*` protegidos por un ruleset, para que la ejecución no frene.
       Verificación: `node scripts/check-docs.mjs` (incluye `docs/CI.md`).
 
 **Tests a implementar:**
@@ -1343,7 +1343,7 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P02.MAN** — verificar con `gh api` que los Environments tienen secretos separados, que `production` sólo acepta tags `wallet-v*` protegidos y que existen los secrets de CI (`BASE_RPC_URL`, `GOOGLE_DRIVE_TEST_*`, `EMAIL_TEST_*`).
+- [ ] **P02.MAN** — verificar con `gh api` que los Environments tienen secretos separados, que `production` sólo acepta tags `wallet-v*` protegidos y que existen los secrets de CI (`BASE_RPC_URL`, `GOOGLE_DRIVE_TEST_*`, `EMAIL_TEST_*`, `EMAIL_PROVIDER_*`).
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** `pnpm ci:local` verde y workflows verdes en el branch.
@@ -1679,7 +1679,7 @@ Checks del preflight:
 
 **Implementación requerida:**
 
-- [ ] **P08.T01** — Crear el proyecto con versiones exactas (§3.6): Fastify 5, Zod 4, `fastify-type-provider-zod`, `@fastify/swagger`, `@fastify/swagger-ui`, `@fastify/cookie`, `@fastify/helmet`, `@fastify/cors`, `@fastify/rate-limit`, Kysely + `pg`, BullMQ + `ioredis`, viem, pino, prom-client, `jose`, `@node-rs/argon2`, `@serenity-kit/opaque`, `otpauth`, `postmark`, `nodemailer`; dev: TypeScript 6.0.x, Vitest, Testcontainers, ESLint + typescript-eslint, Prettier. Settings de supply chain de P01.T05.
+- [ ] **P08.T01** — Crear el proyecto con versiones exactas (§3.6): Fastify 5, Zod 4, `fastify-type-provider-zod`, `@fastify/swagger`, `@fastify/swagger-ui`, `@fastify/cookie`, `@fastify/helmet`, `@fastify/cors`, `@fastify/rate-limit`, Kysely + `pg`, BullMQ + `ioredis`, viem, pino, prom-client, `jose`, `@node-rs/argon2`, `@serenity-kit/opaque`, `otpauth`, `nodemailer`; dev: TypeScript 6.0.x, Vitest, Testcontainers, ESLint + typescript-eslint, Prettier. Settings de supply chain de P01.T05.
       Verificación: `pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint`.
 - [ ] **P08.T02** — `src/config/env.ts`: schema Zod por `APP_ENV` (local/staging/production); toda variable secreta acepta también `<VAR>_FILE` (lectura del secret de Docker Compose en `/run/secrets/…`, ADR-030) y en staging/prod **exige** la forma `_FILE`; falla si detecta valores de ejemplo o secretos con baja entropía; nunca imprime valores. (El mismo patrón se replica, implementado por separado, en `backend/signer` y `backend/integrity-monitor`.)
       Verificación: tests de configuración (faltante, formato inválido, valor de ejemplo en prod → error).
@@ -1741,7 +1741,7 @@ Checks del preflight:
 
 **Objetivo:** cuenta centralizada production-grade [B-AUTH] + proveedor de email real [B-MAIL].
 
-**Archivos/componentes:** `src/auth/{password.ts,sessions.ts,csrf.ts,totp.ts,otp.ts,risk.ts}`, `src/api/routes/v1/{auth,sessions,users}.ts`, `src/email/{provider.ts,postmark.ts,smtp.ts,templates/*}`.
+**Archivos/componentes:** `src/auth/{password.ts,sessions.ts,csrf.ts,totp.ts,otp.ts,risk.ts}`, `src/api/routes/v1/{auth,sessions,users}.ts`, `src/email/{provider.ts,mailgun.ts,smtp.ts,templates/*}`.
 
 **Dependencias:** P08.
 
@@ -1759,7 +1759,7 @@ Checks del preflight:
       Verificación: `pnpm --dir backend/app vitest run test/security/bruteforce-totp.test.ts`.
 - [ ] **P09.T06** — TOTP + códigos de recuperación [B-AUTH-09].
       Verificación: `pnpm --dir backend/app vitest run test/auth/totp.test.ts`.
-- [ ] **P09.T07** — `EmailProvider` (Postmark + SMTP/Mailpit) con outbox y reintentos; plantillas [B-MAIL-02/03] con tests de snapshot que verifican presencia de acción, dirección completa, red y expiración.
+- [ ] **P09.T07** — `EmailProvider` (Mailgun + SMTP/Mailpit) con outbox y reintentos; plantillas [B-MAIL-02/03] con tests de snapshot que verifican presencia de acción, dirección completa, red y expiración.
       Verificación: `pnpm --dir backend/app vitest run test/email` (snapshots de plantillas) y email visible en Mailpit (`http://localhost:8025`).
       Verificación adicional (si `EMAIL_PROVIDER_API_KEY` presente): envío real con token de servidor de staging a una casilla de prueba.
 
@@ -1777,9 +1777,9 @@ Checks del preflight:
       Verificación: `pnpm --dir backend/app vitest run test/security/bruteforce-totp.test.ts`.
 - [ ] **P09.TST.f** — atributos de cookies (`__Host-`, HttpOnly, Secure, SameSite=Strict, Path=/) y que la API nunca devuelve tokens de sesión en el body.
       Verificación: `pnpm --dir backend/app vitest run test/security/cookies.test.ts`.
-- [ ] **P09.TST.g** — adaptador `postmark` contra la **API real de Postmark** con el token oficial de pruebas `POSTMARK_API_TEST`: cada plantilla se envía y Postmark la valida (`ErrorCode: 0`) sin entregarla.
-      Verificación: `pnpm --dir backend/app vitest run test/email/postmark.live.test.ts`.
-- [ ] **P09.TST.h** — entrega real: el adaptador `smtp` envía la verificación de email, los OTP y el reset de password a una **casilla real** (`EMAIL_TEST_ADDRESS`, SMTP de Gmail con contraseña de aplicación) y el test lee cada código por IMAP y completa el flujo.
+- [ ] **P09.TST.g** — adaptador `mailgun` contra la **API real de Mailgun** con el dominio sandbox: cada plantilla se envía a la casilla autorizada `EMAIL_TEST_ADDRESS` y el test confirma el evento `delivered` en la Events API.
+      Verificación: `pnpm --dir backend/app vitest run test/email/mailgun.live.test.ts`.
+- [ ] **P09.TST.h** — entrega real de punta a punta: la verificación de email, los OTP y el reset de password salen por Mailgun (dominio sandbox, remitente `no-reply@<EMAIL_PROVIDER_DOMAIN>`) hacia la casilla real `EMAIL_TEST_ADDRESS`, y el test lee cada código por IMAP y completa el flujo.
       Verificación: `pnpm --dir backend/app vitest run test/email/real-delivery.live.test.ts`.
 
 **Checks manuales:**
@@ -2622,7 +2622,7 @@ Checks del preflight:
       Verificación: `pnpm --dir frontend/wallet test:drive-live && pnpm --dir frontend/recovery test:drive-live` en verde (sin credenciales → STOP en el preflight).
 - [ ] **P22.T05** — Matriz: Chromium, Firefox y WebKit en cada `pnpm ci:local` y en CI (PR con label `e2e` y nightly).
       Verificación: `pnpm --dir e2e test --project=chromium --project=firefox --project=webkit`.
-- [ ] **P22.T06** — Spec E2E `real-email.spec.ts`: crear cuenta, verificar email y recuperar password con **entrega real** (backend con el adaptador `smtp` hacia la casilla de `EMAIL_TEST_*`; el test lee los códigos por IMAP). El resto de los specs usa Mailpit para ser determinista.
+- [ ] **P22.T06** — Spec E2E `real-email.spec.ts`: crear cuenta, verificar email y recuperar password con **entrega real** (backend con el adaptador `mailgun` y el dominio sandbox hacia la casilla de `EMAIL_TEST_*`; el test lee los códigos por IMAP). El resto de los specs usa Mailpit para ser determinista.
       Verificación: `pnpm --dir e2e test specs/real-email.spec.ts`.
 
 **Tests a implementar:**
@@ -2786,7 +2786,7 @@ Checks del preflight:
 
 **Implementación requerida:**
 
-- [ ] **P25.T01** — Matriz de entornos (local / staging / production) en `docs/ENVIRONMENTS.md`: por entorno, proyecto de Docker Compose y directorio de secrets propios, DB y volúmenes, Valkey, clientes OAuth (proyectos Google distintos), shards del signer con keystores y credenciales de desbloqueo propios, secretos de sesión/CSRF/OPAQUE/pepper/field key/audit key, servidor de Postmark, claves RPC, dominios, Governance Safe, guardianes, claves de release y de policy. **Nada se comparte entre staging y producción**; si conviven en un mismo host lo hacen como proyectos Compose separados (decisión de despliegue, no del planner).
+- [ ] **P25.T01** — Matriz de entornos (local / staging / production) en `docs/ENVIRONMENTS.md`: por entorno, proyecto de Docker Compose y directorio de secrets propios, DB y volúmenes, Valkey, clientes OAuth (proyectos Google distintos), shards del signer con keystores y credenciales de desbloqueo propios, secretos de sesión/CSRF/OPAQUE/pepper/field key/audit key, dominio de Mailgun, claves RPC, dominios, Governance Safe, guardianes, claves de release y de policy. **Nada se comparte entre staging y producción**; si conviven en un mismo host lo hacen como proyectos Compose separados (decisión de despliegue, no del planner).
       Verificación: `node scripts/check-docs.mjs` y revisión de un agente revisor independiente registrada en §13.
 - [ ] **P25.T02** — `DeployBase.s.sol` [C-SCR-04]: keystore cifrado o hardware wallet, `--broadcast` explícito, `PolicyRegistry` en RESTRICTED con el set V1 [C-POL-04], registro de tokens y executor; escribe el JSON de deployment con, por contrato: address, `proxy: false` e `implementation: null` (ningún contrato propio usa proxy; se deja explícito), codehash, constructor args, compiler y settings, commit, deployer, tx hash, bloque, URL de verificación.
       Verificación: `forge script script/DeployBase.s.sol --fork-url $LOCAL_RPC_URL` (sin `--broadcast` a mainnet) genera el JSON válido contra `deployments/schema.json`.
@@ -2870,15 +2870,15 @@ Checks del preflight:
       Verificación: `node scripts/check-docs.mjs` (sección presente en `DEPLOYMENT_VPS.md`).
 - [ ] **P26.T11** — **Headers de seguridad** verificados en el ensayo local de producción (respuestas de `wallet-web`, `recovery-web` y API: CSP, Trusted Types, HSTS, COOP/COEP/CORP, Referrer-Policy, Permissions-Policy, nosniff).
       Verificación: `pnpm --dir e2e test specs/security/headers.spec.ts --config=prod-rehearsal`.
-- [ ] **P26.T12** — **Monitoreo self-hosted**: perfil `observability` en el compose de producción (Prometheus, Alertmanager con email por SMTP de Postmark y webhook si se configura `ALERT_WEBHOOK_URL`, y Grafana) con las reglas y dashboards de P24.
+- [ ] **P26.T12** — **Monitoreo self-hosted**: perfil `observability` en el compose de producción (Prometheus, Alertmanager con email por el SMTP del dominio en Mailgun y webhook si se configura `ALERT_WEBHOOK_URL`, y Grafana) con las reglas y dashboards de P24.
       Verificación: en el ensayo local una alerta provocada llega al receptor de prueba (Mailpit).
 - [ ] **P26.T13** — **Retención de logs**: driver `local` con rotación (tamaño y cantidad de archivos por servicio), logs de aplicación 90 días por defecto (configurable), exports de auditoría con retención de 7 años en la copia off-host (valor por defecto ajustable).
       Verificación: `node scripts/check-compose-hardening.mjs` verifica la configuración de logging de cada servicio.
-- [ ] **P26.T14** — **Rotación de claves** (runbook + ensayo local): emisor de PlatformSession (kid con ventana dual), CSRF/sesión, pepper, field key, audit chain key, OPAQUE server setup (re-registro con `KEY_RESTORE`), Postmark, RPC, claves de release (overlap en el monitor), clave de policy, S por Safe (timelock + firma del usuario), credencial de desbloqueo de shard (re-cifrado de keystores), gas tank, certificados mTLS.
+- [ ] **P26.T14** — **Rotación de claves** (runbook + ensayo local): emisor de PlatformSession (kid con ventana dual), CSRF/sesión, pepper, field key, audit chain key, OPAQUE server setup (re-registro con `KEY_RESTORE`), Mailgun, RPC, claves de release (overlap en el monitor), clave de policy, S por Safe (timelock + firma del usuario), credencial de desbloqueo de shard (re-cifrado de keystores), gas tank, certificados mTLS.
       Verificación: cada rotación ejecutada en el ensayo local, registrada en §13.
 - [ ] **P26.T15** — **Rollback**: volver al `images.lock` anterior (por digest), migraciones compatibles hacia atrás, frontends con la imagen anterior, contratos inmutables (nueva factory sólo para wallets nuevas).
       Verificación: ensayo local de deploy → rollback → deploy con `scripts/deploy/deploy.sh`, registrado en §13.
-- [ ] **P26.T16** — **Procedimientos de incidente**: kill-switch de cooperación de S (comando firmado por dos operadores) y playbooks: **root del host comprometido** (asumir S y frontends comprometidos: detener servicios, avisar a los usuarios que no desbloqueen U ni R, preservar evidencia, restablecer desde artefactos firmados y rotar S de todas las Safes vía timelock), filtración de keystores del signer, compromiso del backend, proveedor RPC, blacklist de Circle sobre una Safe, incidente del bridge de USDT, caída de Google o Postmark.
+- [ ] **P26.T16** — **Procedimientos de incidente**: kill-switch de cooperación de S (comando firmado por dos operadores) y playbooks: **root del host comprometido** (asumir S y frontends comprometidos: detener servicios, avisar a los usuarios que no desbloqueen U ni R, preservar evidencia, restablecer desde artefactos firmados y rotar S de todas las Safes vía timelock), filtración de keystores del signer, compromiso del backend, proveedor RPC, blacklist de Circle sobre una Safe, incidente del bridge de USDT, caída de Google o Mailgun.
       Verificación: simulacro del kill-switch y del playbook de host comprometido en el ensayo local, registrado en §13.
 - [ ] **P26.T16.a** — **Scripts de despliegue para uso manual posterior** y `docs/DEPLOYMENT_VPS.md` paso a paso (requisitos del host Linux, usuarios y permisos, instalación de Docker, directorios de secretos, primer arranque, alta de shards, backups off-host, contrato con el reverse proxy, verificación): `deploy.sh` (verifica firmas `cosign` y digests de `images.lock`, migra, reinicia en orden y corre healthchecks), `healthcheck.sh`, `verify-images.sh`. **No se ejecutan contra la VPS en ninguna fase de este planner.**
       Verificación: los scripts corren de punta a punta en el ensayo local (P26.T16.b) y `node scripts/check-docs.mjs` valida la guía.
@@ -3262,7 +3262,7 @@ Mapa de cada requisito importante del prompt (`wallet/prompts/promptV1.md`, secc
 | RQ-95 | Backups agnósticos (PostgreSQL, keystores cifrados del signer, auditoría, configuración) con copia off-host cifrada | instrucción del owner, §38 | ADR-031, [B-DB-BK] | P26.T07, P26.T08, P11.T10 |
 | RQ-96 | Toolchain reproducible con detección y auto-remediación antes de STOP | instrucción del owner | ADR-032, P00 (PF-01…PF-08) | P00.T01.a, P00.T05, P01.T01 |
 | RQ-97 | USDT: representación canónica verificada automáticamente (fuentes oficiales + on-chain) | instrucción del owner | §3.3 | P03.T03, P03.T05 |
-| RQ-98 | Producto final sin pendientes: ejecución de punta a punta sin frenos y tests obligatorios contra servicios reales (Drive, email, Postmark, WalletConnect, RPC, fork de Base) | instrucción del owner (2026-10-17) | R-14, ADR-016, ADR-024 | P00.T08 (PF-30–PF-32), P09.TST.g–h, P19.MAN, P22.T04, P22.T06, P25, P30 |
+| RQ-98 | Producto final sin pendientes: ejecución de punta a punta sin frenos y tests obligatorios contra servicios reales (Drive, entrega de email por Mailgun, WalletConnect, RPC, fork de Base) | instrucción del owner (2026-10-17) | R-14, ADR-016, ADR-024 | P00.T08 (PF-30–PF-32), P09.TST.g–h, P19.MAN, P22.T04, P22.T06, P25, P30 |
 
 ## 13. Registro de ejecución
 
@@ -3272,7 +3272,8 @@ Agregar una fila por sesión de trabajo, por cada CHECKPOINT y ante cualquier bl
 |---|---|---|---|---|
 | 2026-10-16 | Preparación (prompt §47) | Completado | commit de preparación (`git log -1 -- wallet/docs/PLANNER_WALLET_WEB.md`) | Branch `feat/walletWeb/cmarchese` creado desde `main` (`4ed7bf4`). V9 leída completa. Verificación oficial de Safe 1.5.0, Uniswap, USDC/USDT, Base, librerías y servicios (§3). Creados: este planner, `SETUP_EXTERNAL_SERVICES.md`, `.env.example`, `.env` (local, gitignored), `wallet/.gitignore`. Sin implementación de producto. |
 | 2026-10-16 | Corrección del planner (instrucción del owner) | Completado | commit `docs(wallet): adapt planner to self-hosted VPS architecture` | Producción self-hosted en VPS (sin dependencias cloud); signer `SelfHostedSoftwareSignerProvider` tras evaluar Clef y Web3Signer; secretos por Docker Compose secrets; backups con pgBackRest + age; toolchain local con auto-remediación; USDT canónico verificado; CI en raíz aprobado; blockers reducidos a acciones humanas reales (§13.1). |
-| 2026-10-17 | Ajuste del planner (instrucción del owner) | Completado | commit `docs(wallet): run the whole planner on the Base fork with real services` | Ejecución de punta a punta sin frenos (R-14): staging y producción desplegados y probados sobre el fork (P25/P30); `Pxx.MAN` ejecutados por el agente o por un agente revisor independiente; tests obligatorios contra servicios reales (API de Postmark con `POSTMARK_API_TEST`, entrega real de email, API de Drive, relay de WalletConnect); claves de ensayo generadas fuera del repo; fuera del planner sólo queda el despliegue final (§13.1). |
+| 2026-10-17 | Ajuste del planner (instrucción del owner) | Completado | commit `docs(wallet): run the whole planner on the Base fork with real services` | Ejecución de punta a punta sin frenos (R-14): staging y producción desplegados y probados sobre el fork (P25/P30); `Pxx.MAN` ejecutados por el agente o por un agente revisor independiente; tests obligatorios contra servicios reales (API de Mailgun con el dominio sandbox, entrega real de email leída por IMAP, API de Drive, relay de WalletConnect); claves de ensayo generadas fuera del repo; fuera del planner sólo queda el despliegue final (§13.1). |
+| 2026-10-17 | Proveedor de email (instrucción del owner) | Completado | commit `docs(wallet): switch email provider to Mailgun` | Proveedor de email: Mailgun (cuenta del owner), en reemplazo del definido antes; credenciales del dominio sandbox provistas y validadas sin mostrarlas (dominio `active`, región US). |
 | | P00 — PREFLIGHT | Pendiente | | |
 
 ### 13.1 Fuera del planner: despliegue final y servicios
@@ -3283,9 +3284,9 @@ Para ejecutar el planner de punta a punta sólo hace falta lo de `wallet/.env` (
 |---|---|---|---|
 | H-01 | Credenciales de los tests contra servicios reales: `GOOGLE_DRIVE_TEST_CLIENT_ID`, `GOOGLE_DRIVE_TEST_CLIENT_SECRET`, `GOOGLE_DRIVE_TEST_REFRESH_TOKEN`, `EMAIL_TEST_ADDRESS` y `EMAIL_TEST_APP_PASSWORD` (pasos en `SETUP_EXTERNAL_SERVICES.md`) | antes de P00 | Pendiente |
 | H-02 | Dominios de Wallet y Recovery. V9 exige que sean administrativamente independientes: con subdominios de un mismo dominio la cuenta de DNS queda compartida y quien la controle puede redirigir ambas apps (riesgo documentado en `THREAT_MODEL.md`) | despliegue final | Pendiente |
-| H-03 | Servicios de staging/producción para esos dominios: clientes Google OAuth (publicación con verificación de marca), proyectos Reown, apps de Alchemy y endpoints de QuickNode por componente, Postmark (servidores, dominio verificado, aprobación de cuenta) y `ALERT_EMAIL` | despliegue final | Pendiente |
+| H-03 | Servicios de staging/producción para esos dominios: clientes Google OAuth (publicación con verificación de marca), proyectos Reown, apps de Alchemy y endpoints de QuickNode por componente, Mailgun (dominio de envío propio por entorno verificado con SPF/DKIM) y `ALERT_EMAIL` | despliegue final | Pendiente |
 | H-04 | Claves reales para Base mainnet (deployer, owners de la Governance Safe —hardware wallets recomendadas— y guardianes independientes); nunca las de ensayo del fork | despliegue final | Pendiente |
 | H-05 | Aprobación escrita del owner y ETH real para el deploy y el gas tank | despliegue final | Pendiente |
 | H-06 | VPS: DNS, reverse proxy y TLS, custodia offline de las credenciales de desbloqueo del signer (dos custodios) y destino off-host de los backups | despliegue final | Pendiente |
 
-Ya resuelto: credenciales de local provistas el 2026-10-17 (`BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `ETHERSCAN_API_KEY`); CI usa la misma `BASE_RPC_URL` como secret; claves de ensayo de staging/producción generadas por el agente en `~/.config/mtw/` (fuera del repo); push del tag de release aprobado (2026-10-17); archivos de CI en la raíz aprobados (2026-10-16); representación de USDT verificada (§3.3); separación física de repositorios (no bloqueante, P26.T17.b); toolchain con auto-remediación (P00); sin dependencias cloud.
+Ya resuelto: credenciales de local provistas el 2026-10-17 (`BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `ETHERSCAN_API_KEY` y Mailgun con dominio sandbox); CI usa la misma `BASE_RPC_URL` como secret; claves de ensayo de staging/producción generadas por el agente en `~/.config/mtw/` (fuera del repo); push del tag de release aprobado (2026-10-17); archivos de CI en la raíz aprobados (2026-10-16); representación de USDT verificada (§3.3); separación física de repositorios (no bloqueante, P26.T17.b); toolchain con auto-remediación (P00); sin dependencias cloud.
