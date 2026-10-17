@@ -2,7 +2,11 @@
 .env
 .env.*
 !.env.example
+!.env.production.example
 .secrets/
+
+# --- Toolchain local del proyecto (scripts/tools/bootstrap) ---
+.tools/
 
 # --- Dependencias, builds y reportes ---
 node_modules/
@@ -20,11 +24,6 @@ contracts/deployments/local.json
 e2e/test-results/
 e2e/playwright-report/
 e2e/blob-report/
-
-# --- OpenTofu ---
-infra/opentofu/**/.terraform/
-*.tfstate
-*.tfstate.*
 
 # --- Sistema / editor ---
 .DS_Store

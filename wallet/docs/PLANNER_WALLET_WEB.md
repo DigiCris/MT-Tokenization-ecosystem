@@ -10,6 +10,7 @@
 | Requisitos de origen | `wallet/prompts/promptV1.md` |
 | Contexto de negocio | `documentacion/DescripcionProyectoTokenizacion.pdf` (plataforma de tokenización multi-tenant; la wallet custodia USDC/USDT de inversores) |
 | Raíz de todo lo que se construye | `wallet/` (contracts, backend, frontends, docs, scripts, infra) |
+| Target de producción futuro | VPS Linux estándar (Hostinger), self-hosted con Docker; **ninguna fase despliega en la VPS** (el despliegue es manual, posterior, con `docs/DEPLOYMENT_VPS.md`) |
 | Estado | Planner listo para ejecución. **No hay implementación de producto todavía.** |
 
 > Criterio rector: el resultado final debe ser una wallet web **self-custodial real, production-grade y segura**. Este planner no acepta atajos de PoC: no hay mocks del funcionamiento blockchain, no hay simulaciones que reemplacen componentes reales y no se deja ninguna funcionalidad "falsa" a medio hacer. Desarrollo y tests corren contra un **fork reproducible de Base mainnet con Foundry/Anvil**, ejecutando contratos y flujos reales (Safe, USDC, USDT y Uniswap reales del fork).
@@ -40,16 +41,16 @@
 ### 0.1 Reglas de ejecución
 
 - **R-01** Trabajar siempre en el branch `feat/walletWeb/cmarchese`. Antes de cada sesión: `git rev-parse --abbrev-ref HEAD` debe devolver ese nombre.
-- **R-02** Todo artefacto nuevo vive dentro de `wallet/`. `documentacion/` es **sólo lectura**. No se modifica ni se borra nada fuera de `wallet/` (landing, `src/`, `app/`, `package.json` raíz, etc.). Única excepción prevista: los archivos disparadores de CI en `.github/workflows/` (GitHub sólo los lee desde la raíz) y **sólo con aprobación explícita del owner** (ver P02).
+- **R-02** Todo artefacto nuevo vive dentro de `wallet/`. `documentacion/` es **sólo lectura**. No se modifica ni se borra nada fuera de `wallet/` (landing, `src/`, `app/`, `package.json` raíz, etc.). Única excepción: `.github/workflows/wallet-*.yml` y `.github/CODEOWNERS` (GitHub sólo los lee desde la raíz), **aprobados por el owner el 2026-10-16** (P02).
 - **R-03** Ejecutar las fases en orden. No se empieza una fase si el CHECKPOINT de la anterior no está completo, salvo que la fase indique explícitamente que puede correr en paralelo.
 - **R-04** Cada tarea tiene un ID (`P07.T03`). Al terminarla y verificarla se cambia `[ ]` por `[x]` **en el mismo commit** que contiene el trabajo de esa tarea (o en el commit inmediatamente posterior si la tarea no produce archivos).
 - **R-05** Una tarea sólo se marca `[x]` si su "Verificación" pasó. Si una verificación falla, la tarea queda `[ ]` y se documenta el fallo en el [Registro de ejecución](#13-registro-de-ejecución).
 - **R-06** Nunca commitear secretos. `wallet/.env`, keystores, certificados privados y cualquier archivo bajo `wallet/.secrets/` están gitignored. Antes de cada commit: `gitleaks protect --staged --redact` (o `gitleaks git --staged` según la versión fijada en P01).
 - **R-07** Commits profesionales, en formato Conventional Commits, **sin mencionar Claude, Anthropic, AI ni agregar `Co-Authored-By`/coautores**.
 - **R-08** Push a `origin feat/walletWeb/cmarchese` como mínimo al cerrar cada CHECKPOINT.
-- **R-09** No desplegar nada en Base mainnet (ni staging-mainnet ni producción) sin **aprobación explícita y escrita del owner** registrada en el Registro de ejecución.
+- **R-09** No desplegar nada en Base mainnet ni mover fondos reales (staging o producción) sin **aprobación explícita y escrita del owner** registrada en el Registro de ejecución. Ninguna fase accede a la VPS, despliega en ella ni configura reverse proxy, DNS o TLS reales: eso se hace a mano después, siguiendo `docs/DEPLOYMENT_VPS.md`.
 - **R-10** No fijar versiones "de memoria": toda versión/dirección/codehash se verifica contra fuente oficial o lectura on-chain y se registra con fecha y URL (ver §3 y P01/P03).
-- **R-11** Si algo obligatorio falta (herramienta, credencial, servicio): **STOP**. Informar qué falta, qué variable, cómo obtenerla y en qué sección de `wallet/docs/SETUP_EXTERNAL_SERVICES.md` están los pasos. No continuar dejando funcionalidades falsas o desactivadas "temporalmente".
+- **R-11** Si algo obligatorio falta: primero **autodiscovery** (buscar en el repo y en la configuración existente, verificar on-chain, consultar documentación oficial) y **auto-remediación** (instalar la herramienta fijada en `wallet/.tools/`, generar el secreto); sólo si no se puede obtener así: **STOP**, informando qué falta, qué variable, cómo obtenerla y en qué sección de `wallet/docs/SETUP_EXTERNAL_SERVICES.md` ("USER ACTION REQUIRED") están los pasos. No continuar dejando funcionalidades falsas o desactivadas "temporalmente".
 - **R-12** Toda decisión de diseño nueva que no esté en este planner se documenta como ADR en `wallet/docs/adr/` antes de implementarse. No se rediseña la arquitectura sin ADR aprobado por el owner.
 - **R-13** Toda fase que crea o modifica un proyecto actualiza su script `wallet/ci/scripts/ci-<área>.sh` (y su workflow si P02 fue aprobado); el CHECKPOINT de cada fase exige `pnpm ci:local` en verde.
 
@@ -103,8 +104,8 @@ Inspección realizada el 2026-10-16 sobre `main` (commit `4ed7bf4`) antes de cre
 | `documentacion/` | `Wallet_Web_Self_Custodial_V9_Definitiva.pdf` (spec autoritativa, 10 páginas), `DescripcionProyectoTokenizacion.pdf` (contexto: PSAV, plataformas por cliente, USDC, KYC Bitbase, Caja de Valores), `readme.md`. | Sólo lectura. La V9 se leyó completa y gobierna el diseño (§2). |
 | `wallet/` | Sólo `wallet/prompts/promptV1.md`. | Greenfield. Todo el producto se crea bajo `wallet/`. |
 | Git | `main` limpio y sincronizado con `origin/main` (`https://github.com/DigiCris/MT-Tokenization-ecosystem.git`). Branch `feat/walletWeb/cmarchese` no existía: se creó desde `main`. | Todo el trabajo en ese branch. |
-| CI existente | No hay `.github/`. | P02 crea CI; requiere aprobación del owner para escribir en la raíz (`.github/workflows/`). |
-| Toolchain local detectada | Node v22.22.1, npm 10.9.4, pnpm 9.15.9, Foundry (forge/cast/anvil) 1.5.1-stable, Docker 29.6.2, Slither 0.10.4, gitleaks 8.30.1, Python 3.10, psql 14 (cliente). Sin `redis-cli` ni `jq`. | El preflight (P00) exige las versiones fijadas en este planner (Node 26 LTS, pnpm 12.14.0, Foundry v1.8.5, Slither 0.11.6, gitleaks 8.30.1) y explica cómo instalarlas. `jq`/`redis-cli` no son requisitos (el preflight usa Node/Docker). |
+| CI existente | No hay `.github/`. | P02 crea CI; los archivos de la raíz (`.github/workflows/`, `.github/CODEOWNERS`) están aprobados por el owner. |
+| Toolchain local detectada | Node v22.22.1, npm 10.9.4, pnpm 9.15.9, Foundry (forge/cast/anvil) 1.5.1-stable, Docker 29.6.2, Slither 0.10.4, gitleaks 8.30.1, Python 3.10, psql 14 (cliente). Sin `redis-cli` ni `jq`. | El preflight (P00) detecta las versiones y, si no coinciden con las fijadas (Node 26 LTS, pnpm 12.14.0, Foundry v1.8.5, Slither 0.11.6, gitleaks 8.30.1), las instala automáticamente como toolchain local del proyecto (`wallet/.tools/`, descargas oficiales verificadas por checksum, sin sudo, ADR-032); no son acciones manuales. `jq`/`redis-cli` no son requisitos (el preflight usa Node/Docker). |
 | Posible Postgres local en 5432 | Hay cliente psql 14 instalado. | Los servicios de docker compose usan puertos no estándar (55432, 56379) para no colisionar. |
 
 Restricciones operativas confirmadas:
@@ -112,7 +113,8 @@ Restricciones operativas confirmadas:
 1. Todo lo nuevo dentro de `wallet/` (backend, ambos frontends, contratos, docs, scripts, infra).
 2. `documentacion/` es de sólo lectura.
 3. El mock existente en la raíz no se toca.
-4. Los únicos archivos fuera de `wallet/` que el proyecto necesita son los disparadores de GitHub Actions (`.github/workflows/wallet-*.yml`) y opcionalmente `.github/CODEOWNERS`; se crean sólo con aprobación (P02).
+4. Los únicos archivos fuera de `wallet/` que el proyecto necesita son `.github/workflows/wallet-*.yml` y `.github/CODEOWNERS`, aprobados por el owner (P02).
+5. Producción futura: VPS Linux propia (Hostinger), self-hosted; no se usa ningún cloud como requisito y no se accede a la VPS durante este planner.
 
 ---
 
@@ -129,15 +131,16 @@ Restricciones operativas confirmadas:
 
 | ID | Conflicto | Resolución en este planner |
 |---|---|---|
-| CF-01 | V9 §17 pide **repositorio separado** para Wallet y Recovery; el owner pide que todo viva en `wallet/` de este repositorio. | Se desarrolla en `wallet/frontend/wallet` y `wallet/frontend/recovery` como **proyectos totalmente independientes** (package.json, lockfile, toolchain, CI workflow, secretos, credenciales de deploy, hosting, DNS, OAuth y claves de release separados; sin workspace compartido ni imports cruzados; verificado por tests de frontera). En el monorepo son **obligatorios**: `CODEOWNERS` por directorio con equipos revisores distintos por trust domain, branch protection con revisión requerida de ese equipo, "include administrators" y commits firmados (archivos fuera de `wallet/` → requieren la aprobación D-02). **Gate de producción (P26/P30):** el owner debe elegir entre (a) separar en repositorios propios por trust domain — `frontend/wallet`, `frontend/recovery` y backend/signer/contratos — con `git subtree split` y administradores distintos, o (b) aceptar formalmente el monorepo como riesgo residual documentado en `SECURITY_AUDIT.md` (los administradores del repositorio podrían modificar ambos frontends). Hasta esa decisión, producción queda bloqueada. |
+| CF-01 | V9 §17 pide **repositorio separado** para Wallet y Recovery; el owner pide que todo viva en `wallet/` de este repositorio. | Se desarrolla en `wallet/frontend/wallet` y `wallet/frontend/recovery` como **proyectos totalmente independientes** (package.json, lockfile, build, CI workflow, secretos, claves de release, proyecto de Google OAuth propios; sin workspace compartido ni imports cruzados; verificado por tests de frontera). `CODEOWNERS` por trust domain y branch protection con revisión del equipo del dominio, "include administrators" y commits firmados (aprobados por el owner). **No es blocker**: antes de producción, P26.T17.b registra la evaluación de si conviene extraer repositorios. |
 | CF-02 | V9 §3 define `Password U → Argon2id → … → AuthSecret_U → OPAQUE → PlatformSession`; el prompt pide una cuenta centralizada con login/forgot/reset password **independiente** de U/R. | Dos capas explícitas: (1) **Cuenta** (email + password de login, hash Argon2id server-side, sesiones con cookie HttpOnly) y (2) **PlatformSession** sensible de 15 min, obtenida por **OPAQUE con AuthSecret_U** (Wallet) o por **step-up reforzado** (email OTP + TOTP si está activo) para flujos de recovery donde U no está disponible. El reset de la password de login nunca toca U.enc ni el registro OPAQUE. Ver ADR-008. |
 | CF-03 | El prompt sugiere `GOOGLE_CLIENT_SECRET_WALLET`. | No se usa client secret: la integración Drive es 100 % frontend con cliente OAuth público (un secret no puede protegerse en un navegador y además convertiría al backend en parte del flujo de U). Se documenta en `SETUP_EXTERNAL_SERVICES.md`. Ver ADR-012. |
 | CF-04 | El prompt pide atomicidad "approve exacto → swap → allowance 0" cuando sea técnicamente posible; V9 prohíbe DELEGATECALL en el camino asistido (por lo tanto prohíbe MultiSend). | Con CALL único por SafeTx la atomicidad en **una** SafeTx no es posible sin DELEGATECALL. Se adopta el diseño de menor riesgo: `approve(SwapExecutor, amountIn exacto)` + `SwapExecutor.swap(...)` en dos SafeTx consecutivas firmadas en una sola ceremonia, con un `SwapExecutor` que sólo puede debitar a `msg.sender` (la propia Safe) y post-condición on-chain `allowance == 0` tras el swap. Ver ADR-015 y §6 [C-SWP]. |
 | CF-05 | Prompt §14 pide analizar batching; V9 exige `msg.sender = S` y S distinta por Safe, y CALL-only. | Batching estructuralmente incompatible (cross-Safe imposible por S distinta; intra-Safe requiere DELEGATECALL). V1 ejecuta de a una operación por Safe, en paralelo entre Safes. Ver ADR-019. |
-| CF-06 | GitHub Actions sólo lee workflows desde la raíz del repo; el owner pide todo dentro de `wallet/`. | La lógica de CI vive en `wallet/ci/` (scripts y composite actions); en la raíz sólo se agregan disparadores finos `.github/workflows/wallet-*.yml` **previa aprobación**. Sin aprobación, CI corre localmente con `pnpm ci:local` y producción queda bloqueada (P02, P25). |
-| CF-07 | V9 §17 pide "Hosting/DNS separado" y el prompt pide cookies HttpOnly/SameSite. | Cada frontend tiene su propio dominio registrable y su propio host de API (`api.<dominio-wallet>`, `api.<dominio-recovery>`) apuntando al mismo backend; cookies `__Host-` por host, sesiones separadas por cliente. Ver ADR-010. |
+| CF-06 | GitHub Actions sólo lee workflows desde la raíz del repo; el owner pide todo dentro de `wallet/`. | La lógica de CI vive en `wallet/ci/` (scripts y composite actions); en la raíz sólo van `.github/workflows/wallet-*.yml` y `.github/CODEOWNERS`, **aprobados por el owner el 2026-10-16** (se crean en P02, sin volver a preguntar). |
+| CF-07 | V9 §17 pide "Hosting/DNS separado"; el prompt pide cookies HttpOnly/SameSite; el target de producción es una VPS Linux propia. | Cada frontend tiene su propio dominio registrable y su propio host de API (`api.<dominio-wallet>`, `api.<dominio-recovery>`) apuntando al mismo backend; cookies `__Host-` por host y sesiones separadas por cliente (ADR-010). En la VPS cada frontend se sirve desde su propio contenedor estático; el reverse proxy existente y el DNS se configuran a mano al desplegar. |
 | CF-08 | El documento de negocio menciona "direcciones frecuentes … no necesariamente una restricción on-chain"; prompt y V9 exigen whitelist con enforcement final on-chain. | Prevalece prompt + V9: `DestinationWhitelist` on-chain obligatorio para toda salida asistida. |
 | CF-09 | Prompt §38 pide que el planner **termine** con PRODUCTION READINESS, pero §41 pide auditar "una vez implementado todo el planner" y §42–§43 remediar y documentar después. | Se divide en dos: **P26** prepara producción (infra, operación, gates) y **P30 — PRODUCTION READINESS: GATE FINAL Y GO-LIVE** cierra el planner tras auditoría (P27), remediación (P28) y documentación (P29), re-verificando todos los gates antes de cualquier despliegue de producción. |
+| CF-10 | V9 §2/§17 exige trust domains administrativamente independientes; el target de producción es **un único host** (VPS). | El software mantiene la separación (contenedores, redes Docker, UIDs y volúmenes por dominio, secretos por servicio, signer sin puertos publicados, claves de release y de policy **fuera** del host). Riesgo residual documentado: el root del host compromete a la vez S y lo que se sirve a los navegadores, y podría capturar U o R cuando los usuarios las desbloqueen. Controles compensatorios: monitor de integridad off-host (GitHub Actions) con alertas, manifests firmados fuera del host, playbook específico (P26.T16) y recomendación de hardening futuro de servir los frontends desde hosts separados. **No bloquea V1.** |
 
 ### 2.3 Comportamientos deliberados (no son vulnerabilidades)
 
@@ -194,7 +197,7 @@ Todas las verificaciones de §3.2–§3.4 se repitieron **en el bloque 52700000*
 
 Derivación de dirección (SafeProxyFactory v1.5.0): `salt = keccak256(abi.encodePacked(keccak256(initializer), saltNonce))`, `initCode = proxyCreationCode ‖ uint256(uint160(singleton))`, `CREATE2`. Funciones disponibles: `createProxyWithNonce`, `createProxyWithNonceL2` (emite además `ProxyCreationL2` con el initializer), variantes chain-specific; `createProxyWithCallback` fue removida.
 
-Fuentes: `https://github.com/safe-fndn/safe-smart-account/tree/v1.5.0`, `https://github.com/safe-global/safe-deployments/tree/main/src/assets/v1.5.0`, `https://docs.safe.global/advanced/smart-account-overview`, `https://safe-config.safe.global/api/v1/chains/8453/`.
+Explorer: cada dirección de esta sección se consulta en `https://basescan.org/address/<address>` (se registra en `config/chains/base-mainnet.json`). Fuentes: `https://github.com/safe-fndn/safe-smart-account/tree/v1.5.0`, `https://github.com/safe-global/safe-deployments/tree/main/src/assets/v1.5.0`, `https://docs.safe.global/advanced/smart-account-overview`, `https://safe-config.safe.global/api/v1/chains/8453/`.
 
 ### 3.3 Tokens
 
@@ -203,7 +206,7 @@ Fuentes: `https://github.com/safe-fndn/safe-smart-account/tree/v1.5.0`, `https:/
 | **USDC** (nativo de Circle) | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | proxy `0xa6705a10bb756b5dea144591118be77d7af0c3eee3bf2dfe2583dcb0364fefab` | `FiatTokenProxy` con slots ZeppelinOS (no EIP-1967); implementación `FiatTokenV2_2` en `0x2Ce6311ddAE708829bc0784C967b7d77D19FD779` (codehash `0x11b75a237997ab8328f65b2d5a55c10f0346d0a175741ed42ddf4f2c66b9e873`); **upgradeable por Circle**, con **pausa y blacklist**; 6 decimales. Fuente: `https://developers.circle.com/stablecoins/usdc-contract-addresses`. **No usar USDbC** (`0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA`, bridged, no emitido por Circle). |
 | **USDT** (bridged canónico) | `0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2` | `0x478746a8e4b17181c4efbeb2069d86f22ec395788099ed65c9442ca44df265bc` | **No existe USDT emitido por Tether ni USDT0 en Base** (verificado en `tether.to/en/supported-protocols/` y `docs.usdt0.to`). El "USDT" de Base es un `L2StandardERC20` legacy del bridge canónico de Base (Superchain token list), respaldado por USDT de Ethereum en escrow del L1StandardBridge; **no upgradeable, sin admin, sin pausa ni blacklist**; sólo el bridge `0x4200…0010` puede mint/burn. Confianza: bridge y claves de upgrade de Base; Tether no emite ni redime en Base. 6 decimales. |
 
-Gate de producción **G-USDT** (P26): el owner debe aceptar por escrito que "USDT" en V1 es el USDT bridged canónico de Base. Si Tether/USDT0 lanza en Base, incorporarlo es un cambio de policy (registro de token con timelock) + config de frontends + nuevo pool.
+**Decisión V1 (verificada automáticamente, sin confirmación del owner):** es la **única representación canónica vigente** de USDT en Base — es la entrada `base` de USDT en la Superchain token list (`ethereum-optimism.github.io/data/USDT/data.json` → `0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2`), USDT0 no tiene despliegue en Base (`docs.usdt0.to/api/deployments`) y Tether no lista Base — por lo que V1 la usa y documenta sus supuestos de confianza en `docs/EXTERNAL_CONTRACTS.md` (P03). Si en el futuro aparece una representación oficial distinta (Tether o USDT0 en Base), incorporarla es un cambio de policy (registro de token con timelock) + config de frontends + pool, evaluado en ese momento. Explorer: `https://basescan.org/token/0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2`.
 
 ### 3.4 Uniswap en Base
 
@@ -227,7 +230,8 @@ Liquidez USDC/USDT observada (bloque 52700000 / 52700217): pool v3 0,01 % `liqui
 
 | Tema | Hecho verificado | Consecuencia |
 |---|---|---|
-| **Clef** | Removido de go-ethereum en v1.17.4 (2026-06-22, PR #35097: "no longer maintained"); movido a `github.com/ethereum/clef` (sin releases; issue abierto de visualización EIP-712). Último geth: v1.17.8 (sin clef en alltools). `account_new` siempre requiere UI; reglas sólo para ApproveTx/ApproveSignData/ApproveListing. | **No se usa Clef.** "Equivalente aislado" = signer-service + **AWS KMS (HSM, secp256k1 no exportable)**; HSM propio dedicado como evolución (ADR-014). |
+| **Clef** | Removido de go-ethereum en v1.17.4 (2026-06-22, PR #35097: "no longer maintained"); el repo standalone `github.com/ethereum/clef` tiene 3 commits del 2026-06-02 y **ninguna release ni tag** (re-verificado 2026-10-16); `account_new` siempre requiere UI. | **No se usa** (ADR-014). |
+| **Web3Signer** | `Consensys-Incorporated/web3signer`, Apache-2.0, release estable 26.9.0 (2026-09-30), activo. Para secp256k1: `POST /api/v1/eth1/sign/{identifier}` con `applyHash: false` firma un digest de 32 bytes tal cual; JSON-RPC `eth_signTransaction` (legacy y EIP-1559), `eth_signTypedData`, `eth_sign`; `GET /api/v1/eth1/publicKeys`; `/reload` para recargar claves sin reiniciar; keystores V3 con passwords en archivos separados; **no genera claves** y no tiene motor de políticas; aplicación Java con imagen Docker oficial. | Evaluado y **no elegido** para V1 (ADR-014); el formato V3 deja abierta una migración futura. |
 | OPAQUE | **RFC 9807** (jul-2025). `@serenity-kit/opaque` 1.1.0 implementa RFC 9807 (opaque-ke 4.0.0, WASM, Node+browser, `keyStretching` configurable, pentest 7ASecurity). `@cloudflare/opaque-ts` 0.7.5 está en draft-07 y sin mantenimiento. | Se usa `@serenity-kit/opaque`. CSP del Wallet necesita `'wasm-unsafe-eval'`. |
 | Argon2id browser | `@noble/hashes` 2.4.0 (2026-08-27) con `argon2id` estable desde 1.6.0, JS puro; `hash-wasm` 4.12.0 sin releases desde 2024-11. | Se usa `@noble/hashes` en Web Worker con presupuesto de rendimiento (ADR-013). |
 | Argon2id server | `@node-rs/argon2` 2.2.2 (2026-10-06). | Hash de password de cuenta. |
@@ -238,13 +242,17 @@ Liquidez USDC/USDT observada (bloque 52700000 / 52700217): pool v3 0,01 % `liqui
 | Base finalidad | Docs oficiales: L2 block ~2 s; inclusión en batch L1 ~2 min (nunca reorgeado); finalidad L1 ~20 min. **Upgrade Denim (bloques de 200 ms) apunta a mainnet en noviembre de 2026**: no medir confirmaciones por cantidad de bloques; usar tags `safe`/`finalized` o tiempo. | ADR-018. |
 | Anvil | `anvil_reorg`, `anvil_rollback`, tags `safe`/`finalized` disponibles (probado con Anvil 1.5.1 local). | Tests de reorg reales sobre el fork. |
 | Wordlist 2^16 | `niceware` 4.0.0 (MIT): 65.536 palabras únicas `[a-z]+`, ordenadas; SHA-256 (una por línea, LF final) `c2bf4e5b768581bc101620e9ec735e1b91b9b3e33d10535c5fbcada87b1e7e1e`. | `MTW-WORDLIST-V1` (ADR-013). |
+| Docker Compose secrets | Funcionan sin Swarm: `secrets:` con `file:`, montados en `/run/secrets/<nombre>` sólo en los servicios que los declaran; las imágenes oficiales (p. ej. `postgres`) aceptan la convención `*_FILE` (`docs.docker.com/compose/how-tos/use-secrets/`). | Mecanismo de secretos de producción (ADR-030). |
+| Node 26 y Corepack | La documentación de Corepack existe para Node 24 y no para Node 26 (Corepack dejó de distribuirse con Node a partir de la línea 25). | pnpm se instala con el npm del Node fijado (ADR-032). |
+| pgBackRest / age | pgBackRest 2.59.3 (2026-10-04): backup full/diferencial/WAL con repositorio cifrado; age 1.3.2 (2026-08-29): cifrado de archivos con clave pública. | Backups (ADR-031). |
+| Servido estático y monitoreo | Caddy 2.11.7 (2026-10-03, imagen oficial); Prometheus 3.15.0, Alertmanager 0.34.1, Grafana 13.2.4 (OSS). | Contenedores `wallet-web`/`recovery-web` y perfil de observabilidad (P26). |
 
 ### 3.6 Versiones verificadas (2026-10-16) — a fijar exactas en P01
 
 | Componente | Versión | Fuente |
 |---|---|---|
 | Node.js | **26.x** (26.12.0 al 2026-10-16; pasa a LTS el 2026-10-28; EOL 2029-04-30). Node 24 (24.22.0) entra en Maintenance el 2026-10-20 | nodejs.org/dist/index.json, nodejs/Release schedule |
-| pnpm | 12.14.0 | registry npm |
+| pnpm | 12.14.0 (instalado con el npm del Node fijado; Node 26 no incluye Corepack) | registry npm |
 | TypeScript | **6.0.3** (7.0.2 es `latest` pero typescript-eslint 8.71.2 exige `<6.1.0`) | registry npm |
 | React / React DOM | 19.3.1 | registry npm |
 | Vite / @vitejs/plugin-react | 8.3.4 / 6.1.2 | registry npm |
@@ -273,6 +281,8 @@ Liquidez USDC/USDT observada (bloque 52700000 / 52700217): pool v3 0,01 % `liqui
 | Slither | 0.11.6 | GitHub/PyPI |
 | gitleaks · OSV-Scanner · Semgrep · zizmor · syft · Trivy | 8.30.1 · 2.7.0 · 1.181.0 · 1.31.1 · 1.54.1 · 0.76.0 | GitHub releases |
 | PostgreSQL · Valkey · Mailpit (imágenes) | 18.6 · 9.2 · v1.31.6 | Docker Hub |
+| pgBackRest · age · Caddy | 2.59.3 · 1.3.2 · 2.11.7 | GitHub releases |
+| Prometheus · Alertmanager · Grafana (opcional) | 3.15.0 · 0.34.1 · 13.2.4 | GitHub releases |
 
 ## 4. Decisiones de arquitectura (ADR)
 
@@ -293,7 +303,7 @@ Cada ADR se materializa como archivo en `wallet/docs/adr/` en P01. Ninguna decis
 | ADR-011 | Frontends React 19 + TypeScript 6.0.3 + Vite 8 + React Router 8, sin librerías de UI de terceros; Wallet **sin** wagmi/conectores; Recovery con wagmi + conectores sólo en un chunk lazy. | Minimiza superficie en el origin de U; Recovery mínimo (V9 §17). |
 | ADR-012 | Drive `appDataFolder` 100 % frontend, **sin JS de Google** en origins criptográficos, como backup **adicional** (U y R exigen además un backup independiente de la plataforma, [F-KEY-06]); la conexión OAuth se hace antes de generar/desbloquear claves porque la redirección recarga la app. Regla de decisión (spike P17.T02): si el endpoint de token de Google acepta **authorization code + PKCE sin client secret** desde el navegador (CORS) para clientes "Web application", se usa ese flujo; si no, flujo implícito por redirección de página completa (token sólo en memoria, fragmento limpiado inmediatamente, `Referrer-Policy: no-referrer`). Proyecto de Google Cloud y cliente OAuth separados por app y entorno. `GOOGLE_CLIENT_SECRET_*` no se usa. | Google marca el implícito como legacy; code+PKCE es la práctica recomendada si funciona sin backend. GIS (JS de Google) descartado en origins criptográficos. |
 | ADR-013 | Criptografía cliente: CSPRNG WebCrypto; secp256k1 con `@noble/curves`; Argon2id con `@noble/hashes` en Web Worker, 64 MiB/t=3/p=4 (presupuesto: desbloqueo ≤ 3 s p95 en el perfil móvil de referencia; si no se cumple, en Wallet se adopta `hash-wasm` 4.12.0 fijado tras revisión — Recovery no habilita WASM y acepta el desbloqueo más lento); HKDF y AES-256-GCM con WebCrypto; wordlist `MTW-WORDLIST-V1` = niceware 4.0.0 (2^16). | V9 §4/§5; librerías mantenidas y ya presentes en el árbol de viem. |
-| ADR-014 | Signer S: **signer-service independiente por shard** (mTLS, red privada, política propia con snapshot firmado, DB propia, atestación de cada S creada) + **AWS KMS** (claves `ECC_SECG_P256K1` no exportables, **multi-Region obligatorias**, una por Safe, alarmas ante disable/borrado) en una cuenta AWS aislada como "equivalente aislado" de Clef; si una S se pierde igual, el único camino es U+R reemplazando S soberanamente y `updateRoles` (procedimiento documentado y testeado); evolución a HSM propio dedicado vía `Pkcs11SignerProvider` (CloudHSM/on-prem) por rotación de S. Local: `DevelopmentSignerProvider` sólo sobre fork Anvil. | Clef fue retirado de go-ethereum y no se mantiene (§3.5). KMS da no-exportabilidad (una intrusión no se lleva las claves) y auditoría (CloudTrail). Costo: ~1 USD/mes por clave; a escala se evalúa CloudHSM (documentado en runbook). |
+| ADR-014 | Signer S **self-hosted**: signer-service independiente por shard (mTLS sobre red Docker interna, política propia con snapshot firmado, DB propia, atestación de cada S creada) con **`SelfHostedSoftwareSignerProvider`**: una clave secp256k1 por Safe, generada con CSPRNG dentro del signer y guardada como **keystore Ethereum V3 cifrado** (scrypt + AES-128-CTR, formato estándar interoperable con geth, Foundry y Web3Signer) en el volumen del shard; la contraseña de cada keystore se deriva con HKDF-SHA256 de una **credencial de desbloqueo** por shard que vive aparte (secret de Docker Compose), nunca junto a los keystores; firma del hash EIP-712 de la SafeTx y del hash de la tx EIP-1559 con `@noble/curves` (low-s, RFC 6979). Ciclo de vida completo en [B-SIG-08]. `DevelopmentSignerProvider` = el mismo provider con guardas de desarrollo; `HardwareSignerProvider` (HSM físico propio vía PKCS#11/YubiHSM) queda como hardening futuro opcional. | Verificado 2026-10-16: **Clef** fue retirado de go-ethereum (v1.17.4) y su repo standalone `ethereum/clef` no tiene releases ni commits desde el 2026-06-02; además `account_new` exige UI. **Web3Signer** (Consensys, Apache-2.0, 26.9.0, mantenido) firma digests de 32 bytes (`applyHash: false`), soporta `eth_signTransaction` EIP-1559, `/reload` y miles de claves, pero **no crea claves** y no tiene política: nuestro servicio igual tendría que generar y cifrar cada keystore con la misma credencial, sumando una JVM por shard sin aislamiento real. Por la regla del owner (ciclo de vida dinámico no cubierto) se elige el provider propio, que conserva el formato V3 para migrar a Web3Signer o a un HSM más adelante sin rotar claves. Un KMS cloud quedó descartado: producción sin cloud. |
 | ADR-015 | Swap: `SwapExecutorV3` propio contra el **pool canónico Uniswap v3 USDC/USDT 0,01 %** (`0xD56d…5DA1`) por llamada directa al pool con callback validado; sin router, sin Permit2, sin calldata arbitraria. Dos SafeTx (nonce N `approve(executor, amountIn)` exacto; nonce N+1 `swap`). El Guard impone post-condiciones on-chain: la Safe pierde ≤ `amountIn` del token de entrada, recibe ≥ `minAmountOut` del otro, `minAmountOut ≥ amountIn·(1−1 %)`, y la allowance Safe→executor queda en 0. Executors registrados en `PolicyRegistry` (permite un `SwapExecutorV4` futuro con timelock). | Menor superficie: el pool v3 es inmutable y verificable por codehash; v4 (PoolManager singleton) tiene más complejidad por una mejora de precio de ~0,006 %. Las post-condiciones del Guard acotan lo que puede pasar **dentro** de la SafeTx del swap (pérdida ≤ amountIn, recepción ≥ piso); la allowance residual entre N y N+1 es segura sólo porque todo executor registrado debe debitar exclusivamente a `msg.sender` ([C-SWP-05], requisito de registro testeado). Riesgo residual documentado: MEV/sandwich acotado por el piso de 0,5 %. |
 | ADR-016 | Email transaccional: **Postmark** (servidores separados staging/producción, stream `outbound`, dominio verificado con DKIM + Return-Path). Local/CI: **Mailpit** (SMTP real local). | Proveedor real con separación por servidor/entorno; Mailpit permite E2E que leen OTPs sin mocks del producto. |
 | ADR-017 | RPC: **Alchemy** (primario, archive, también para el fork) + **QuickNode** (secundario) en backend; el signer usa **sus propias** claves de ambos; cada frontend usa su propia clave Alchemy con allowlist de dominio. Lecturas sensibles con quórum en bloque fijo. | Prompt §17; independencia entre trust domains. |
@@ -301,14 +311,17 @@ Cada ADR se materializa como archivo en `wallet/docs/adr/` en P01. Ninguna decis
 | ADR-019 | **Sin batching en V1**: una `execTransaction` por tx; paralelo entre Safes, secuencial por Safe. | Cross-Safe imposible (S distinta por Safe y `msg.sender == S`); intra-Safe requiere DELEGATECALL (prohibido). Base es barato; el riesgo no compensa (CF-05). |
 | ADR-020 | Nonce: asignación transaccional en Postgres (`FOR UPDATE`), índice único parcial por (safe, nonce) activo, lease con fencing por Safe, ejecución estricta en orden, cancelación por NoOp con el mismo nonce; regla del signer "una SafeTx activa por (safe, nonce)". | Prompt §15. |
 | ADR-021 | Postgres es la fuente de verdad; outbox transaccional hacia BullMQ; la cola es sólo transporte. | Pérdida de Valkey no pierde operaciones. |
-| ADR-022 | Producción en **AWS**: backend y signer en una organización; **Wallet frontend y Recovery frontend cada uno en su propia organización/cuenta raíz** con administradores distintos (y su DNS en esa cuenta), integrity monitor en una cuenta de monitoreo separada (región primaria `sa-east-1`, la más cercana a usuarios en Argentina; P26 verifica disponibilidad de KMS `ECC_SECG_P256K1`, RDS PostgreSQL 18, ElastiCache for Valkey 9, ECS Fargate y AMP/AMG; si algún servicio falta se usa `us-east-1` y se registra) con cuentas separadas por trust domain (backend, signer, wallet-frontend; recovery-frontend en una organización/cuenta raíz distinta), OpenTofu, ECS Fargate (API, worker, watcher, indexer, gas tank, integrity monitor, signer shards), RDS PostgreSQL 18 Multi-AZ (backend) y RDS separada (signer), ElastiCache for Valkey, ALB + WAF (reverse proxy/TLS con ACM), S3 + CloudFront por frontend, Secrets Manager, KMS, Amazon Managed Prometheus/Grafana, CloudWatch Logs + S3 Object Lock (auditoría). | KMS secp256k1 (ADR-014) y servicios gestionados con PITR; separación administrativa por cuenta. |
-| ADR-023 | Integridad de releases: builds reproducibles, SRI, CSP estricta, Trusted Types (una política con allowlist de workers), sin service workers, manifest firmado Ed25519 por app (claves de release distintas), SBOM CycloneDX (syft), contratos del sistema embebidos por entorno; **integrity monitor** independiente (cuenta propia) emite atestaciones firmadas que el signer exige para cooperar: MISMATCH pausa de inmediato; UNREACHABLE pausa tras 15 min de gracia con alerta. Riesgo residual: servir JS distinto sólo a ciertos usuarios no es detectable por el monitor. | V9 §17. |
-| ADR-024 | Entornos: `local` (fork Anvil), `staging` (Base mainnet, despliegue de contratos propio, fondos mínimos, sólo testers internos; requiere aprobación igual que producción) y `production`. Nada se reutiliza entre staging y producción (DB, OAuth, claves S, secretos de sesión, email, RPC). | Prompt §37; contratos y tokens reales en staging sin depender de testnets sin USDT/liquidez. |
+| ADR-022 | Producción **self-hosted** en una VPS Linux estándar (target: Hostinger), **sin dependencia de ningún cloud**: todos los servicios como contenedores Docker en `infra/production/docker-compose.production.yml` (api, worker, watcher, indexer, gas-tank, integrity-monitor, signer shards, `postgres` del backend, `signer-postgres`, `valkey`, `wallet-web`, `recovery-web` y perfil opcional de observabilidad), redes Docker separadas por dominio (`edge`, `backend`, `signer` con `internal: true`), sin puertos publicados salvo binds configurables de `wallet-web`, `recovery-web` y la API hacia el **reverse proxy existente**, que se configura a mano al desplegar (el producto no incluye ni hardcodea Nginx); imágenes construidas en CI, publicadas en GHCR por digest y firmadas; el despliegue a la VPS es manual, fuera de este planner, siguiendo `docs/DEPLOYMENT_VPS.md` (P26). | Decisión del owner (2026-10-16): producción en VPS propia, sin AWS/GCP/Azure. Se mantiene la separación lógica de trust domains (contenedores, redes, usuarios, secretos, claves de release fuera del host); el riesgo residual de un host único está en CF-10. (Histórico: un diseño previo en AWS quedó descartado.) |
+| ADR-023 | Integridad de releases: builds reproducibles, SRI, CSP estricta, Trusted Types (una política con allowlist de workers), sin service workers, manifest firmado Ed25519 por app (claves de release distintas, guardadas sólo en el GitHub Environment de cada app, nunca en la VPS), SBOM CycloneDX (syft), contratos del sistema embebidos por entorno; **integrity monitor** (contenedor propio, clave propia) emite atestaciones firmadas que el signer exige para cooperar (MISMATCH pausa de inmediato; UNREACHABLE pausa tras 15 min de gracia con alerta) y un **chequeo off-host** programado en GitHub Actions verifica los mismos manifests y alerta aunque el host esté comprometido. Riesgo residual: servir JS distinto sólo a ciertos usuarios no es detectable por los monitores. | V9 §17. |
+| ADR-024 | Entornos: `local` (fork Anvil), `staging` (Base mainnet con despliegue de contratos propio, fondos mínimos, sólo testers internos; requiere aprobación igual que producción; infraestructura = proyecto Docker Compose separado con secretos, volúmenes y claves propios, en el host que se elija al desplegar) y `production` (VPS). Nada se reutiliza entre staging y producción (DB, OAuth, keystores y credenciales del signer, secretos de sesión, email, RPC). | Prompt §37; contratos y tokens reales en staging sin depender de testnets sin USDT/liquidez. |
 | ADR-025 | Límites por defecto en el snapshot de policy: 10.000 por operación, 20.000 por Safe cada 24 h, 2FA desde 1.000 (TOTP o email OTP), swap ≤ 10.000 por operación, slippage default 30 bps / máx. 50 bps (= piso on-chain), deadline 10 min. Swaps se deshabilitan por policy si la cotización se desvía > 0,5 % de 1:1 o la liquidez del pool cae bajo el umbral de monitoreo. | Parámetros de negocio iniciales (modificables por snapshot firmado); coherentes con la liquidez observada (§3.4). |
 | ADR-026 | Migración excepcional (credencial que veta su rotación): doble aprobación interna de operadores + autorización on-chain en `PolicyRegistry` por la Governance Safe (24 h, guardianes) + regla del Guard: destino = Safe registrada en el Guard cuyo rol correspondiente coincide con la credencial sana firmante. | V9 §14/A5 con enforcement on-chain. |
-| ADR-027 | PostgreSQL 18 y **Valkey 9** (compatible con el protocolo Redis, licencia BSD, soportado por ElastiCache). | Preferencia "Redis" del prompt satisfecha por compatibilidad de protocolo; evita AGPL de Redis 8 y diferencias local/prod. |
+| ADR-027 | PostgreSQL 18 y **Valkey 9** self-hosted (contenedores con volúmenes persistentes, usuarios separados, healthchecks, backups de ADR-031); PostgreSQL es la fuente de verdad y Valkey el transporte de BullMQ. | Valkey es compatible con el protocolo Redis (la preferencia "Redis" del prompt se cumple) y tiene licencia BSD; Redis 8 es AGPL. |
 | ADR-028 | Runtime Node **26 LTS** (LTS desde 2026-10-28, EOL 2029-04-30). | Node 24 entra en Maintenance el 2026-10-20; un proyecto nuevo arranca en la línea con mayor ventana de soporte. |
 | ADR-029 | **Vía de upgrade del Guard** para Safes existentes ([C-GRD-17]): sucesor registrado en `PolicyRegistry` (24 h + guardianes) + propuesta por Safe en `RotationTimelock` (48 h, cancelable por U o R) + SafeTx asistida `setGuard(sucesor)`. Contratos nuevos de la factory sólo afectan wallets nuevas. | Sin esto, un bug del Guard inmutable sólo se podría resolver con ceremonias U+R por usuario. |
+| ADR-030 | Secretos de producción como **secrets de Docker Compose** (`file:`), montados en `/run/secrets/<nombre>` sólo en los servicios que los usan; cada servicio lee `<VAR>_FILE`; los archivos viven en el host, fuera del repo, en `/etc/mtw/<entorno>/secrets/` (root, 0400) y los genera `scripts/deploy/init-secrets.sh` al desplegar; las credenciales de desbloqueo del signer van en un directorio distinto (`/etc/mtw/<entorno>/signer-unlock/`) y sólo se montan en su shard; nunca en el repo ni en imágenes. | Mecanismo estándar del runtime elegido (Docker Compose, también sin Swarm), sin servicios externos; los valores no quedan en variables de entorno ni en `docker inspect`. systemd credentials descartado porque los servicios corren en contenedores. |
+| ADR-031 | Backups agnósticos al proveedor: PostgreSQL (backend y signer) con **pgBackRest** (full + diferencial + WAL archiving para PITR, repositorio cifrado; repo1 local y repo2 off-host que se define al desplegar); keystores del signer, export de auditoría y configuración empaquetados y cifrados con **age** hacia la clave pública de backup; la credencial de desbloqueo del signer **nunca** viaja en esos backups (custodia offline separada, dos copias selladas con custodios distintos); copia off-host cifrada obligatoria en producción; restore ensayado en local (P26). | Herramientas maduras y self-hosted (pgBackRest 2.59.3, age 1.3.2). |
+| ADR-032 | Toolchain reproducible **local al proyecto** (`wallet/.tools/`, gitignored): `scripts/tools/bootstrap` instala sin sudo Node 26 (tarball oficial verificado con SHASUMS256), pnpm 12.14.0 (con el npm de ese Node y verificación de integridad del registry, porque Node 26 ya no trae Corepack), Foundry v1.8.5 (release oficial + `.sha256`), gitleaks 8.30.1 (release + checksums) y Slither 0.11.6 (venv de Python local, o imagen Docker fijada si no hay Python ≥ 3.10); los escáneres de seguridad corren por imágenes Docker fijadas por digest. P00 detecta, auto-remedia y verifica; sólo frena si la remediación es imposible (Docker ausente o sin permisos, sin red, plataforma no soportada). | Las versiones locales no se convierten en blockers manuales y todas las máquinas y CI usan la misma toolchain. |
 
 ## 5. Arquitectura del sistema
 
@@ -337,13 +350,13 @@ Cada ADR se materializa como archivo en `wallet/docs/adr/` en P01. Ninguna decis
  │  rotations, recovery, policy (snapshot firmado), audit, email (Postmark), RPC quórum     │
  │ Worker S (pipeline de ejecución) · Chain watcher/reconciler · Indexer de transfers       │
  │ Gas tank / relayer                                                                       │
- │ (Integrity monitor de releases: proyecto propio, en una cuenta de monitoreo separada)    │
- │                         │ mTLS + red privada                                             │
- │ ┌───────────────────────▼─────────────────────────┐                                    │
- │ │ Signer shards: signer-service + AWS KMS (HSM)   │ política independiente, DB propia    │
- │ │  S por Safe (clave no exportable) · re-verifica  │ RPC propio (quórum)                 │
- │ │  todo · firma SafeTx y la tx execTransaction     │ cuenta cloud aislada                │
- │ │  (msg.sender = S)                                │                                     │
+ │ (Integrity monitor de releases: contenedor propio + chequeo off-host en GitHub Actions)  │
+ │                         │ mTLS sobre red Docker interna (sin puertos publicados)         │
+ │ ┌───────────────────────▼──────────────────────────┐                                    │
+ │ │ Signer shards: signer-service self-hosted        │ política independiente, DB propia  │
+ │ │  S por Safe en keystore V3 cifrado (volumen del  │ RPC propio (quórum)                │
+ │ │  shard); credencial de desbloqueo aparte;        │                                    │
+ │ │  firma SafeTx y tx execTransaction (msg.sender=S)│                                    │
  │ └──────────────────────────────────────────────────┘                                    │
  └──────────────────────────────────────────────────────────────────────────────────────────┘
                                 │ execTransaction (S paga gas)
@@ -359,7 +372,7 @@ Reglas de separación (verificadas por tests y por CI):
 
 1. Ningún código con acceso a U o R en runtime se comparte entre `frontend/wallet` y `frontend/recovery`, ni con backend. Cada frontend implementa (duplicado a propósito, revisado por separado) su capa criptográfica mínima.
 2. Lo único compartible entre frontends es **look & feel estático**: `wallet/frontend/design-tokens/tokens.css` (sólo CSS, sin JS). Se copia en build con verificación de hash; no es una dependencia npm.
-3. Backend/Signer no tienen credenciales para desplegar ni modificar frontends (pipelines y cuentas cloud separadas).
+3. Backend/Signer no tienen credenciales para publicar ni firmar frontends (pipelines de CI y claves de release separadas, fuera del host de producción; ver CF-10 para el riesgo residual de un host único).
 4. El signer **no importa código del backend**: su decodificación y política son una implementación independiente; ambos se contrastan contra los mismos vectores de prueba generados por los contratos (`wallet/contracts/test/vectors/*.json`, copiados a cada consumidor).
 5. Frontends leen la cadena con **su propio RPC** (nunca sólo a través del backend) para verificar la Safe, saldos, whitelist y rotaciones pendientes.
 
@@ -381,17 +394,21 @@ wallet/
 │   ├── THREAT_MODEL.md          # P01 (base) → P27 (final)
 │   ├── CI.md                    # P02
 │   ├── ENVIRONMENTS.md          # P25
-│   ├── PRODUCTION_LAYOUT.md     # P26
+│   ├── DEPLOYMENT_VPS.md        # P26: guía para el despliegue manual futuro en la VPS
 │   ├── HOW_IT_WORKS.md          # P29
 │   ├── SECURITY_AUDIT.md        # P27/P28
 │   ├── adr/ADR-0xx-*.md         # P01 (decisiones de §4)
 │   ├── security/*.md            # P07+ (invariants, triage de Slither)
 │   └── runbooks/*.md            # P03+ (fork, signer, local, deploy, rollback, incidentes, rotación de claves, restore)
 ├── prompts/promptV1.md          # existente
+├── .tools/                      # P00: toolchain local fijado (gitignored; ADR-032)
 ├── scripts/
 │   ├── preflight                # P00 (bash; entrypoint) + scripts/preflight.d/*.mjs
+│   ├── tools/bootstrap          # P00: instala Node/pnpm/Foundry/gitleaks/Slither fijados en .tools/
 │   ├── start-fork | stop-fork | reset-fork | deploy-local | seed-local   # P00/P07
 │   ├── secrets-local            # P00: genera secretos locales aleatorios (nunca staging/prod)
+│   ├── deploy/                  # P26: init-secrets, migrate, deploy, healthcheck, verify-images (uso manual futuro)
+│   ├── backup/                  # P26: pgBackRest, keystores del signer (age), auditoría, configuración
 │   └── lib/*.sh
 ├── config/
 │   ├── chains/base-mainnet.json # P03: direcciones + codehash + bloque de fork
@@ -408,7 +425,7 @@ wallet/
 │   └── deployments/ local.json (gitignored) · base-mainnet.json · base-mainnet-staging.json
 ├── backend/
 │   ├── app/                     # API + worker + watcher + indexer + gas tank (P08–P15)
-│   ├── signer/                  # signer-service por shard (P11)
+│   ├── signer/                  # signer-service por shard, SelfHostedSoftwareSignerProvider (P11)
 │   └── integrity-monitor/       # monitor de releases, desplegado fuera de la cuenta del backend (P20)
 ├── frontend/
 │   ├── design-tokens/           # sólo CSS
@@ -417,7 +434,7 @@ wallet/
 ├── e2e/                         # Playwright + acceptance full-system (P22–P23)
 ├── infra/
 │   ├── docker/                  # Dockerfiles (P26)
-│   ├── opentofu/                # IaC producción/staging (P26)
+│   ├── production/              # docker-compose.production.yml, .env.production.example, Caddyfiles, pgbackrest/valkey/alertmanager config (P26)
 │   └── monitoring/              # reglas de alertas, dashboards (P24/P26)
 ├── ci/                          # lógica de CI (scripts, composite actions) (P02)
 └── tools/
@@ -488,6 +505,24 @@ Wallet construye SafeTx desde la intención → backend prepara la misma SafeTx 
 **Recovery de U perdida**: recuperar cuenta → step-up → PlatformSession (scope U_REPLACEMENT) → generar U' → Recovery: desbloquear R → R firma propuesta U→U' → S valida → 48 h → R firma ejecución → U' activa.
 
 **Soberano U+R** (sin backend): Recovery arma SafeTx tipada → R firma → Wallet importa (QR/archivo), muestra, U firma → Recovery combina firmas → transmite con wallet externa (paga gas) o exporta calldata para cualquier relayer.
+
+### 5.5 Topología de producción (target futuro: VPS Linux; no se despliega desde este planner)
+
+| Contenedor | Redes | Persistencia | Secrets montados (ADR-030) |
+|---|---|---|---|
+| reverse proxy existente (**fuera del producto**, se configura a mano al desplegar) | host | — | TLS de los dominios |
+| `wallet-web` (Caddy sirviendo el bundle estático con sus headers) | edge | ninguna (imagen inmutable) | — |
+| `recovery-web` (ídem, imagen propia) | edge | ninguna | — |
+| `api` (listeners Wallet y Recovery) | edge, backend, signer | — | sesión, CSRF, emisor, OPAQUE, field key, OTP, pepper, audit, DB app, Valkey, mTLS cliente |
+| `worker`, `watcher`, `indexer`, `gas-tank` | backend, signer | — | DB app, Valkey, mTLS cliente, RPC |
+| `integrity-monitor` | backend (+ salida a internet) | — | clave de atestación del monitor |
+| `signer-shard-<id>` (uno por shard) | signer (`internal: true`) | volumen `signer-<id>-keystore` | credencial de desbloqueo del shard (directorio aparte), clave de atestación del signer, DB del signer, mTLS servidor, RPC propio |
+| `postgres` (backend) | backend (`internal: true`) | volumen `pg-data` + repo pgBackRest | superusuario (sólo bootstrap), roles `mtw_migrator`/`mtw_app`/`mtw_readonly` |
+| `signer-postgres` | signer (`internal: true`) | volumen `signer-pg-data` + repo pgBackRest | roles del signer |
+| `valkey` | backend (`internal: true`) | volumen `valkey-data` (AOF + RDB) | usuario ACL de la cola |
+| perfil `observability`: `prometheus`, `alertmanager`, `grafana` (opcional) | backend | volúmenes propios | SMTP de alertas |
+
+Reglas: los puertos internos de cada aplicación son fijos (API 8080/8081, estáticos 8080); hacia el host sólo se publican `wallet-web`, `recovery-web` y la API, con binds configurables en `.env.production` (`*_BIND`, sin defaults de producción en el código); TLS termina en el reverse proxy y la API sólo confía en `X-Forwarded-*` desde `TRUSTED_PROXY_CIDRS`; ningún componente depende de un proveedor cloud.
 
 ## 6. Especificación on-chain
 
@@ -606,7 +641,7 @@ Inmutable, sin owner, compartido por todas las Safes. Inmutables: `POLICY_REGIST
 
 ## 7. Especificación backend y signer
 
-Proyecto `wallet/backend/app` (API, worker, watcher, indexer, gas tank; un solo package con varios entrypoints), proyecto independiente `wallet/backend/signer` (signer-service por shard) e **integrity monitor** (`wallet/backend/integrity-monitor`, proyecto propio que en producción corre en una cuenta de monitoreo separada de la del backend, con su propia clave de atestación).
+Proyecto `wallet/backend/app` (API, worker, watcher, indexer, gas tank; un solo package con varios entrypoints), proyecto independiente `wallet/backend/signer` (signer-service por shard) e **integrity monitor** (`wallet/backend/integrity-monitor`, proyecto propio que en producción corre en su propio contenedor con su propia clave de atestación, más un chequeo off-host en GitHub Actions — ADR-023).
 
 ### 7.1 Autenticación de cuenta [B-AUTH]
 
@@ -643,7 +678,7 @@ Migraciones con Kysely Migrator (archivos TS con SQL explícito), patrón expand
 | `wallets` | id uuid PK, user_id FK, platform_id, chain_id, status (CREATING/DEPLOYING/VERIFYING/ACTIVE/SOVEREIGN_MODIFIED/MIGRATING/FAILED/MIGRATED/ABANDONED), migrated_from_wallet_id FK null, safe_address null, salt_nonce numeric(78), factory_address, singleton_address, config_hash bytea, next_safe_nonce numeric, exec_lease_owner, exec_lease_expires_at, exec_lease_version bigint, deploy_tx_hash, deploy_block_number, created_at, activated_at | UNIQUE(chain_id, safe_address); UNIQUE(user_id) WHERE status NOT IN ('FAILED','ABANDONED','MIGRATED','MIGRATING') (V1: una wallet activa por usuario; durante una migración la vieja queda MIGRATING y la nueva se crea con `migrated_from_wallet_id`) |
 | `wallet_keys_metadata` | id, wallet_id FK, role (U/R/S), key_address, key_version, status (PENDING/ACTIVE/ROTATED_OUT/REVOKED), source (INTERNAL/EXTERNAL_WALLET/SIGNER_SHARD), kdf_params jsonb null (públicos), storage_flags jsonb (drive, file, qr, words), created_at, activated_at, deactivated_at | UNIQUE(wallet_id, role) WHERE status='ACTIVE'; UNIQUE(key_address) WHERE status IN ('PENDING','ACTIVE') |
 | `recovery_metadata` | id, wallet_id FK, enrollment_id, r_address, r_type (INTERNAL/EXTERNAL), connector_id null, enrollment_key_jwk, enrollment_payload jsonb, enrollment_key_signature, r_proof_signature, u_incorporation_signature, status (REQUESTED/SUBMITTED/CONFIRMED/EXPIRED/REJECTED), expires_at, created_at | UNIQUE(enrollment_id) |
-| `signer_keys` | id, wallet_id FK, shard_id, key_ref, address, provider (development/kms/pkcs11), status (ACTIVE/PENDING/RETIRED), created_at | UNIQUE(address); UNIQUE(wallet_id) WHERE status='ACTIVE' |
+| `signer_keys` | id, wallet_id FK, shard_id, key_ref, address, provider (development/selfhosted/hardware), status (ACTIVE/PENDING/RETIRED), created_at | UNIQUE(address); UNIQUE(wallet_id) WHERE status='ACTIVE' |
 | `security_challenges` | id uuid, user_id, wallet_id null, type (EMAIL_VERIFY/PASSWORD_RESET/LOGIN_UNLOCK/STEP_UP/WHITELIST_ADD/ROTATION/HIGH_VALUE_TX/MIGRATION), binding jsonb (safe, chainId, destination, action, nonce, safeTxHash, token, amount), code_hash bytea, attempts, max_attempts, expires_at, consumed_at, created_ip_prefix, created_at | idx(user_id, type, created_at); CHECK(attempts <= max_attempts) |
 | `whitelist_requests` | id, wallet_id, user_id, destination, label, status (PENDING_CHALLENGE/CHALLENGE_PASSED/AWAITING_SIGNATURE/SUBMITTED/ACTIVATING/ACTIVE/EXPIRED/CANCELLED/FAILED), challenge_id FK, operation_id FK null, created_at, updated_at | UNIQUE(wallet_id, destination) WHERE status NOT IN ('EXPIRED','CANCELLED','FAILED','ACTIVE') |
 | `whitelisted_destinations` | id, wallet_id, destination, label, status (ACTIVATING/ACTIVE/REMOVED), activates_at, added_tx_hash, removed_tx_hash, created_at | UNIQUE(wallet_id, destination) WHERE status IN ('ACTIVATING','ACTIVE') |
@@ -664,9 +699,9 @@ Ninguna tabla contiene claves privadas U, R o S ni passwords U/R. `raw_tx` conti
 
 **[B-DB-FK]** Toda columna `*_id` que referencia otra tabla tiene **foreign key explícita** (`ON DELETE RESTRICT`; nada se borra en cascada): `sessions.user_id`, `platform_sessions.{account_session_id,user_id,wallet_id}`, `opaque_records.{user_id,wallet_id}`, `totp_factors.user_id`, `wallets.user_id`, `wallet_keys_metadata.wallet_id`, `recovery_metadata.wallet_id`, `signer_keys.wallet_id`, `security_challenges.{user_id,wallet_id}`, `whitelist_requests.{wallet_id,user_id,challenge_id,operation_id}`, `whitelisted_destinations.wallet_id`, `wallet_operations.{user_id,wallet_id,platform_session_id,two_factor_challenge_id,group_id→operation_groups}`, `chain_transactions.{operation_id,replaced_by_id}`, `rotation_requests.{wallet_id,propose_operation_id,execute_operation_id}`, `token_transfers.safe_address→wallets.safe_address`, `notifications.{user_id,wallet_id}`, `idempotency_keys.user_id`, `gas_topups.tx_id`, `operator_actions.{approver_1,approver_2}→operator_users`. `operation_groups` (id, type SWAP, status) agrupa las operaciones de un swap.
 
-**[B-DB-ROLES]** Passwords de roles: `MTW_APP_DB_PASSWORD`, `MTW_MIGRATOR_DB_PASSWORD`, `MTW_SIGNER_DB_PASSWORD` (generadas en local por `secrets:local`; en producción gestionadas por RDS/Secrets Manager); `DATABASE_URL`, `DATABASE_MIGRATION_URL` y `SIGNER_DATABASE_URL` se componen con ellas.
+**[B-DB-ROLES]** Passwords de roles: `MTW_APP_DB_PASSWORD`, `MTW_MIGRATOR_DB_PASSWORD`, `MTW_SIGNER_DB_PASSWORD` (generadas en local por `secrets:local`; en producción, archivos de secrets de Docker Compose generados por `scripts/deploy/init-secrets.sh`, ADR-030); `DATABASE_URL`, `DATABASE_MIGRATION_URL` y `SIGNER_DATABASE_URL` se componen con ellas.
 
-Backup/restore: [B-DB-BK] RDS PITR + snapshot diario cifrado a cuenta de backup (producción); local: `pnpm db:backup` / `pnpm db:restore` (pg_dump/pg_restore dentro del contenedor). Restore test obligatorio en P26.
+Backup/restore: [B-DB-BK] PostgreSQL del backend y del signer con **pgBackRest** (full semanal, diferencial diario, WAL archiving continuo para PITR, repositorio cifrado; repo1 local y repo2 off-host que se define al desplegar — ADR-031); local: `pnpm db:backup` / `pnpm db:restore` y perfil compose `backup` para ensayar pgBackRest. En producción la copia off-host cifrada es obligatoria. Restore test obligatorio en P26.
 
 ### 7.4 Máquina de estados de `wallet_operations` [B-SM]
 
@@ -745,15 +780,28 @@ CANCEL_REQUESTED ──(se mina la original primero)──▶ MINED (sigue el ca
 
 ### 7.10 Protocolo backend → signer [B-SIG]
 
-- **[B-SIG-01] Transporte**: HTTPS con mTLS (CA privada por entorno), red privada; el signer no tiene puerto público.
+- **[B-SIG-01] Transporte**: HTTPS con mTLS (CA privada por entorno, generada por `secrets-local` o `init-secrets.sh`) sobre la red Docker `signer` (`internal: true`); el signer no publica ningún puerto.
 - **[B-SIG-02] `POST /v1/sign-safe-tx`**: `{operationId, walletId, safe, chainId, safeTx, ownerSignature, ownerRole, platformSessionToken, submissionEnvelope, submissionEnvelopeSignature, challengeAttestation?, keyAcceptance?, pairedSafeTx?, policySnapshotVersion}` → el signer verifica todo (pasos 2–8, incluido 7b, de [B-Q-02]) con su propio RPC y su propia DB de estado, y además: **rotación de S** sólo si `newKey` es una clave que el propio signer creó para esa wallet; **rotación de U o R** sólo con `keyAcceptance` válido (firma EIP-712 `KeyAcceptance` de la nueva clave, [W-01]); **secuencia**: un `SWAP_APPROVE` sólo se co-firma si llega acompañado de su `SWAP` N+1 firmado por U con el mismo executor y `amountIn == amount` (y el `SWAP` sólo tras el approve ejecutado); antigüedad ≤ 24 h ([B-PSES-06]). Responde `{sSignature, signedTx, txHash, accountNonce}` o un error tipificado.
 - **[B-SIG-07] Atestación de clave S**: al crear S (`POST /v1/keys`) el signer devuelve `SignerKeyAttestation` firmada con su clave de atestación Ed25519 (pública fijada en los frontends, [W-07]); la Wallet la verifica antes de que U firme la autorización de creación (así un backend comprometido no puede sustituir S por una clave propia).
-- **[B-SIG-03] Estado propio del signer** (base PostgreSQL **propia** del dominio signer — en local la DB `mtw_signer_dev`; en producción una instancia RDS en la cuenta del signer, separada de la DB del backend): `signed_safe_txs` (safe, nonce, safeTxHash, opType, token, amount, dest, signedAt) con la regla **"a lo sumo una SafeTx activa firmada por (safe, nonce)"** salvo reemplazo explícito (NoOp/reemplazo con nueva firma del usuario); ledger de salidas 24 h; registro de claves (`keyRef`, address, wallet, shard). El backend no tiene credenciales de esta DB.
-- **[B-SIG-04] `SignerProvider`** (interfaz en `backend/signer/src/providers/SignerProvider.ts`): `createKey(walletId) → {keyRef, address}`, `getAddress(keyRef)`, `signDigest(keyRef, digest32)` (usada para el hash EIP-712 de la SafeTx y para el hash de firma de la tx EIP-1559, ambos calculados por el signer-service), `health()`. Implementaciones:
-  - `DevelopmentSignerProvider` — keystore cifrado local (Web3 Secret Storage v3), **sólo** `APP_ENV=local` sobre un fork Anvil.
-  - `KmsSignerProvider` — **producción y staging**: AWS KMS, claves `ECC_SECG_P256K1` / `SIGN_VERIFY` respaldadas por HSM FIPS, **no exportables**, una clave por Safe, key policy que sólo permite `kms:Sign`/`kms:GetPublicKey` al rol del shard en la cuenta aislada del signer; firma `ECDSA_SHA_256` con `MessageType=DIGEST`, conversión DER→(r,s), normalización low-s y cálculo de `v` por recuperación. Es el "equivalente aislado" de Clef exigido por el prompt (ver ADR-014: Clef fue retirado de go-ethereum y no tiene mantenimiento).
-  - `Pkcs11SignerProvider` — evolución a **HSM propio dedicado** (AWS CloudHSM u on-prem, secp256k1 vía PKCS#11): interfaz, contrato de tests y runbook de migración listos en V1; la migración de cada Safe se hace rotando S por el timelock (firma del usuario), nunca exportando claves.
-- **[B-SIG-05] Gas tank/relayer**: cuenta de plataforma (no owner de ninguna Safe) gestionada por el mismo mecanismo de firma (shard `platform`, clave KMS propia), usada para: desplegar Safes vía `WalletFactory`, recargar ETH de cada S (umbral mín./objetivo, tope diario) y retransmitir cancelaciones firmadas por U/R (`RotationTimelock.cancelWithSignature`). S **sólo** transmite `execTransaction` hacia su propia Safe (regla del signer-service: la tx que firma la clave S debe tener `to == safe asociada`, selector `execTransaction`, `value == 0`, chainId 8453 y topes de gas/fee).
+- **[B-SIG-08] Ciclo de vida de S** (`SelfHostedSoftwareSignerProvider`):
+  - **Layout**: keystores en `SIGNER_KEYSTORE_DIR` (producción: `/var/lib/mtw-signer/keystore/<address>.json` en el volumen `signer-<shardId>-keystore`, archivos 0400 del UID del signer); credencial de desbloqueo del shard = 32 bytes aleatorios en `SIGNER_UNLOCK_CREDENTIAL_FILE` (producción: `/run/secrets/signer_unlock`, secret de Compose que vive en otro directorio del host); **keystore cifrado ≠ credencial de desbloqueo**. Las claves privadas nunca están en PostgreSQL, Valkey, la DB del backend, `.env`, código, logs ni ninguna API.
+  - **create**: CSPRNG → escalar válido → contraseña = `hex(HKDF-SHA256(credencial, salt="mtw-signer-keystore-v1", info=address))` → keystore V3 (scrypt de `@noble/hashes` con N=2^14, r=8, p=1 — la contraseña ya tiene 256 bits —, AES-128-CTR, MAC keccak) → escritura atómica (temporal + fsync + rename) → alta en la DB del signer → `SignerKeyAttestation`. La clave nunca se devuelve ni se loguea.
+  - **load**: al arrancar se indexa el directorio y se concilia con la DB del signer; faltantes o sobrantes generan alerta y esas claves no firman.
+  - **unlock**: por cada firma: leer keystore → derivar contraseña → descifrar (verifica MAC) → firmar → sobrescribir buffers (best-effort); sin caché de claves en claro.
+  - **restart**: el shard compara el `credentialFingerprint` (HMAC de una constante con la credencial) con la DB; si no coincide queda `not ready` y no firma.
+  - **backup**: tras cada alta y diariamente: keystores + dump de la DB del signer, cifrados con `age` hacia la clave pública de backup y copiados off-host (ADR-031). La credencial de desbloqueo **no** se incluye: se custodia offline aparte (dos copias selladas, custodios distintos).
+  - **restore**: en un host nuevo: restaurar keystores y DB, montar la credencial, arrancar en modo `restore-verify` (descifra cada keystore y comprueba la dirección, sin firmar) y luego en modo normal.
+  - **rotation**: (a) de S por Safe: nueva clave (mismo u otro shard) y rotación on-chain con timelock (P15); la vieja pasa a RETIRED y su keystore se destruye 30 días después de ejecutar la rotación si no hay operaciones pendientes; (b) de la credencial del shard: job que re-cifra todos los keystores con contraseñas derivadas de la credencial nueva (archivo por archivo, atómico, `kdfVersion` + 1) y luego retira la anterior.
+  - **lost/corrupted**: MAC inválido o archivo faltante → clave `BROKEN`, alerta crítica y restore desde el último backup; si es irrecuperable, la Safe queda sin camino asistido y se aplica el procedimiento de P15.T09 (U+R reemplazan S).
+  - **shard migration**: herramienta offline en el host del signer que copia los keystores al shard destino, los re-cifra con la credencial destino, verifica y actualiza la asignación en la DB del signer y en el backend en dos fases (destino ACTIVE tras verificar, origen MIGRATED); sin cambio on-chain.
+  - **compromiso del root del host del signer** = S comprometidas (de todos los shards de ese host): siguen necesitando U o R para alcanzar threshold; respuesta: rotar S de las Safes afectadas (con firma del usuario) y aplicar el playbook de incidente.
+- **[B-SIG-09] Sharding**: cada shard se identifica por `shardId` + endpoint mTLS; la asignación se calcula por hash estable de `walletId` sobre los shards activos al crear la wallet y se **guarda** (no se recalcula); local: un shard `dev-1`; producción: el software soporta N shards aunque inicialmente corran en el mismo host físico, cada uno con su volumen, su credencial, su identidad mTLS y su DB lógica.
+- **[B-SIG-03] Estado propio del signer** (PostgreSQL **propio** del dominio signer — en local la DB `mtw_signer_dev`; en producción el contenedor `signer-postgres`, con volumen, credenciales y backups propios, separado del Postgres del backend; una DB lógica por shard): `signed_safe_txs` (safe, nonce, safeTxHash, opType, token, amount, dest, signedAt) con la regla **"a lo sumo una SafeTx activa firmada por (safe, nonce)"** salvo reemplazo explícito (NoOp/reemplazo con nueva firma del usuario); ledger de salidas 24 h; registro de claves (`keyRef`, address, wallet, shard, estado, `kdfVersion`, `credentialFingerprint`). **Nunca contiene claves privadas**; el backend no tiene credenciales de esta DB.
+- **[B-SIG-04] `SignerProvider`** (interfaz en `backend/signer/src/providers/SignerProvider.ts`): `createKey(walletId) → {keyRef, address}`, `getAddress(keyRef)`, `signDigest(keyRef, digest32)` (usada para el hash EIP-712 de la SafeTx y para el hash de firma de la tx EIP-1559, ambos calculados por el signer-service), `health()`. Se elige con `SIGNER_PROVIDER=development | selfhosted`. Implementaciones (ADR-014):
+  - `SelfHostedSoftwareSignerProvider` — **producción y staging**: keystores Ethereum V3 cifrados en el volumen del shard, contraseñas derivadas de la credencial de desbloqueo del shard, firma en proceso con `@noble/curves`; ciclo de vida en [B-SIG-08].
+  - `DevelopmentSignerProvider` — el **mismo** provider con guardas de desarrollo: sólo `APP_ENV=local` sobre un fork Anvil, credencial generada por `secrets:local`, keystores en `wallet/.secrets/signer/<shard>/keystore/` (así los tests ejercitan el código de producción).
+  - `HardwareSignerProvider` — **futuro opcional** (HSM físico propio vía PKCS#11/YubiHSM, secp256k1 no exportable): interfaz y suite de contrato común listas en V1; la migración se hace Safe por Safe rotando S por el timelock (firma del usuario), sin exportar claves.
+- **[B-SIG-05] Gas tank/relayer**: cuenta de plataforma (no owner de ninguna Safe) gestionada por el mismo mecanismo de firma (shard `platform`, keystore propio con su credencial), usada para: desplegar Safes vía `WalletFactory`, recargar ETH de cada S (umbral mín./objetivo, tope diario) y retransmitir cancelaciones firmadas por U/R (`RotationTimelock.cancelWithSignature`). S **sólo** transmite `execTransaction` hacia su propia Safe (regla del signer-service: la tx que firma la clave S debe tener `to == safe asociada`, selector `execTransaction`, `value == 0`, chainId 8453 y topes de gas/fee).
 - **[B-SIG-06] "Ruleset" restrictivo y atestado**: la política del signer (código + snapshot firmado) se despliega como imagen inmutable cuyo digest se registra por release; el pipeline del signer es independiente del backend; las reglas estáticas mínimas (chainId, CALL, gas params en cero, allowlist de targets/selectores, `to` de la tx = Safe asociada) se evalúan **antes** de cualquier lectura on-chain y no dependen de datos provistos por el backend.
 
 ### 7.11 API `/api/v1` [B-API]
@@ -823,13 +871,13 @@ Swagger: `/docs` (Swagger UI) y `/docs/openapi.json` en ambos listeners. En **lo
 
 ### 7.13 Audit log [B-AUD]
 
-Escritura serializada: cada inserción toma `pg_advisory_xact_lock(<clave de auditoría>)` y lee la cabeza de la cadena dentro de la misma transacción (un solo escritor lógico; throughput suficiente para V1). Eventos mínimos: `AUTH_LOGIN_SUCCEEDED/FAILED`, `AUTH_LOGOUT`, `AUTH_PASSWORD_RESET_REQUESTED/COMPLETED`, `SESSION_REVOKED`, `PLATFORM_SESSION_ISSUED`, `TOTP_ENABLED/DISABLED`, `WHITELIST_REQUESTED`, `WHITELIST_CHALLENGE_PASSED/FAILED`, `WHITELIST_CONFIRMED_ONCHAIN`, `WHITELIST_REMOVED`, `OPERATION_PROPOSED`, `OPERATION_SIGNATURE_RECEIVED` (rol U/R), `OPERATION_<ESTADO>`, `S_SIGNATURE_ISSUED`, `S_EXECUTION_SUBMITTED`, `ROTATION_PROPOSED/CANCELLED/EXECUTED`, `RECOVERY_ENROLLMENT_*`, `RECOVERY_U_REPLACEMENT_STARTED`, `MIGRATION_CASE_*`, `POLICY_SNAPSHOT_ACTIVATED`, `INTEGRITY_MISMATCH`, `COOPERATION_PAUSED/RESUMED`, `OPERATOR_ACTION_*`, `RPC_DISAGREEMENT`, `REORG_DETECTED`. Cadena HMAC verificable (`pnpm --dir backend/app audit:verify`), export diario a almacenamiento WORM en producción.
+Escritura serializada: cada inserción toma `pg_advisory_xact_lock(<clave de auditoría>)` y lee la cabeza de la cadena dentro de la misma transacción (un solo escritor lógico; throughput suficiente para V1). Eventos mínimos: `AUTH_LOGIN_SUCCEEDED/FAILED`, `AUTH_LOGOUT`, `AUTH_PASSWORD_RESET_REQUESTED/COMPLETED`, `SESSION_REVOKED`, `PLATFORM_SESSION_ISSUED`, `TOTP_ENABLED/DISABLED`, `WHITELIST_REQUESTED`, `WHITELIST_CHALLENGE_PASSED/FAILED`, `WHITELIST_CONFIRMED_ONCHAIN`, `WHITELIST_REMOVED`, `OPERATION_PROPOSED`, `OPERATION_SIGNATURE_RECEIVED` (rol U/R), `OPERATION_<ESTADO>`, `S_SIGNATURE_ISSUED`, `S_EXECUTION_SUBMITTED`, `ROTATION_PROPOSED/CANCELLED/EXECUTED`, `RECOVERY_ENROLLMENT_*`, `RECOVERY_U_REPLACEMENT_STARTED`, `MIGRATION_CASE_*`, `POLICY_SNAPSHOT_ACTIVATED`, `INTEGRITY_MISMATCH`, `COOPERATION_PAUSED/RESUMED`, `OPERATOR_ACTION_*`, `RPC_DISAGREEMENT`, `REORG_DETECTED`. Cadena HMAC verificable (`pnpm --dir backend/app audit:verify`); export diario firmado y cifrado con `age` hacia la copia off-host (el hash de cada export queda anclado como evento de auditoría).
 
 ### 7.14 Observabilidad [B-OBS]
 
 - Logs estructurados (pino, JSON) con `requestId`/`operationId`; **redacción** obligatoria por paths (`password`, `passwordU`, `passwordR`, `otp`, `code`, `token`, `authorization`, `cookie`, `set-cookie`, `x-platform-session`, `x-session-signature`, `privateKey`, `secret`, `mnemonic`, `seed`, `registrationRecord`) + serializer que trunca IP y enmascara email; tests de canario: valores secretos sembrados nunca aparecen en logs capturados.
 - Métricas Prometheus (prom-client, puerto interno): HTTP, auth failures, rate-limit hits, cola (waiting/active/delayed/failed), lag del outbox, operaciones por estado, operaciones atascadas (edad > umbral), RPC (latencia, errores, head lag, desacuerdos, salud por proveedor), signer (latencia, rechazos por motivo, salud por shard), tx (submitted/mined/confirmed/reverted/reorged), saldo ETH de cada S (gauge agregado + lista de S bajo umbral), saldo del gas tank, estado de integridad, verificación de cadena de auditoría.
-- Alertas (P24/P26): tx fallidas/revertidas, operaciones atascadas > 10 min, reorg detectado, desacuerdo RPC sostenido (> 3 en 5 min), proveedor RPC caído, signer caído o con rechazos anómalos, S con ETH bajo `GAS_TOPUP_MIN_WEI` y recarga fallida, gas tank bajo 0,05 ETH (el tope diario de recargas), mismatch de integridad (crítica), lag del outbox > 60 s, verificación de auditoría fallida (crítica), picos de login fallido, liquidez activa del pool canónico < 50 % de la observada en `FORK_BLOCK_NUMBER` o reservas USDC+USDT < US$ 100k, cotización USDC/USDT desviada > 0,5 % de 1:1 (además deshabilita swaps por policy), cambio de implementación del proxy de USDC.
+- Alertas (P24/P26): tx fallidas/revertidas, operaciones atascadas > 10 min, reorg detectado, desacuerdo RPC sostenido (> 3 en 5 min), proveedor RPC caído, signer caído o con rechazos anómalos, S con ETH bajo `GAS_TOPUP_MIN_WEI` y recarga fallida, gas tank bajo 0,05 ETH (el tope diario de recargas), mismatch de integridad (crítica), lag del outbox > 60 s, verificación de auditoría fallida (crítica), picos de login fallido, liquidez activa del pool canónico < 50 % de la observada en `FORK_BLOCK_NUMBER` o reservas USDC+USDT < US$ 100k, cotización USDC/USDT desviada > 0,5 % de 1:1 (además deshabilita swaps por policy), cambio de implementación del proxy de USDC, alarmas del signer (keystore ilegible o con MAC inválido, fingerprint de credencial distinto al arrancar, archivo de keystore creado o borrado fuera del flujo, clave `BROKEN`, backup de keystores fallido o atrasado).
 - Nunca se loguean: U, R, passwords, secretos crudos, OTP completos, secretos de sesión, tokens de PlatformSession completos.
 
 ### 7.15 Formatos de intercambio y vectores compartidos [W]
@@ -938,10 +986,10 @@ Recovery (`frontend/recovery`, mínimo):
 
 ### 8.5 Hardening de origins criptográficos [F-SEC]
 
-- **[F-SEC-01] CSP** (header HTTP en CDN y `<meta>` equivalente en dev): `default-src 'none'; script-src 'self' [Wallet: 'wasm-unsafe-eval' — requerido por OPAQUE (WASM); Recovery: sin WASM]; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' <API host de la app> <RPC del frontend> https://www.googleapis.com https://oauth2.googleapis.com [Recovery: + endpoints de WalletConnect verificados en P19]; worker-src 'self'; frame-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; manifest-src 'none'; require-trusted-types-for 'script'; trusted-types mtw-default; upgrade-insecure-requests`.
+- **[F-SEC-01] CSP** (header HTTP emitido por el servidor estático propio de cada frontend — contenedor `wallet-web`/`recovery-web` en producción — y por `vite preview` en local; `<meta>` equivalente en dev): `default-src 'none'; script-src 'self' [Wallet: 'wasm-unsafe-eval' — requerido por OPAQUE (WASM); Recovery: sin WASM]; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' <API host de la app> <RPC del frontend> https://www.googleapis.com https://oauth2.googleapis.com [Recovery: + endpoints de WalletConnect verificados en P19]; worker-src 'self'; frame-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; manifest-src 'none'; require-trusted-types-for 'script'; trusted-types mtw-default; upgrade-insecure-requests`.
 - **[F-SEC-02] Trusted Types**: `require-trusted-types-for 'script'` con `trusted-types mtw-default`: la app crea **una sola** política `mtw-default` cuyo `createScriptURL` sólo devuelve URLs presentes en una allowlist generada en build (los assets con hash de los Web Workers, p. ej. el worker de Argon2id) y cuyo `createHTML`/`createScript` lanzan error; cualquier otra asignación de string a un sink (`innerHTML`, `script.src`, `eval`…) es bloqueada y reportada. Test E2E: el worker de Argon2id carga con TT forzado y cualquier violación (`securitypolicyviolation`) hace fallar el test. Un conector o librería que requiera sinks TT se excluye; no se relaja la política.
 - **[F-SEC-03] Headers**: HSTS (2 años, preload), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy` mínima (cámara sólo en rutas que escanean QR), `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp` (verificado compatible con los recursos propios).
-- **[F-SEC-04] Sin service workers**: no se publica ningún script de SW; la CDN responde 403 a requests con header `Service-Worker: script`; al iniciar, la app desregistra cualquier SW existente y lo reporta.
+- **[F-SEC-04] Sin service workers**: no se publica ningún script de SW; el servidor estático del frontend responde 403 a requests con header `Service-Worker: script`; al iniciar, la app desregistra cualquier SW existente y lo reporta.
 - **[F-SEC-05] Sin third-party JS**, sin analytics, sin GTM, fuentes self-hosted, sin CDNs externos. Dependencias con versión exacta (sin `^`/`~`), lockfile congelado, `pnpm` con edad mínima de publicación y scripts de instalación bloqueados salvo allowlist.
 - **[F-SEC-06] Builds reproducibles** (`SOURCE_DATE_EPOCH`, toolchain fijado) verificados compilando dos veces en runners distintos; **SRI** en todos los `<script>`/`<link>`; **manifest firmado** (Ed25519, clave de release de esa app) con `releaseId`, commit y SHA-256 de HTML/JS/WASM/CSS/assets publicado en `/.well-known/release-manifest.json(.sig)`; **SBOM** CycloneDX por build.
 - **[F-SEC-08] Contratos del sistema fijados por entorno**: el build de cada app embebe `system-contracts.<env>.json` (address + codehash de Guard, Timelock, PolicyRegistry, Whitelist, SwapExecutor, Bootstrap, Factory y DenyAllModuleGuard), generado desde `contracts/deployments/<env>.json` y cubierto por el manifest firmado; si el backend informa direcciones distintas, la app se niega a operar. La clave pública de atestación del signer ([B-SIG-07]) también se embebe por entorno.
@@ -970,10 +1018,10 @@ Recovery (`frontend/recovery`, mínimo):
 | Fondos USDC/USDT en la Safe | Base | ninguna parte individual (U, R, S, Wallet FE, Recovery FE, Backend/Signer) |
 | U (clave privada) | memoria del Wallet FE durante la firma; `U.enc` en Drive Wallet/archivo | backend, Recovery |
 | R (clave privada o wallet externa) | memoria del Recovery FE; `R.enc` en Drive Recovery | backend, Wallet |
-| S (clave por Safe) | signer shard (AWS KMS, HSM no exportable) | backend API, worker, DB |
+| S (clave por Safe) | signer shard: keystore V3 cifrado en el volumen del shard; credencial de desbloqueo en un secret separado | backend API, worker, DB, Valkey |
 | Password U / R | sólo en la cabeza/papel del usuario | todos |
 | Sesiones, PlatformSession | cookies HttpOnly / memoria | terceros |
-| Integridad de releases | CDN de cada app + manifest firmado | backend (no puede publicar FE), pipeline del otro FE |
+| Integridad de releases | contenedor estático de cada app (imagen firmada por digest) + manifest firmado con claves que no están en el host | backend (no puede firmar FE), pipeline del otro FE |
 
 Adversarios considerados: atacante externo (phishing, credential stuffing, XSS, supply chain npm), insider o compromiso del backend/DB/cola, compromiso de un signer shard, compromiso del pipeline/hosting de un frontend, proveedor RPC malicioso o inconsistente, reorgs, MEV/sandwich en swaps, robo de dispositivo, pérdida de credenciales por parte del usuario.
 
@@ -1010,14 +1058,15 @@ Adversarios considerados: atacante externo (phishing, credential stuffing, XSS, 
 | Wallet FE comprometido (JS malicioso) | U (al ingresar Password U) | sin S no hay threshold; con S (vía flujos normales) sólo a destinos whitelisteados; alta de destino requiere código enviado al email que muestra la dirección exacta | integrity monitor pausa S; email muestra dirección; activación de destino a 24 h |
 | Recovery FE comprometido | R | R+S limitado a recovery (rotación con 48 h y cancelable por U) y migración autorizada on-chain | notificaciones on-chain leídas por Wallet; integrity monitor |
 | Backend/DB/cola comprometidos | puede intentar inyectar operaciones, alterar estados, emitir sesiones y atestaciones de challenge (tiene esas claves) | no tiene U/R: toda operación exige firma U/R válida; S está en el signer que re-verifica firma, policy, configuración de la Safe y estado on-chain con su propio RPC; rotación de S sólo a claves creadas por el signer; Guard on-chain. **Límite conocido**: contra un backend comprometido, la verificación de PlatformSession y de challenges en el signer no agrega independencia (son claves del mismo dominio). | audit chain HMAC, reconciliación, alertas |
-| Signer shard comprometido (S robada) | S de las Safes del shard | S sola no alcanza threshold (A3) | rotación de S vía timelock con firma U; HSM |
+| Signer shard comprometido (keystores + credencial de desbloqueo) | S de las Safes de ese shard | S sola no alcanza threshold (A3) | rotación de S vía timelock con firma U; alarmas del signer; HSM físico como hardening futuro |
 | RPC malicioso | respuestas falsas | quórum de dos proveedores; Guard on-chain decide al final | alertas de desacuerdo |
 | Phishing de whitelist | usuario confirma destino del atacante | requiere además U; 24 h de activación con email; alerta in-app | educación + bajas inmediatas (también con R desde `/emergency`) |
 | Rotación de S hacia clave del atacante | U comprometida + backend comprometido proponen `S → S_attacker` como "mantenimiento" | el signer sólo co-firma rotaciones de S hacia claves que él mismo creó para esa wallet; U o R pueden cancelar durante 48 h | notificaciones on-chain leídas por ambos frontends |
 | U+R retiran o cambian el Guard | la Safe ya no tiene enforcement on-chain | backend y signer verifican la configuración on-chain antes de cada co-firma y dejan de cooperar (`SOVEREIGN_MODIFIED`) | reconciliación + alerta |
-| Pérdida de una clave S (borrado, región) | operaciones asistidas imposibles para esa Safe | claves KMS multi-Region y alarmas; si igual ocurre, U+R reemplazan S soberanamente y ejecutan `updateRoles` | runbook + test |
+| Keystore de S perdido o corrupto | operaciones asistidas imposibles para esa Safe | backups cifrados (age) de keystores off-host + credencial custodiada aparte; restore con `restore-verify`; si es irrecuperable, U+R reemplazan S soberanamente y ejecutan `updateRoles` | runbook + test |
 | MEV/sandwich en swaps | captura de valor dentro del slippage | piso on-chain de 0,5 %, slippage por defecto 0,3 %, deadline 10 min | riesgo residual documentado |
-| JS distinto servido sólo a ciertos usuarios | el monitor no lo ve | builds reproducibles, SRI, CDN propia por dominio | riesgo residual documentado |
+| JS distinto servido sólo a ciertos usuarios | el monitor no lo ve | builds reproducibles, SRI, servidor estático propio por dominio | riesgo residual documentado |
+| Root del host único de producción comprometido (CF-10) | S de los shards del host **y** capacidad de servir JS malicioso a ambos frontends | U y R siguen fuera del host hasta que el usuario las desbloquee; manifests firmados fuera del host; monitor off-host alerta; el playbook ordena detener servicios y avisar a los usuarios que no desbloqueen | riesgo residual documentado; hardening futuro: frontends en hosts separados |
 
 ## 10. Estrategia de testing
 
@@ -1063,7 +1112,7 @@ Resumen de fases:
 | P08 | Backend I: fundaciones (config, DB, cola, RPC, logs, métricas, OpenAPI, errores, idempotencia, rate limit, audit) | P07 |
 | P09 | Backend II: cuenta y autenticación + email | P08 |
 | P10 | Backend III: PlatformSession (OPAQUE, step-up, requests firmados) | P09 |
-| P11 | Signer S: signer-service, SignerProvider (development/KMS/PKCS#11), policy snapshot, gas tank | P10 |
+| P11 | Signer S self-hosted: signer-service, SignerProvider (development/selfhosted/hardware futuro), ciclo de vida de keystores, policy snapshot, gas tank | P10 |
 | P12 | Backend IV: creación de wallet (enrollment R, incorporación U, S, deploy, verificación) | P11 |
 | P13 | Backend V: pipeline de operaciones (estados, nonce, outbox/cola, worker, finalidad, reorgs, reconciliación, indexer) | P12 |
 | P14 | Backend VI: whitelist, send, swap | P13 |
@@ -1078,7 +1127,7 @@ Resumen de fases:
 | P23 | Acceptance tests full-system sobre el fork | P22 |
 | P24 | Observabilidad, audit trail y abuse prevention (cierre) | P23 |
 | P25 | Entornos y scripts de despliegue/verificación de contratos (sin mainnet sin aprobación) | P24 |
-| P26 | PRODUCTION READINESS | P25 |
+| P26 | PRODUCTION READINESS: preparación para la VPS (artefactos, compose, scripts, runbooks, ensayo local; sin desplegar) | P25 |
 | P27 | SECURITY AUDIT | P26 |
 | P28 | SECURITY REMEDIATION (gate) | P27 |
 | P29 | Documentación final, trazabilidad y release candidate | P28 |
@@ -1101,32 +1150,34 @@ CHECKPOINT Pxx
 
 ### P00 — PREFLIGHT
 
-**Objetivo:** que el entorno local tenga todo lo obligatorio para ejecutar el planner de punta a punta y que exista un comando único que lo demuestre (`PREFLIGHT PASSED`) o se detenga explicando exactamente qué falta.
+**Objetivo:** que el entorno local tenga todo lo obligatorio para ejecutar el planner de punta a punta y que exista un comando único que **detecte, auto-remedie y verifique** (`PREFLIGHT PASSED`) o se detenga explicando exactamente qué falta, sólo cuando no pueda resolverlo solo.
 
-**Archivos/componentes:** `wallet/package.json` (orquestación), `wallet/docker-compose.yml`, `wallet/scripts/preflight` (bash) y `wallet/scripts/preflight.d/*.mjs`, `wallet/scripts/lib/*.sh`, `wallet/scripts/start-fork`, `stop-fork`, `reset-fork`, `wallet/scripts/secrets-local`, `wallet/.env.example`, `wallet/.env`, `wallet/docs/SETUP_EXTERNAL_SERVICES.md`.
+**Archivos/componentes:** `wallet/package.json` (orquestación), `wallet/docker-compose.yml`, `wallet/scripts/preflight` (bash) y `wallet/scripts/preflight.d/*.mjs`, `wallet/scripts/tools/{bootstrap,versions.json}`, `wallet/scripts/env.sh`, `wallet/scripts/lib/*.sh`, `wallet/scripts/start-fork`, `stop-fork`, `reset-fork`, `wallet/scripts/secrets-local`, `wallet/.env.example`, `wallet/.env`, `wallet/docs/SETUP_EXTERNAL_SERVICES.md`.
 
-**Dependencias:** ninguna. Credenciales externas mínimas para local: `BASE_RPC_URL` (archive), `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY` (ver `SETUP_EXTERNAL_SERVICES.md`).
+**Dependencias:** ninguna. Las únicas credenciales externas necesarias en local son `BASE_RPC_URL` (archive), `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET` y `GOOGLE_CLIENT_ID_RECOVERY`; el preflight primero las busca y valida (P00.T08) y sólo pide las que no encuentre (`SETUP_EXTERNAL_SERVICES.md` → USER ACTION REQUIRED).
 
 **Implementación requerida:**
 
 - [ ] **P00.T01** — Crear `wallet/package.json` sólo de orquestación: `"private": true`, `"packageManager": "pnpm@12.14.0"` (§3.6), `"engines": {"node": "<versión exacta de .node-version>"}`, scripts: `preflight` (`bash scripts/preflight`), `secrets:local`, `infra:up` (`docker compose up -d`), `infra:down`, `fork:start`, `fork:stop`, `fork:reset`. Sin dependencias. Crear `wallet/.node-version` con la versión exacta de Node 26 (26.12.0, o la primera 26.x LTS si ya fue publicada — ADR-028) y `wallet/scripts/preflight.d/versions.json` con las versiones exactas exigidas por el preflight (Node, pnpm, Foundry v1.8.5, Slither 0.11.6, gitleaks 8.30.1, imágenes por digest).
       Verificación: `cd wallet && pnpm run` lista los scripts; `git diff --stat` sólo muestra archivos bajo `wallet/`.
+- [ ] **P00.T01.a** — `scripts/tools/bootstrap` + `scripts/tools/versions.json` (ADR-032): instala en `wallet/.tools/` (gitignored, sin sudo) Node 26 (tarball oficial de nodejs.org verificado con `SHASUMS256.txt`), pnpm 12.14.0 (con el npm de ese Node; Node 26 no trae Corepack), Foundry v1.8.5 (release oficial + `.sha256`), gitleaks 8.30.1 (release + `checksums.txt`) y Slither 0.11.6 (venv local; si no hay Python ≥ 3.10, imagen Docker fijada); `scripts/env.sh` antepone `wallet/.tools/*/bin` al `PATH` y todos los scripts del proyecto lo usan. Plataformas soportadas: linux-x64 y darwin-arm64.
+      Verificación: en un shell sin las herramientas en el `PATH`, `bash scripts/tools/bootstrap && source scripts/env.sh && node -v && pnpm -v && forge --version && slither --version && gitleaks version` devuelve exactamente las versiones fijadas; una descarga alterada (checksum distinto) aborta.
 - [ ] **P00.T02** — Crear `wallet/docker-compose.yml` con imágenes **fijadas por digest** (tag+digest también en `versions.json`; en P01 pasan a `docs/VERSIONS.md`): `postgres:18.6` (healthcheck `pg_isready`, volumen, init script que crea las DBs `mtw_wallet` y `mtw_signer_dev` y los roles `mtw_migrator`/`mtw_app`/`mtw_signer` con las passwords del `.env`), `valkey/valkey:9.2` (`--appendonly yes --maxmemory-policy noeviction --requirepass $REDIS_PASSWORD`), `ghcr.io/foundry-rs/foundry:v1.8.5` (su entrypoint es `/bin/sh -c`: pasar el comando completo) corriendo `anvil --host 0.0.0.0 --port 8545 --fork-url ${BASE_RPC_URL} --fork-block-number ${FORK_BLOCK_NUMBER} --chain-id 8453 --block-time 2` con volumen para la caché RPC de Foundry, y `axllent/mailpit:v1.31.6`. Puertos host según §5.3. (El `BASE_RPC_URL` queda visible en `docker inspect` local: aceptable sólo en local.)
       Verificación: `docker compose config` sin errores; `docker compose up -d && docker compose ps` → todos `healthy`.
 - [ ] **P00.T03** — Scripts `scripts/start-fork`, `scripts/stop-fork`, `scripts/reset-fork` (bash, `set -euo pipefail`): start levanta sólo el servicio `anvil` y espera a que `eth_chainId == 0x2105`; stop lo detiene; reset ejecuta `anvil_reset` con `{forking:{jsonRpcUrl: BASE_RPC_URL, blockNumber: FORK_BLOCK_NUMBER}}` (o reinicia el contenedor) y verifica `anvil_nodeInfo.forkConfig.forkBlockNumber == FORK_BLOCK_NUMBER` y `eth_blockNumber == FORK_BLOCK_NUMBER`.
       Verificación: `pnpm fork:reset && cast block-number --rpc-url http://127.0.0.1:8545` = `FORK_BLOCK_NUMBER`.
 - [ ] **P00.T03.a** — Crear `config/chains/base-mainnet.json` y `config/chains/schema.json` con los valores ya verificados de §3.1–§3.4 (chainId, `forkBlockNumber`, direcciones y codehash de Safe, tokens y Uniswap, fuentes y fecha). P03 lo re-verifica con fork tests y lo extiende; PF-15 lo usa desde P00.
       Verificación: `node scripts/preflight.d/validate-chain-config.mjs` (valida contra el schema) y PF-15 en verde.
-- [ ] **P00.T04** — `scripts/secrets-local`: sólo si `APP_ENV=local`, completa en `wallet/.env` los secretos **locales** vacíos con valores aleatorios (`openssl rand`, `node:crypto` para Ed25519): `POSTGRES_PASSWORD`, passwords de los roles de DB, `DATABASE_URL`, `DATABASE_MIGRATION_URL`, `SIGNER_DATABASE_URL`, `REDIS_PASSWORD`, `REDIS_URL`, `LOCAL_SEED`, `SESSION_SECRET`, `CSRF_SECRET`, `SESSION_ISSUER_PRIVATE_KEY/PUBLIC_KEY`, `APP_FIELD_ENCRYPTION_KEY`, `OTP_HMAC_KEY`, `PASSWORD_PEPPER_V1`, `AUDIT_CHAIN_KEY`, `DEV_SIGNER_KEYSTORE_PASSPHRASE`, pares Ed25519 de desarrollo para policy, integrity monitor y releases; genera CA y certificados mTLS de desarrollo en `wallet/.secrets/mtls/` (gitignored). Nunca sobrescribe valores existentes; se niega a correr si `APP_ENV != local`.
+- [ ] **P00.T04** — `scripts/secrets-local`: sólo si `APP_ENV=local`, completa en `wallet/.env` los secretos **locales** vacíos con valores aleatorios (`openssl rand`, `node:crypto` para Ed25519): `POSTGRES_PASSWORD`, passwords de los roles de DB, `DATABASE_URL`, `DATABASE_MIGRATION_URL`, `SIGNER_DATABASE_URL`, `REDIS_PASSWORD`, `REDIS_URL`, `LOCAL_SEED`, `SESSION_SECRET`, `CSRF_SECRET`, `SESSION_ISSUER_PRIVATE_KEY/PUBLIC_KEY`, `APP_FIELD_ENCRYPTION_KEY`, `OTP_HMAC_KEY`, `PASSWORD_PEPPER_V1`, `AUDIT_CHAIN_KEY`, credencial de desbloqueo del shard de desarrollo (`wallet/.secrets/signer/dev-1/unlock.key`, fuera del directorio de keystores), clave Ed25519 de atestación del signer, pares Ed25519 de desarrollo para policy, integrity monitor y releases; genera CA y certificados mTLS de desarrollo en `wallet/.secrets/mtls/` (gitignored). Nunca sobrescribe valores existentes; se niega a correr si `APP_ENV != local`.
       Verificación: correrlo dos veces no cambia valores; `git status` no muestra `.env` ni `.secrets/`.
-- [ ] **P00.T05** — `scripts/preflight` (bash) + `scripts/preflight.d/*.mjs` (Node, sin dependencias externas) implementando los checks PF-01…PF-30 de abajo, con flags `--env local|staging|production` y `--json`. El `.env` se lee con un parser propio (nunca `source`), sin imprimir valores. Los checks marcados "desde Pxx" se activan solos cuando existe el artefacto correspondiente (p. ej. PF-25 por cada `package.json`/`foundry.toml` de proyecto presente, PF-29 si existe `backend/app/package.json`, PF-26 si existe `e2e/package.json`); el resumen indica qué checks se omitieron y por qué. Cada FAIL imprime: **qué falta**, **variable**, **cómo obtenerla**, **documento interno** (`docs/SETUP_EXTERNAL_SERVICES.md#<ancla>`) y termina con código ≠ 0 ("STOP"). Si todo pasa imprime exactamente `PREFLIGHT PASSED`.
+- [ ] **P00.T05** — `scripts/preflight` (bash) + `scripts/preflight.d/*.mjs` (Node, sin dependencias externas) implementando los checks PF-01…PF-30 de abajo con el ciclo **detect → auto-remediar → verificar** (por defecto remedia lo remediable: toolchain con `scripts/tools/bootstrap`, secretos locales con `secrets-local`, servicios compose caídos con `docker compose up -d`, imágenes faltantes con `docker pull` por digest; `--no-fix` sólo diagnostica), con flags `--env local|staging|production` y `--json`. El `.env` se lee con un parser propio (nunca `source`) que respeta comillas y comentarios en línea, sin imprimir valores. Los checks marcados "desde Pxx" se activan solos cuando existe el artefacto correspondiente (p. ej. PF-25 por cada `package.json`/`foundry.toml` de proyecto presente, PF-29 si existe `backend/app/package.json`, PF-26 si existe `e2e/package.json`); el resumen indica qué checks se omitieron y por qué. Cada FAIL imprime: **qué falta**, **variable**, **cómo obtenerla**, **documento interno** (`docs/SETUP_EXTERNAL_SERVICES.md#<ancla>`) y termina con código ≠ 0 ("STOP"). Si todo pasa imprime exactamente `PREFLIGHT PASSED`.
       Verificación: casos de prueba de P00.T06 en verde.
 - [ ] **P00.T06** — Tests del preflight (`scripts/preflight.d/__tests__/*.test.mjs` con `node --test`): variable faltante → FAIL con ancla correcta; formato inválido de URL/ID → FAIL; RPC con chainId incorrecto → FAIL; puerto ocupado → FAIL; `.env` no ignorado → FAIL; todo correcto → `PREFLIGHT PASSED`.
       Verificación: `node --test scripts/preflight.d/__tests__/`.
 - [ ] **P00.T07** — Actualizar `SETUP_EXTERNAL_SERVICES.md` para que cada ancla citada por el preflight exista (test que compara anclas).
       Verificación: `node --test scripts/preflight.d/__tests__/anchors.test.mjs`.
-- [ ] **P00.T08** — **Acción del owner**: obtener y cargar en `wallet/.env` las credenciales externas obligatorias para local (ver tabla "Local" en `SETUP_EXTERNAL_SERVICES.md`). Mientras falten: STOP.
-      Verificación: cada variable obligatoria de local presente (PF-11, PF-13, PF-19, PF-20 en verde); nunca se pegan valores en el planner.
+- [ ] **P00.T08** — Credenciales externas con autodiscovery: el preflight busca `BASE_RPC_URL`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET` y `GOOGLE_CLIENT_ID_RECOVERY` en las variables de entorno del proceso y en `wallet/.env`, las valida **sin mostrarlas** (PF-13, PF-14, PF-19, PF-20) y las reutiliza; sólo las que falten o no validen se informan como **USER ACTION REQUIRED** (con su sección de `SETUP_EXTERNAL_SERVICES.md`) y en ese caso STOP.
+      Verificación: PF-11, PF-13, PF-14, PF-19 y PF-20 en verde (credencial encontrada y validada sin mostrarla) o reporte USER ACTION REQUIRED con la sección exacta de SETUP; nunca se pegan valores en el planner.
 - [ ] **P00.T09** — Ejecutar `cd wallet && docker compose up -d && pnpm preflight` hasta obtener `PREFLIGHT PASSED`; pegar el resumen (sin secretos) en el Registro de ejecución.
       Verificación: salida `PREFLIGHT PASSED` y resumen pegado (sin secretos) en §13.
 
@@ -1134,18 +1185,18 @@ Checks del preflight:
 
 | ID | Check | Obligatorio en |
 |---|---|---|
-| PF-01 | bash ≥ 4, git ≥ 2.40, curl, openssl | todos |
-| PF-02 | Node == versión fijada (`.node-version`) | todos |
-| PF-03 | pnpm == `packageManager` (vía corepack) | todos |
-| PF-04 | forge, cast, anvil == versión de Foundry fijada | todos |
-| PF-05 | Docker Engine activo + Compose v2 | todos |
-| PF-06 | Slither == versión fijada (instalada con `uv tool`/`pipx`) | todos |
-| PF-07 | gitleaks == versión fijada | todos |
-| PF-08 | Imágenes de herramientas de seguridad (Semgrep, OSV-Scanner, zizmor, syft, Trivy) descargables por digest | todos |
+| PF-01 | bash ≥ 4, git ≥ 2.40, curl, openssl, tar, xz y python3 ≥ 3.10 (si falta Python, Slither usa la imagen Docker fijada); no auto-remediable sin privilegios → STOP con instrucción | todos |
+| PF-02 | Node == `.node-version`: detecta en `wallet/.tools` y en el sistema; si falta o difiere → `scripts/tools/bootstrap node` y re-verifica | todos |
+| PF-03 | pnpm == `packageManager`: si falta o difiere → bootstrap con el npm del Node fijado y re-verifica | todos |
+| PF-04 | forge, cast, anvil == Foundry fijado: si falta o difiere → bootstrap y re-verifica | todos |
+| PF-05 | Docker Engine activo + Compose v2 (si el daemon está detenido intenta iniciarlo sin sudo; si no está instalado o no hay permisos → STOP: es la única dependencia de sistema obligatoria) | todos |
+| PF-06 | Slither == versión fijada: si falta o difiere → venv `wallet/.tools/slither` (o imagen Docker fijada) y re-verifica | todos |
+| PF-07 | gitleaks == versión fijada: si falta o difiere → bootstrap (o imagen Docker fijada) y re-verifica | todos |
+| PF-08 | Imágenes de herramientas de seguridad (Semgrep, OSV-Scanner, zizmor, syft, Trivy) presentes por digest; si faltan → `docker pull` automático | todos |
 | PF-09 | Puertos libres: 5173, 5174, 8080, 8081, 8090, 8545, 55432, 56379, 1025, 8025, 9464–9470 (o en uso por los servicios propios ya levantados) | local |
 | PF-10 | `wallet/.env` existe y `git check-ignore -q wallet/.env` | todos |
 | PF-11 | Variables obligatorias del entorno presentes y con formato válido (URLs, direcciones EIP-55, claves base64 de longitud correcta, IDs de OAuth `*.apps.googleusercontent.com`) | todos |
-| PF-12 | Secretos locales generados (`pnpm secrets:local`) — y **prohibidos** valores de ejemplo en staging/prod | todos |
+| PF-12 | Secretos locales presentes (si faltan, `pnpm secrets:local` se ejecuta automáticamente) — y **prohibidos** valores de ejemplo en staging/prod | todos |
 | PF-13 | `BASE_RPC_URL`: `eth_chainId == 0x2105`, latencia < 2 s | todos |
 | PF-14 | `BASE_RPC_URL` es archive: `eth_getCode(USDC, FORK_BLOCK_NUMBER)` no vacío y `eth_getBalance(<Safe singleton>, FORK_BLOCK_NUMBER)` responde | local/CI |
 | PF-15 | `FORK_BLOCK_NUMBER` ≤ bloque `finalized` y todas las direcciones de `config/chains/base-mainnet.json` tienen el codehash esperado en ese bloque | local/CI |
@@ -1160,8 +1211,8 @@ Checks del preflight:
 | PF-24 | Branch == `feat/walletWeb/cmarchese` (local) y `gitleaks` sin hallazgos en el índice | local |
 | PF-25 | Lockfiles presentes y consistentes en cada proyecto existente (`pnpm install --frozen-lockfile --prefer-offline` dry check) | desde P01 |
 | PF-26 | Navegadores de Playwright instalados (si existe `wallet/e2e`) | desde P22 |
-| PF-27 | Signer: local → keystore dev escribible y passphrase presente; staging/prod → el rol del shard puede `kms:GetPublicKey` sobre la clave de prueba `alias/mtw/<env>/healthcheck` y no puede `kms:Sign` sobre claves de otro shard | todos |
-| PF-28 | Certificados mTLS presentes, no vencidos, CA correcta | todos |
+| PF-27 | Signer: directorio de keystores escribible por el UID del signer, credencial de desbloqueo presente en una ubicación **distinta** de la de los keystores, y `credentialFingerprint` coincidente con la DB del signer si ya hay claves (local: `wallet/.secrets/signer/dev-1/`, generado si falta) | todos |
+| PF-28 | Certificados mTLS presentes, no vencidos, CA correcta (local: regenerados automáticamente si faltan o vencen) | todos |
 | PF-29 | `OPAQUE_SERVER_SETUP` presente (desde P10; se genera con `pnpm --dir backend/app opaque:setup`) | desde P10 |
 | PF-30 | Resumen final y código de salida | todos |
 
@@ -1208,7 +1259,7 @@ Checks del preflight:
 
 **Implementación requerida:**
 
-- [ ] **P01.T01** — Re-verificar contra fuentes oficiales (registry npm, nodejs.org, releases de GitHub, Docker Hub) cada versión de §3.6 y fijar **versiones exactas** en `docs/VERSIONS.md` (herramienta, versión, URL, fecha, digest para imágenes). Si una versión cambió desde la fecha de este planner, actualizar la tabla y anotar el motivo en el Registro de ejecución.
+- [ ] **P01.T01** — Re-verificar contra fuentes oficiales (registry npm, nodejs.org, releases de GitHub, Docker Hub) cada versión de §3.6 y fijar **versiones exactas** en `docs/VERSIONS.md` (herramienta, versión, URL, fecha, digest para imágenes) y en `scripts/tools/versions.json` (URL oficial + SHA-256 por plataforma). Si una versión cambió desde la fecha de este planner, actualizar la tabla y anotar el motivo en el Registro de ejecución.
       Verificación: `docs/VERSIONS.md` no contiene rangos (`^`, `~`, `latest`); cada fila tiene URL y fecha.
 - [ ] **P01.T02** — Confirmar/actualizar `.node-version` (Node 26 LTS exacta, ADR-028), `packageManager` (pnpm exacta), Foundry (`foundryup --install v1.8.5` documentado), solc exacto (P03), Slither exacto, y sincronizar `scripts/preflight.d/versions.json` con `docs/VERSIONS.md` (test de igualdad).
       Verificación: `pnpm preflight` sigue en `PREFLIGHT PASSED`.
@@ -1218,8 +1269,8 @@ Checks del preflight:
       Verificación: `git ls-files wallet/.editorconfig wallet/.gitattributes` y `git diff --check` sin errores de fin de línea.
 - [ ] **P01.T05** — Política de supply chain de pnpm (aplicada en cada proyecto al crearlo): `save-exact=true`, edad mínima de publicación de paquetes (≥ 7 días, setting de pnpm verificado en la doc de la versión fijada), bloqueo de scripts de instalación salvo allowlist explícita, `strict-peer-dependencies=true`, `--frozen-lockfile` en CI. Documentar en `docs/VERSIONS.md#supply-chain`.
       Verificación: `node scripts/check-pnpm-policy.mjs` confirma `save-exact`, edad mínima de publicación, scripts de instalación bloqueados y `strict-peer-dependencies` en cada proyecto existente.
-- [ ] **P01.T06** — `wallet/docs/adr/`: un archivo por cada ADR de §4 (ADR-001…ADR-029: contexto, decisión, alternativas, consecuencias).
-      Verificación: `ls wallet/docs/adr | wc -l` = 29 y `node scripts/check-docs.mjs` sin errores.
+- [ ] **P01.T06** — `wallet/docs/adr/`: un archivo por cada ADR de §4 (ADR-001…ADR-032: contexto, decisión, alternativas, consecuencias).
+      Verificación: `ls wallet/docs/adr | wc -l` = 32 y `node scripts/check-docs.mjs` sin errores.
 - [ ] **P01.T06.a** — `scripts/check-docs.mjs` (sin dependencias): valida anclas y links internos de todos los `.md` bajo `wallet/`, que todo ID `[C-…]`, `[B-…]`, `[F-…]`, `ADR-…` y `Pxx.Tyy` citado esté definido, y que cada tarea del planner tenga línea `Verificación:`. Se usa en todos los CHECKPOINT ("documentación actualizada").
       Verificación: `node scripts/check-docs.mjs` → `DOCS OK`.
 - [ ] **P01.T07** — `wallet/docs/THREAT_MODEL.md` v1 a partir de §9 (activos, adversarios, escenarios, assertions A1–A21, comportamientos deliberados).
@@ -1236,7 +1287,7 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P01.MAN** — revisar ADRs contra V9 y prompt; confirmar con el owner CF-01 (repositorio separado) y CF-06 (CI en raíz) — registrar respuesta.
+- [ ] **P01.MAN** — revisar ADRs contra V9 y prompt (CF-01 no bloquea y CF-06 ya está aprobado).
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** versiones fijadas y trazables; ADRs y threat model presentes; wordlist verificada.
@@ -1258,7 +1309,7 @@ Checks del preflight:
 - [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
 - [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
-**Condición para pasar a P02:** versiones exactas registradas; decisión del owner sobre CF-01/CF-06 anotada (aunque sea "pendiente", con fecha).
+**Condición para pasar a P02:** versiones exactas registradas y toolchain local verificado con `scripts/tools/bootstrap`.
 
 ---
 
@@ -1272,13 +1323,13 @@ Checks del preflight:
 
 **Implementación requerida:**
 
-- [ ] **P02.T01** — Pedir aprobación al owner para crear en la raíz `.github/workflows/wallet-contracts.yml`, `wallet-backend.yml`, `wallet-signer.yml`, `wallet-frontend-wallet.yml`, `wallet-frontend-recovery.yml`, `wallet-security.yml`, `wallet-e2e.yml`, `wallet-repro-build.yml` (disparadores finos con `paths: ['wallet/<área>/**']`). Registrar la decisión.
-      Verificación: decisión del owner (aprobado/rechazado, fecha) registrada en §13.1 D-02.
+- [ ] **P02.T01** — Crear `.github/workflows/wallet-contracts.yml`, `wallet-backend.yml`, `wallet-signer.yml`, `wallet-frontend-wallet.yml`, `wallet-frontend-recovery.yml`, `wallet-security.yml`, `wallet-e2e.yml`, `wallet-repro-build.yml` (disparadores finos con `paths: ['wallet/<área>/**']`) y `.github/CODEOWNERS` con un equipo revisor por trust domain (contracts, backend/signer, frontend-wallet, frontend-recovery, infra). **Aprobado por el owner el 2026-10-16: no volver a preguntar.**
+      Verificación: archivos presentes y `docker run --rm -v "$PWD:/src" <imagen zizmor fijada> /src/.github/workflows` sin hallazgos High.
 - [ ] **P02.T02** — Scripts `wallet/ci/scripts/ci-<área>.sh` que ejecutan, si el proyecto existe (si no, imprimen `SKIP: proyecto no creado aún (fase Pxx)`): instalación con lockfile congelado, lint, typecheck, unit, integración, cobertura y build del área. `ci-contracts.sh`: `forge build --sizes`, `forge test --profile ci` (unit, integración, fork, fuzz, invariants), `forge coverage` con umbrales (≥ 95 % líneas, ≥ 90 % ramas en `src/`; falla si no se cumplen) y **Slither** (`slither . --config-file slither.config.json --fail-high --fail-medium`). `ci-security.sh`: gitleaks (historia completa del branch), OSV-Scanner sobre todos los lockfiles, `pnpm audit --prod` por proyecto, Semgrep (reglas TS + Solidity), zizmor sobre workflows. Herramientas vía imágenes Docker fijadas por digest.
       Verificación: `pnpm ci:local` corre todos los scripts y termina en verde.
-- [ ] **P02.T03** — (Si aprobado) workflows: acciones fijadas por **SHA de commit**, `permissions: contents: read` por defecto, sin `pull_request_target`, `concurrency` por ref, caché de Foundry RPC por `FORK_BLOCK_NUMBER`, secretos por **GitHub Environment** separado por área (el workflow de Recovery no puede leer secretos de Wallet y viceversa), runners efímeros. `wallet-e2e.yml` en PR con label `e2e` y nightly. `wallet-repro-build.yml` compila cada frontend dos veces en jobs distintos y compara manifests.
+- [ ] **P02.T03** — Workflows: acciones fijadas por **SHA de commit**, `permissions: contents: read` por defecto, sin `pull_request_target`, `concurrency` por ref, caché de Foundry RPC por `FORK_BLOCK_NUMBER`, secretos por **GitHub Environment** separado por área (el workflow de Recovery no puede leer secretos de Wallet y viceversa), runners efímeros. `wallet-e2e.yml` en PR con label `e2e` y nightly. `wallet-repro-build.yml` compila cada frontend dos veces en jobs distintos y compara manifests. Jobs cubiertos: lint, typecheck, tests, fork tests, fuzz/invariants, Slither, security scans, builds y builds reproducibles. **Ningún workflow despliega** (los artefactos de release se agregan en P26.T02.a, también sin deploy).
       Verificación: un PR de prueba dispara sólo los workflows del área tocada.
-- [ ] **P02.T04** — `wallet/docs/CI.md`: matriz de jobs, secretos por Environment, required checks recomendados para branch protection (acción del owner en GitHub).
+- [ ] **P02.T04** — `wallet/docs/CI.md`: matriz de jobs, secretos por Environment y required checks; branch protection de la rama principal (required checks, revisión de CODEOWNERS, "include administrators", commits firmados) aplicada con `gh api` si `gh auth status` tiene permisos de administrador del repo (si no, esa configuración puntual queda en USER ACTION REQUIRED).
       Verificación: `node scripts/check-docs.mjs` (incluye `docs/CI.md`).
 
 **Tests a implementar:**
@@ -1291,7 +1342,7 @@ Checks del preflight:
 - [ ] **P02.MAN** — verificar en GitHub que los Environments tienen secretos separados y reviewers requeridos para `production`.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
-**Acceptance criteria:** `pnpm ci:local` verde; (si aprobado) workflows verdes en el branch.
+**Acceptance criteria:** `pnpm ci:local` verde y workflows verdes en el branch.
 
 **Security checks:**
 
@@ -1310,7 +1361,7 @@ Checks del preflight:
 - [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
 - [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
-**Condición para pasar a P03:** `pnpm ci:local` verde. (La activación de GitHub Actions es **gate obligatorio antes de P25**.)
+**Condición para pasar a P03:** `pnpm ci:local` verde y workflows de GitHub Actions corriendo en el branch.
 
 ---
 
@@ -1626,7 +1677,7 @@ Checks del preflight:
 
 - [ ] **P08.T01** — Crear el proyecto con versiones exactas (§3.6): Fastify 5, Zod 4, `fastify-type-provider-zod`, `@fastify/swagger`, `@fastify/swagger-ui`, `@fastify/cookie`, `@fastify/helmet`, `@fastify/cors`, `@fastify/rate-limit`, Kysely + `pg`, BullMQ + `ioredis`, viem, pino, prom-client, `jose`, `@node-rs/argon2`, `@serenity-kit/opaque`, `otpauth`, `postmark`, `nodemailer`; dev: TypeScript 6.0.x, Vitest, Testcontainers, ESLint + typescript-eslint, Prettier. Settings de supply chain de P01.T05.
       Verificación: `pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint`.
-- [ ] **P08.T02** — `src/config/env.ts`: schema Zod por `APP_ENV` (local/staging/production); en staging/prod falla si detecta valores de ejemplo o secretos con baja entropía; nunca imprime valores.
+- [ ] **P08.T02** — `src/config/env.ts`: schema Zod por `APP_ENV` (local/staging/production); toda variable secreta acepta también `<VAR>_FILE` (lectura del secret de Docker Compose en `/run/secrets/…`, ADR-030) y en staging/prod **exige** la forma `_FILE`; falla si detecta valores de ejemplo o secretos con baja entropía; nunca imprime valores. (El mismo patrón se replica, implementado por separado, en `backend/signer` y `backend/integrity-monitor`.)
       Verificación: tests de configuración (faltante, formato inválido, valor de ejemplo en prod → error).
 - [ ] **P08.T03** — Migraciones iniciales con **todas** las tablas de [B-DB] (constraints, FKs, índices únicos parciales, CHECKs, trigger append-only de `audit_events`, roles y GRANTs). `pnpm db:migrate`, `pnpm db:status`, `pnpm db:backup`, `pnpm db:restore`.
       Verificación: test de integración que aplica migraciones sobre Postgres 18 (Testcontainers) y verifica: UPDATE/DELETE en `audit_events` falla; índice parcial impide dos operaciones activas con el mismo nonce; `wallet_keys_metadata` impide claves duplicadas.
@@ -1811,15 +1862,15 @@ Checks del preflight:
 
 ### P11 — Signer S
 
-**Objetivo:** signer independiente por shard [B-SIG] con `SignerProvider` (development, KMS/HSM, PKCS#11 preparado), política propia basada en snapshot firmado, estado propio, mTLS, gas tank/relayer.
+**Objetivo:** signer **self-hosted** independiente por shard [B-SIG] con `SignerProvider` (development, selfhosted, hardware futuro), ciclo de vida completo de keystores [B-SIG-08], sharding [B-SIG-09], política propia basada en snapshot firmado, estado propio, mTLS y gas tank/relayer.
 
-**Archivos/componentes:** `wallet/backend/signer/` (proyecto propio): `src/server.ts` (HTTPS mTLS), `src/policy/*` (implementación **independiente**), `src/chain/*` (RPC propio de quórum, SafeTx), `src/state/*` (PostgreSQL propio del signer, migraciones propias), `src/providers/{SignerProvider.ts,DevelopmentSignerProvider.ts,KmsSignerProvider.ts,Pkcs11SignerProvider.ts}`, `scripts/{create-shard.sh,kms-key-policy.json}`; `wallet/config/policy/<env>/policy-snapshot.json(.sig)`; en `backend/app`: `src/signer-client/*`, `src/gas/*`.
+**Archivos/componentes:** `wallet/backend/signer/` (proyecto propio): `src/server.ts` (HTTPS mTLS), `src/policy/*` (implementación **independiente**), `src/chain/*` (RPC propio de quórum, SafeTx), `src/state/*` (PostgreSQL propio del signer, migraciones propias), `src/providers/{SignerProvider.ts,SelfHostedSoftwareSignerProvider.ts,DevelopmentSignerProvider.ts,HardwareSignerProvider.ts}`, `src/keystore/{v3.ts,derive-password.ts,atomic-write.ts,fingerprint.ts}`, `scripts/{create-shard.ts,restore-verify.ts,rotate-unlock-credential.ts,shard-migrate.ts}`; `wallet/config/policy/<env>/policy-snapshot.json(.sig)`; en `backend/app`: `src/signer-client/*`, `src/gas/*`.
 
 **Dependencias:** P10.
 
 **Implementación requerida:**
 
-- [ ] **P11.T01** — Interfaz `SignerProvider` [B-SIG-04] y `DevelopmentSignerProvider`: keystore Web3 Secret Storage v3 cifrado con `DEV_SIGNER_KEYSTORE_PASSPHRASE` en `wallet/.secrets/dev-signer-keystore/`; **se niega a arrancar** si `APP_ENV != local` o si el RPC no es un fork Anvil (`anvil_nodeInfo.forkConfig` presente). Nunca escribe claves en DB, `.env`, logs ni código.
+- [ ] **P11.T01** — Interfaz `SignerProvider` [B-SIG-04] y `DevelopmentSignerProvider` = `SelfHostedSoftwareSignerProvider` con guardas: **se niega a arrancar** si `APP_ENV != local` o si el RPC no es un fork Anvil (`anvil_nodeInfo.forkConfig` presente); keystores en `wallet/.secrets/signer/dev-1/keystore/` y credencial en `wallet/.secrets/signer/dev-1/unlock.key` (generada por `secrets:local`, fuera del directorio de keystores). Nunca escribe claves en DB, `.env`, logs, código ni respuestas de API.
       Verificación: `pnpm --dir backend/signer vitest run test/providers/development.test.ts` (incluye negativa fuera de Anvil).
 - [ ] **P11.T02** — Servidor mTLS [B-SIG-01]; `POST /v1/sign-safe-tx` [B-SIG-02], `POST /v1/keys` (crear S para un wallet), `GET /v1/health`. Cliente mTLS en `backend/app/src/signer-client`.
       Verificación: `pnpm --dir backend/signer vitest run test/server-mtls.test.ts`.
@@ -1829,16 +1880,16 @@ Checks del preflight:
       Verificación: `pnpm --dir backend/signer policy:verify config/policy/local/policy-snapshot.json` y test de anti-rollback.
 - [ ] **P11.T05** — Reglas estáticas restrictivas [B-SIG-06] evaluadas antes de cualquier I/O: typed data `SafeTx` con `chainId == 8453`, `operation == 0`, gas params en cero, `to`/selector dentro de la allowlist del sistema; tx a firmar por la clave S con `to == Safe asociada`, selector `execTransaction`, `value == 0`, tope de gas/fees; para la cuenta gas tank sólo transferencias de ETH a S registradas (≤ tope), `WalletFactory.createWallet` y `RotationTimelock.cancelWithSignature`. Tabla de casos de rechazo en tests.
       Verificación: `pnpm --dir backend/signer vitest run test/policy/static-rules.test.ts`.
-- [ ] **P11.T06** — `KmsSignerProvider` (producción/staging): `CreateKey` (`KeySpec=ECC_SECG_P256K1`, `KeyUsage=SIGN_VERIFY`, alias `alias/mtw/<env>/<shard>/<walletId>`, tags), `GetPublicKey` → dirección, `Sign` (`ECDSA_SHA_256`, `MessageType=DIGEST`), DER→(r,s), low-s, `v` por recuperación verificada contra la dirección. Key policy (`scripts/kms-key-policy.json`): sólo el rol del shard puede `Sign`/`GetPublicKey`; nadie puede `ScheduleKeyDeletion` sin MFA de dos administradores de seguridad; CloudTrail obligatorio. En P11 se implementa con tests de las funciones puras (DER→(r,s), low-s, recuperación de `v`) contra vectores conocidos; la **suite de contrato contra KMS real** se ejecuta en P26.T03.a (cuenta de staging, CI con OIDC), porque esa infraestructura recién existe ahí; en local se usa `DevelopmentSignerProvider` (nunca emuladores de KMS). Claves multi-Region obligatorias.
-      Verificación: `pnpm --dir backend/signer vitest run test/providers/kms-pure.test.ts` (vectores DER/low-s/v); la suite contra KMS real queda en P26.T03.a.
-- [ ] **P11.T07** — `Pkcs11SignerProvider` preparado para HSM propio dedicado (CloudHSM/on-prem): interfaz, suite de contrato de tests compartida con los otros providers y runbook `docs/runbooks/signer-hsm-migration.md` (migración por rotación de S vía timelock, Safe por Safe, con firma del usuario). Documentar en ADR-014 por qué no se usa Clef (retirado de go-ethereum, sin mantenimiento, §3.5).
-      Verificación: `pnpm --dir backend/signer vitest run test/providers/contract-suite.test.ts` (la suite común corre contra Development y queda lista para PKCS#11) y runbook presente (`node scripts/check-docs.mjs`).
-- [ ] **P11.T08** — Sharding: asignación de wallet a shard por hash estable de `walletId` sobre shards activos; registro en `signer_keys`; un shard dev en local, ≥ 2 en producción.
-      Verificación: `pnpm --dir backend/app vitest run test/signer-client/sharding.test.ts`.
+- [ ] **P11.T06** — `SelfHostedSoftwareSignerProvider` [B-SIG-08] (producción/staging): create, load, unlock y restart con keystores Ethereum V3 (scrypt de `@noble/hashes`, AES-128-CTR de `node:crypto`, MAC keccak), contraseñas derivadas por HKDF de la credencial del shard leída de `SIGNER_UNLOCK_CREDENTIAL_FILE` (secret de Compose), escritura atómica, `credentialFingerprint`, firma con `@noble/curves` (low-s, RFC 6979) y cálculo de `v`. Interoperabilidad: tests que descifran los keystores generados con `cast wallet decrypt-keystore` del Foundry fijado y que verifican vectores oficiales del formato V3.
+      Verificación: `pnpm --dir backend/signer vitest run test/providers/selfhosted.test.ts test/keystore` (incluye interop con `cast`).
+- [ ] **P11.T07** — `HardwareSignerProvider` (futuro opcional, HSM físico propio vía PKCS#11/YubiHSM): interfaz, suite de contrato común (la misma que corren los otros providers) y runbook `docs/runbooks/signer-hardware-migration.md` (migración Safe por Safe rotando S por el timelock); **no se implementa contra hardware en V1**. Documentar en ADR-014 la evaluación de Clef y Web3Signer (§3.5).
+      Verificación: `pnpm --dir backend/signer vitest run test/providers/contract-suite.test.ts` (corre contra Development y SelfHosted) y runbook presente (`node scripts/check-docs.mjs`).
+- [ ] **P11.T08** — Sharding [B-SIG-09]: asignación de wallet a shard por hash estable de `walletId` sobre los shards activos al crearla, **guardada** (no se recalcula); registro en `signer_keys`; un shard `dev-1` en local; el software y los tests soportan N shards (dos shards locales en los tests de integración), aunque en producción inicialmente compartan host físico.
+      Verificación: `pnpm --dir backend/app vitest run test/signer-client/sharding.test.ts` y `pnpm --dir backend/signer vitest run test/multi-shard.test.ts`.
 - [ ] **P11.T09** — Gas tank/relayer [B-SIG-05]: job de recarga (mín./objetivo/tope diario), retransmisión de cancelaciones firmadas, deploy de Safes; métricas de saldos.
       Verificación: `pnpm --dir backend/app vitest run test/gas/gas-tank.test.ts` contra el fork.
-- [ ] **P11.T10** — Continuidad de claves: con KMS las claves no se exportan; el runbook `docs/runbooks/signer-continuity.md` cubre protección contra borrado (ventana de 30 días, alarmas de `ScheduleKeyDeletion`/`DisableKey`), réplica multi-región (claves multi-Region o rotación de S planificada si se pierde la región) y, para el keystore de desarrollo, que **no** se respalda (sólo local).
-      Verificación: `node scripts/check-docs.mjs` (runbook presente) y revisión del owner registrada en §13.
+- [ ] **P11.T10** — Procedimientos del ciclo de vida [B-SIG-08] como scripts + runbooks (`docs/runbooks/signer-lifecycle.md`), cada uno con test que lo ejecuta en local: backup cifrado con `age` (sin la credencial), restore + `restore-verify`, rotación de la credencial del shard (re-cifrado de todos los keystores), keystore corrupto o faltante (`BROKEN` + restore), migración de wallets entre shards (dos fases), y custodia offline de la credencial de desbloqueo (dos copias selladas, custodios distintos).
+      Verificación: `pnpm --dir backend/signer vitest run test/lifecycle` (cada procedimiento ejecutado de punta a punta sobre un shard de prueba).
 - [ ] **P11.T11** — `SignerKeyAttestation` [B-SIG-07]/[W-03]: clave de atestación Ed25519 del signer por entorno (pública exportada para los frontends), emitida en `POST /v1/keys`.
       Verificación: `pnpm --dir backend/signer vitest run test/attestation.test.ts`.
 
@@ -1849,17 +1900,17 @@ Checks del preflight:
 
 **Checks manuales:**
 
-- [ ] **P11.MAN** — inspeccionar que ningún log del signer contiene material sensible; revisar la tabla de reglas estáticas línea por línea.
+- [ ] **P11.MAN** — inspeccionar que ningún log del signer contiene material sensible; revisar la tabla de reglas estáticas línea por línea; revisar permisos de archivos del volumen de keystores y del secret de desbloqueo.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** el worker puede obtener firmas S sólo para operaciones válidas; las reglas estáticas rechazan por sí mismas cualquier operación fuera de la allowlist aunque el backend la pida.
 
 **Security checks:**
 
-- [ ] **P11.SEC** — S nunca en DB/.env/logs/código; mTLS obligatorio; key policy de KMS mínima; signer sin puertos públicos.
+- [ ] **P11.SEC** — S nunca en DB, Valkey, `.env`, logs, código ni API; keystores 0400 del UID del signer; credencial de desbloqueo en un secret separado de los keystores; mTLS obligatorio; signer sin puertos publicados y sólo en la red interna `signer`.
       Verificación: `pnpm --dir backend/signer test:security && bash ci/scripts/ci-security.sh`.
 
-**Commits:** `feat(signer): add independent signer service with development and kms providers`, `feat(signer): add signed policy snapshots and gas tank`.
+**Commits:** `feat(signer): add self-hosted signer service with encrypted keystores`, `feat(signer): add signed policy snapshots and gas tank`.
 
 #### CHECKPOINT P11
 
@@ -2174,7 +2225,7 @@ Checks del preflight:
       Verificación: `pnpm --dir frontend/wallet lint` y `pnpm --dir frontend/recovery lint` (con un caso prohibido que debe fallar en `lint-fixtures/`).
 - [ ] **P16.T04** — Seguridad en runtime: política Trusted Types única `mtw-default` con allowlist de URLs de workers generada en build y comprobación al arrancar de que la CSP está activa ([F-SEC-02]), kill-switch de service workers ([F-SEC-04]), listener de `securitypolicyviolation` → `POST /api/v1/security/csp-report` (endpoint agregado en backend en esta tarea; rate limited, sin datos sensibles).
       Verificación: `pnpm --dir frontend/wallet test:browser -- security/trusted-types` y lo mismo en `frontend/recovery` (worker carga con TT forzado; sink de prueba bloqueado; sin SW).
-- [ ] **P16.T05** — Headers: `build/headers.json` por app (CSP de [F-SEC-01] con hosts por entorno, HSTS, COOP/COEP/CORP, Referrer-Policy, Permissions-Policy, nosniff) aplicado por `vite preview` en local y por CloudFront en P26; `build.modulePreload.polyfill = false` y cero scripts/estilos inline (CSP `'self'`).
+- [ ] **P16.T05** — Headers: `build/headers.json` por app (CSP de [F-SEC-01] con hosts por entorno, HSTS, COOP/COEP/CORP, Referrer-Policy, Permissions-Policy, nosniff) aplicado por `vite preview` en local y por el contenedor estático propio de cada app (`wallet-web`/`recovery-web`) en P26; `build.modulePreload.polyfill = false` y cero scripts/estilos inline (CSP `'self'`).
       Verificación: `pnpm --dir frontend/wallet test:browser -- security/headers` y lo mismo en `frontend/recovery` (contra `vite preview`).
 - [ ] **P16.T06** — Build reproducible: `SOURCE_DATE_EPOCH` = fecha del commit, nombres por hash de contenido, toolchain fijado; plugin SRI propio; generador de `release-manifest.json` (releaseId, commit, SHA-256 por archivo) y firma Ed25519 con la clave de release **de esa app** (dev local en `.secrets/`; CI por Environment en P20/P26). Implementado por separado en cada app.
       Verificación: `bash ci/scripts/repro-build.sh wallet` y `bash ci/scripts/repro-build.sh recovery` → manifests idénticos y firma verificable.
@@ -2420,7 +2471,7 @@ Checks del preflight:
 
 **Objetivo:** V9 §17 "monitores independientes … una discrepancia pausa la cooperación de S".
 
-**Archivos/componentes:** `wallet/backend/integrity-monitor/` (proyecto propio: `src/monitor.ts`, `src/attestation.ts`), `backend/signer/src/policy/integrity.ts`, `wallet/config/release-keys/{wallet.pub,recovery.pub}` (públicas), runbook `docs/runbooks/integrity-mismatch.md`.
+**Archivos/componentes:** `wallet/backend/integrity-monitor/` (proyecto propio: `src/monitor.ts`, `src/attestation.ts`), `.github/workflows/wallet-integrity-offhost.yml` (chequeo off-host programado), `backend/signer/src/policy/integrity.ts`, `wallet/config/release-keys/{wallet.pub,recovery.pub}` (públicas), runbook `docs/runbooks/integrity-mismatch.md`.
 
 **Dependencias:** P18, P19.
 
@@ -2428,8 +2479,10 @@ Checks del preflight:
 
 - [ ] **P20.T01** — Claves de release Ed25519 **distintas** para Wallet y Recovery (dev en `.secrets/`; staging/prod sólo en el GitHub Environment de cada pipeline). Públicas fijadas en el monitor.
       Verificación: `node scripts/check-release-keys.mjs` (públicas fijadas, privadas ausentes del repo y del backend).
-- [ ] **P20.T02** — Integrity monitor (proceso separado): cada 60 s y por app/entorno descarga `/.well-known/release-manifest.json(.sig)`, verifica firma, descarga cada archivo listado y verifica SHA-256, verifica headers (CSP, HSTS, etc.) y SRI de `index.html`, detecta archivos/scripts no listados; registra `integrity_status` y emite atestación firmada `{platformId, app, releaseId, status, observedAt}`. En producción corre desde ≥ 2 ubicaciones.
+- [ ] **P20.T02** — Integrity monitor (contenedor propio, clave de atestación propia): cada 60 s y por app/entorno descarga `/.well-known/release-manifest.json(.sig)`, verifica firma, descarga cada archivo listado y verifica SHA-256, verifica headers (CSP, HSTS, etc.) y SRI de `index.html`, detecta archivos/scripts no listados; registra `integrity_status` y emite atestación firmada `{platformId, app, releaseId, status, observedAt}` que consume el signer.
       Verificación: `pnpm --dir backend/integrity-monitor vitest run`.
+- [ ] **P20.T02.a** — Chequeo **off-host**: workflow programado de GitHub Actions (cada 15 min) que hace las mismas verificaciones contra las URLs públicas con las claves públicas de release del repo y alerta por email/webhook ante discrepancia; no depende del host de producción (si el host se compromete, la alerta igual sale), no pausa al signer.
+      Verificación: ejecución manual del workflow contra un `vite preview` expuesto en un runner de prueba con un archivo alterado → falla y notifica.
 - [ ] **P20.T03** — Signer: con `INTEGRITY_REQUIRED=true` (staging/prod) exige atestaciones OK de ambas apps con antigüedad ≤ 5 min; ante MISMATCH rechaza cooperar de inmediato (`COOPERATION_PAUSED`); ante UNREACHABLE alerta y concede 15 min de gracia antes de pausar; alerta crítica, auditoría y banner en Wallet; el camino soberano no se afecta.
       Verificación: `pnpm --dir backend/signer vitest run test/policy/integrity.test.ts`.
 - [ ] **P20.T04** — Reanudación sólo con atestación OK + acción de dos operadores registrada.
@@ -2677,8 +2730,8 @@ Checks del preflight:
       Verificación: `pnpm --dir backend/app vitest run test/observability` + specs de consola de frontends (`pnpm --dir e2e test specs/security/console-canary.spec.ts`).
 - [ ] **P24.T06** — Monitoreo de dependencias externas: cambio de implementación del proxy de USDC, liquidez del pool canónico bajo umbral, desvío de cotización > 0,5 % (deshabilita swaps por policy), cambios de código en contratos fijados.
       Verificación: `pnpm --dir backend/app vitest run test/monitoring/external-deps.test.ts` contra el fork (cambio de implementación simulado con `anvil_setStorageAt` sólo en test).
-- [ ] **P24.T07** — Alarmas de KMS: `DisableKey`, `ScheduleKeyDeletion` o cambios de key policy sobre claves S o del gas tank → alerta crítica (CloudTrail + EventBridge en staging/producción; en local se documenta y se prueba en P26).
-      Verificación: ensayo en staging registrado en §13.
+- [ ] **P24.T07** — Alarmas del signer self-hosted: keystore ilegible o con MAC inválido, `credentialFingerprint` distinto al arrancar, archivo de keystore creado o borrado fuera del flujo (watcher del directorio), clave `BROKEN`, backup de keystores fallido o atrasado, ráfaga de rechazos por reglas estáticas.
+      Verificación: `pnpm --dir backend/signer vitest run test/alarms.test.ts` y alerta recibida en Mailpit con el perfil `observability`.
 
 **Tests a implementar:**
 
@@ -2723,7 +2776,7 @@ Checks del preflight:
 
 **Implementación requerida:**
 
-- [ ] **P25.T01** — Matriz de entornos: por entorno, DB, Valkey, clientes OAuth (proyectos Google distintos), claves KMS y cuenta del signer, secretos de sesión/CSRF/OPAQUE/pepper/field key/audit key, servidor de Postmark, claves RPC, dominios, Governance Safe, guardianes, claves de release y de policy. **Nada se comparte entre staging y producción.**
+- [ ] **P25.T01** — Matriz de entornos (local / staging / production) en `docs/ENVIRONMENTS.md`: por entorno, proyecto de Docker Compose y directorio de secrets propios, DB y volúmenes, Valkey, clientes OAuth (proyectos Google distintos), shards del signer con keystores y credenciales de desbloqueo propios, secretos de sesión/CSRF/OPAQUE/pepper/field key/audit key, servidor de Postmark, claves RPC, dominios, Governance Safe, guardianes, claves de release y de policy. **Nada se comparte entre staging y producción**; si conviven en un mismo host lo hacen como proyectos Compose separados (decisión de despliegue, no del planner).
       Verificación: `node scripts/check-docs.mjs` y revisión del owner registrada en §13.
 - [ ] **P25.T02** — `DeployBase.s.sol` [C-SCR-04]: hardware wallet, `--broadcast` explícito, `PolicyRegistry` en RESTRICTED con el set V1 [C-POL-04], registro de tokens y executor; escribe el JSON de deployment con, por contrato: address, `proxy: false` e `implementation: null` (ningún contrato propio usa proxy; se deja explícito), codehash, constructor args, compiler y settings, commit, deployer, tx hash, bloque, URL de verificación.
       Verificación: `forge script script/DeployBase.s.sol --fork-url $LOCAL_RPC_URL` (sin `--broadcast` a mainnet) genera el JSON válido contra `deployments/schema.json`.
@@ -2773,97 +2826,97 @@ Checks del preflight:
 
 ---
 
-### P26 — PRODUCTION READINESS
+### P26 — PRODUCTION READINESS (preparación para la VPS, sin desplegar)
 
-**Objetivo:** infraestructura, operación y gates para producción (prompt §38).
+**Objetivo:** dejar el producto listo para desplegarse **más adelante y a mano** en una VPS Linux estándar (target: Hostinger) — artefactos, configuración, scripts, runbooks y un ensayo completo en local — **sin acceder a la VPS ni configurar reverse proxy, DNS o TLS reales** (prompt §38, ADR-022, ADR-030, ADR-031). Ningún componente depende de un proveedor cloud.
 
-**Archivos/componentes:** `infra/docker/*.Dockerfile`, `infra/opentofu/{modules,envs/staging,envs/production}`, `infra/monitoring/*`, `docs/runbooks/{deploy.md,rollback.md,incident-response.md,key-rotation.md,backup-restore.md,dns-tls.md}`, `docs/PRODUCTION_LAYOUT.md`.
+**Archivos/componentes:** `infra/docker/{backend.Dockerfile,signer.Dockerfile,integrity-monitor.Dockerfile,web.Dockerfile,postgres.Dockerfile}`, `infra/production/{docker-compose.production.yml,.env.production.example,Caddyfile.wallet,Caddyfile.recovery,pgbackrest.conf.example,valkey.conf,alertmanager.yml.example,README.md}`, `scripts/deploy/{init-secrets.sh,deploy.sh,migrate.sh,healthcheck.sh,verify-images.sh}`, `scripts/backup/{pg-backup.sh,pg-restore.sh,signer-backup.sh,signer-restore.sh,audit-export.sh,config-backup.sh}`, `docs/DEPLOYMENT_VPS.md`, `docs/runbooks/{deploy.md,rollback.md,incident-response.md,key-rotation.md,backup-restore.md}`, `.github/workflows/wallet-release-artifacts.yml`.
 
 **Dependencias:** P25.
 
 **Implementación requerida:**
 
-- [ ] **P26.T01** — **Dockerfiles** multi-stage para api, worker, watcher, indexer, gas-tank, integrity-monitor y signer: imagen base fijada por digest, usuario no-root, filesystem de sólo lectura, sin herramientas de shell en runtime, healthchecks; SBOM + escaneo Trivy + firma de imagen en CI.
-      Verificación: `bash ci/scripts/build-images.sh` + Trivy sin High/Critical + SBOM por imagen.
-- [ ] **P26.T02** — **docker-compose de desarrollo**: confirmar que `wallet/docker-compose.yml` sigue siendo el único entorno local y no contiene configuración de producción.
-      Verificación: `docker compose config` sin variables de producción (test `node scripts/check-compose-local-only.mjs`).
-- [ ] **P26.T02.a** — **Pipelines de CD** (uno por área y entorno, separados por trust domain): build de imagen/artefacto por digest, SBOM, escaneo, firma, `tofu plan` revisado, deploy sólo desde un commit cuyos **required checks de CI están en verde** (`needs:` sobre los jobs de CI + GitHub Environment `production` con reviewers obligatorios y regla de branch), sin secretos fuera del Environment; `docs/runbooks/deploy.md` con el procedimiento.
-      Verificación: intento de deploy a staging desde un commit con CI en rojo → el workflow se bloquea; con CI verde y aprobación → despliega.
-- [ ] **P26.T03** — **Production deployment layout** (ADR-022) en OpenTofu: cuentas separadas, VPCs, subredes privadas, ECS Fargate por servicio, signer shards en su cuenta con salida sólo a RPC y KMS, RDS (backend) y RDS (signer) Multi-AZ cifradas, ElastiCache for Valkey (Multi-AZ, TLS, AUTH, `noeviction`), S3 + CloudFront por frontend en cuentas distintas, Secrets Manager, KMS, CloudWatch, AMP/AMG, SNS.
-      Verificación: `tofu -chdir=infra/opentofu/envs/staging validate && tofu -chdir=infra/opentofu/envs/staging plan` revisado (plan adjunto en el PR).
-- [ ] **P26.T03.a** — Suite de contrato de `KmsSignerProvider` contra **KMS real** de staging (diferida de P11.T06): crear clave multi-Region, firmar, recuperar dirección, low-s, `v`.
-      Verificación: job de CI `signer-kms-contract` en verde contra la cuenta de staging.
-- [ ] **P26.T04** — **Reverse proxy y TLS**: ALB + WAF (rate-based rules) para `api.<WALLET_DOMAIN>` y `api.<RECOVERY_DOMAIN>`, política TLS ≥ 1.2, certificados ACM con validación DNS, redirect HTTP→HTTPS; CloudFront con TLS para frontends.
-      Verificación: test de TLS/redirect contra staging (`pnpm --dir e2e test specs/infra/tls.spec.ts`).
-- [ ] **P26.T05** — **Database migrations** en el pipeline: job previo con rol `mtw_migrator`, expand/contract, verificación `db:status`.
-      Verificación: job de migraciones en staging ejecutado y `pnpm --dir backend/app db:status` al día.
-- [ ] **P26.T06** — **Redis/Valkey persistence**: snapshots + réplica Multi-AZ; documentar que Postgres es fuente de verdad y el outbox re-encola tras pérdida.
-      Verificación: `node scripts/check-docs.mjs` + ensayo: flush de Valkey en staging → outbox re-encola (registro en §13).
-- [ ] **P26.T07** — **Backup strategy**: PITR 35 días en ambas RDS, copia cross-account con vault lock, export de auditoría a S3 Object Lock.
-      Verificación: políticas de backup aplicadas (`tofu plan` sin drift) y copia cross-account visible.
-- [ ] **P26.T08** — **Restore test** en un entorno aislado: restaurar, `audit:verify`, reconciliar con la cadena, medir RTO/RPO, registrar resultado.
-      Verificación: reporte del restore test (RTO/RPO medidos) registrado en §13.
-- [ ] **P26.T09** — **Secret injection**: secretos de ECS desde Secrets Manager; ningún secreto en imágenes/archivos; rotación programada.
-      Verificación: test que recorre las task definitions y falla si encuentra secretos en texto plano (`node scripts/check-ecs-secrets.mjs`).
-- [ ] **P26.T10** — **DNS**: zonas separadas por dominio y cuenta, DNSSEC, CAA (sólo ACM), registros de wallet/api/recovery.
-      Verificación: `dig +dnssec` y consulta CAA de cada dominio registradas en §13.
-- [ ] **P26.T11** — **CSP/security headers**: response headers policies de CloudFront desde `build/headers.json` de cada app; helmet en API; test automático de headers contra staging.
-      Verificación: `pnpm --dir e2e test specs/security/headers.spec.ts --config=staging`.
-- [ ] **P26.T12** — **Monitoring**: dashboards y alertas de P24 desplegados; guardias on-call; rutas SNS.
-      Verificación: alerta de prueba recibida por la guardia (registro en §13).
-- [ ] **P26.T13** — **Log retention**: aplicación 90 días; auditoría y seguridad 7 años en WORM (valor por defecto; el owner confirma requisito legal).
-      Verificación: retenciones aplicadas (`tofu plan` sin drift) y confirmación legal del owner (D-09) en §13.
-- [ ] **P26.T14** — **Key rotation** (runbook + ensayo en staging): emisor de PlatformSession (kid con ventana dual), CSRF/sesión, pepper (versionado), field key (versionado), audit chain key (nuevo segmento), OPAQUE server setup (sólo ante compromiso; implica re-registro), Postmark, RPC, claves de release (overlap en el monitor), clave de policy, S por Safe (timelock + firma del usuario), gas tank.
-      Verificación: ensayo de rotación de cada secreto en staging registrado en §13.
-- [ ] **P26.T15** — **Rollback procedure**: task definition anterior, migraciones compatibles, frontends por cambio de origin path a la release inmutable anterior (con manifest), contratos inmutables → nueva factory sólo para wallets nuevas; ensayo en staging.
-      Verificación: ensayo de rollback en staging registrado en §13.
-- [ ] **P26.T16** — **Incident procedure**: severidades, kill-switch de cooperación de S (comando firmado por dos operadores), playbooks: compromiso de frontend, backend, signer shard, proveedor RPC, blacklist de Circle sobre una Safe, incidente del bridge de USDT, caída de Google/Postmark; comunicación a usuarios; post-mortem.
-      Verificación: simulacro de incidente (kill-switch de cooperación) en staging registrado en §13.
-- [ ] **P26.T17** — **Gates de producción** (todos obligatorios; se re-verifican en P30):
-      Verificación: todas las subtareas `P26.T17.a–l` marcadas con evidencia enlazada.
-  - [ ] **P26.T17.a** — G-USDT aceptado por escrito (§3.3, D-03).
-  - [ ] **P26.T17.b** — decisión CF-01 (repo separado para Recovery o riesgo aceptado, D-01).
-  - [ ] **P26.T17.c** — GitHub Actions activo, required checks configurados y CD bloqueado por CI (P26.T02.a).
+- [ ] **P26.T01** — **Dockerfiles** multi-stage con imagen base fijada por digest, usuario no-root con UID fijo por servicio, filesystem de sólo lectura y healthcheck: `backend` (api, worker, watcher, indexer y gas-tank comparten imagen con distinto comando), `signer`, `integrity-monitor`, `web` (Caddy 2.11.x sirviendo el bundle estático de una app con los headers de su `build/headers.json`; una imagen por app, sin TLS interno) y `postgres` (postgres 18.6 + pgBackRest 2.59.x).
+      Verificación: `bash ci/scripts/build-images.sh` construye todas las imágenes y `node scripts/check-dockerfiles.mjs` confirma no-root, base por digest y healthcheck.
+- [ ] **P26.T02** — `infra/production/docker-compose.production.yml` con la topología de §5.5: redes `edge`, `backend` y `signer` (estas dos `internal: true`), volúmenes nombrados, healthchecks, `restart: unless-stopped`, límites de recursos, `read_only`, `security_opt: [no-new-privileges:true]`, `cap_drop: [ALL]`, logging `local` con rotación, secrets por servicio (ADR-030) e imágenes **por digest** desde `.env.production`; sólo `wallet-web`, `recovery-web` y la API publican puertos, con binds configurables (`*_BIND`) para el reverse proxy existente. **No incluye Nginx, TLS ni configuración de DNS.**
+      Verificación: `docker compose -f infra/production/docker-compose.production.yml --env-file infra/production/.env.production.example config -q` y `node scripts/check-compose-hardening.mjs` (sin `environment:` con secretos, signer sin `ports:`, redes internas correctas).
+- [ ] **P26.T02.a** — **Artefactos de release** en CI (GitHub Actions, aprobado): build reproducible de imágenes, SBOM (syft), escaneo Trivy, firma con `cosign` keyless (OIDC de GitHub, sin secretos guardados), push a GHCR por digest y `release/images.lock` con los digests; los frontends incluyen su manifest firmado con su clave de release. Sólo publica desde commits con todos los required checks en verde y **ningún job despliega a la VPS**.
+      Verificación: corrida del workflow en el branch genera `images.lock`, SBOMs y firmas verificables con `cosign verify`; un commit con CI en rojo no publica.
+- [ ] **P26.T03** — `infra/production/.env.production.example`: sólo variables **no secretas** (dominios, URLs públicas, binds, `TRUSTED_PROXY_CIDRS`, digests de imágenes, shards y parámetros) y la lista de archivos de secrets que cada servicio espera (`*_FILE`); todos los servicios leen secretos sólo por `*_FILE` en producción (P08.T02).
+      Verificación: `node scripts/check-env-production.mjs` (cada variable del compose está documentada y ninguna es secreta).
+- [ ] **P26.T04** — **Contrato con el reverse proxy existente** (sólo documentación en `DEPLOYMENT_VPS.md`; no se configura nada): hosts y rutas por servicio, terminación TLS en el proxy, reenvío de `X-Forwarded-For`/`X-Forwarded-Proto`, límites de body y timeouts, que **no** reescriba los headers de seguridad que emiten nuestros servicios, y cómo validarlo con `scripts/deploy/healthcheck.sh`.
+      Verificación: `node scripts/check-docs.mjs` y revisión de la sección por un segundo revisor (registro en §13).
+- [ ] **P26.T05** — **Migraciones**: `scripts/deploy/migrate.sh` ejecuta un contenedor efímero con el rol `mtw_migrator` (expand/contract) y verifica `db:status`.
+      Verificación: en el ensayo local (P26.T16.b) `bash scripts/deploy/migrate.sh` aplica migraciones sobre una DB vacía y es idempotente en una segunda corrida.
+- [ ] **P26.T06** — **PostgreSQL y Valkey self-hosted**: volúmenes persistentes; usuarios separados (superusuario sólo para bootstrap; `mtw_migrator`, `mtw_app`, `mtw_readonly`; roles por shard en `signer-postgres`); Valkey con AOF + RDB, `maxmemory-policy noeviction`, usuario ACL con los comandos que necesita BullMQ y usuario `default` deshabilitado; healthchecks; documentado que Postgres es la fuente de verdad y que el outbox re-encola si se pierde Valkey.
+      Verificación: tests de compose del ensayo local (conexión con cada rol sólo a lo permitido; Valkey rechaza al usuario `default`; reinicio de Valkey sin pérdida de operaciones).
+- [ ] **P26.T07** — **Backups** (ADR-031): `pgbackrest.conf.example` (full semanal, diferencial diario, WAL continuo, retención, repositorio cifrado; repo2 off-host que se define al desplegar), `signer-backup.sh` (keystores + DB del signer → `age`, sin la credencial), `audit-export.sh` (export diario firmado + `age`), `config-backup.sh` (compose, `.env.production` sin secretos, snapshots de policy, claves públicas); `docs/runbooks/backup-restore.md` con la copia off-host cifrada obligatoria.
+      Verificación: cada script corre en el ensayo local y produce artefactos cifrados que sólo se abren con la clave privada de backup de prueba.
+- [ ] **P26.T08** — **Restore test** en local: restaurar Postgres con PITR a un instante dado en un contenedor nuevo, `pnpm --dir backend/app audit:verify` y reconciliación contra el fork; restaurar un shard del signer y correr `restore-verify`; medir RTO/RPO.
+      Verificación: reporte del restore (RTO/RPO medidos) registrado en §13.
+- [ ] **P26.T09** — **Inyección de secretos** (ADR-030): `scripts/deploy/init-secrets.sh` genera en el host destino, al desplegar, todos los secretos generables (sesión, CSRF, emisor de PlatformSession, OPAQUE server setup, field key, OTP, pepper, audit, claves de atestación del signer y del monitor, CA y certificados mTLS, credencial de desbloqueo de cada shard, passwords de roles de DB y de Valkey) en `/etc/mtw/<entorno>/secrets/` y `/etc/mtw/<entorno>/signer-unlock/` (root, 0400), sin tocar el repo ni imágenes y sin sobrescribir lo existente.
+      Verificación: en el ensayo local el script genera todo en `wallet/.secrets/prod-rehearsal/`, una segunda corrida no cambia nada y `node scripts/check-compose-secrets.mjs` confirma que ningún secreto llega por `environment:` ni está en una imagen.
+- [ ] **P26.T10** — **Requisitos de DNS y TLS** documentados (sin configurar nada): dos dominios registrables (Wallet y Recovery) con sus hosts `api.`, registros necesarios, CAA recomendado, TLS en el reverse proxy y HSTS emitido por nuestros servicios.
+      Verificación: `node scripts/check-docs.mjs` (sección presente en `DEPLOYMENT_VPS.md`).
+- [ ] **P26.T11** — **Headers de seguridad** verificados en el ensayo local de producción (respuestas de `wallet-web`, `recovery-web` y API: CSP, Trusted Types, HSTS, COOP/COEP/CORP, Referrer-Policy, Permissions-Policy, nosniff).
+      Verificación: `pnpm --dir e2e test specs/security/headers.spec.ts --config=prod-rehearsal`.
+- [ ] **P26.T12** — **Monitoreo self-hosted**: perfil `observability` en el compose de producción (Prometheus, Alertmanager con email por SMTP de Postmark y webhook opcional, Grafana opcional) con las reglas y dashboards de P24.
+      Verificación: en el ensayo local una alerta provocada llega al receptor de prueba (Mailpit).
+- [ ] **P26.T13** — **Retención de logs**: driver `local` con rotación (tamaño y cantidad de archivos por servicio), logs de aplicación 90 días por defecto (configurable), exports de auditoría con retención de 7 años en la copia off-host (valor por defecto ajustable).
+      Verificación: `node scripts/check-compose-hardening.mjs` verifica la configuración de logging de cada servicio.
+- [ ] **P26.T14** — **Rotación de claves** (runbook + ensayo local): emisor de PlatformSession (kid con ventana dual), CSRF/sesión, pepper, field key, audit chain key, OPAQUE server setup (re-registro con `KEY_RESTORE`), Postmark, RPC, claves de release (overlap en el monitor), clave de policy, S por Safe (timelock + firma del usuario), credencial de desbloqueo de shard (re-cifrado de keystores), gas tank, certificados mTLS.
+      Verificación: cada rotación ejecutada en el ensayo local, registrada en §13.
+- [ ] **P26.T15** — **Rollback**: volver al `images.lock` anterior (por digest), migraciones compatibles hacia atrás, frontends con la imagen anterior, contratos inmutables (nueva factory sólo para wallets nuevas).
+      Verificación: ensayo local de deploy → rollback → deploy con `scripts/deploy/deploy.sh`, registrado en §13.
+- [ ] **P26.T16** — **Procedimientos de incidente**: kill-switch de cooperación de S (comando firmado por dos operadores) y playbooks: **root del host comprometido** (asumir S y frontends comprometidos: detener servicios, avisar a los usuarios que no desbloqueen U ni R, preservar evidencia, restablecer desde artefactos firmados y rotar S de todas las Safes vía timelock), filtración de keystores del signer, compromiso del backend, proveedor RPC, blacklist de Circle sobre una Safe, incidente del bridge de USDT, caída de Google o Postmark.
+      Verificación: simulacro del kill-switch y del playbook de host comprometido en el ensayo local, registrado en §13.
+- [ ] **P26.T16.a** — **Scripts de despliegue para uso manual posterior** y `docs/DEPLOYMENT_VPS.md` paso a paso (requisitos del host Linux, usuarios y permisos, instalación de Docker, directorios de secretos, primer arranque, alta de shards, backups off-host, contrato con el reverse proxy, verificación): `deploy.sh` (verifica firmas `cosign` y digests de `images.lock`, migra, reinicia en orden y corre healthchecks), `healthcheck.sh`, `verify-images.sh`. **No se ejecutan contra la VPS en ninguna fase de este planner.**
+      Verificación: los scripts corren de punta a punta en el ensayo local (P26.T16.b) y `node scripts/check-docs.mjs` valida la guía.
+- [ ] **P26.T16.b** — **Ensayo local del layout de producción**: levantar `docker-compose.production.yml` en la máquina de desarrollo con secretos generados por `init-secrets.sh` en `wallet/.secrets/prod-rehearsal/`, imágenes de `images.lock` y RPC apuntando al fork de Base; correr el subconjunto de acceptance de P23 y los scripts de backup/restore.
+      Verificación: `pnpm --dir e2e test:acceptance --config=prod-rehearsal` en verde.
+- [ ] **P26.T17** — **Gates de producción** (se re-verifican en P30):
+      Verificación: todas las subtareas `P26.T17.a–j` marcadas con evidencia enlazada.
+  - [ ] **P26.T17.a** — `CODEOWNERS` por trust domain y branch protection con revisión del equipo del dominio, "include administrators" y commits firmados activos.
+  - [ ] **P26.T17.b** — evaluación documentada de separar Wallet, Recovery y backend en repositorios propios (decisión registrada; no bloquea la implementación).
+  - [ ] **P26.T17.c** — CI con required checks y artefactos de release firmados (sin deploy desde CI).
   - [ ] **P26.T17.d** — Node 26 LTS fijado en todos los proyectos e imágenes.
-  - [ ] **P26.T17.e** — `PolicyRegistry` de staging en RESTRICTED con exactamente el set V1 (test de P25).
-  - [ ] **P26.T17.f** — integrity monitor fail-closed activo en staging (`INTEGRITY_REQUIRED=true`).
-  - [ ] **P26.T17.g** — región confirmada (`sa-east-1` o fallback documentado) con todos los servicios disponibles (ADR-022, D-10).
-  - [ ] **P26.T17.h** — soak test en staging ≥ 7 días con usuarios internos y montos chicos, sin incidentes abiertos.
-  - [ ] **P26.T17.i** — ensayo de deploy y de rollback en staging con evidencia.
-  - [ ] **P26.T17.j** — `CODEOWNERS` por trust domain, branch protection con "include administrators", revisión obligatoria del equipo del dominio y commits firmados activos (D-02).
-  - [ ] **P26.T17.k** — Wallet frontend y Recovery frontend en organizaciones/cuentas AWS propias, con administradores distintos de los de backend/signer, y DNS en esas cuentas (ADR-022).
-  - [ ] **P26.T17.l** — claves KMS de S multi-Region con alarmas activas (P24.T07) y procedimiento de pérdida de S ensayado (P15.T09).
+  - [ ] **P26.T17.e** — `PolicyRegistry` en RESTRICTED con exactamente el set V1 en el ensayo local (y en staging si se desplegó).
+  - [ ] **P26.T17.f** — integrity monitor fail-closed y chequeo off-host activos.
+  - [ ] **P26.T17.g** — backups y restore ensayados (Postgres PITR, keystores del signer, auditoría) y custodia offline de las credenciales de desbloqueo documentada.
+  - [ ] **P26.T17.h** — ensayo local del layout de producción en verde (P26.T16.b).
+  - [ ] **P26.T17.i** — `DEPLOYMENT_VPS.md` y runbooks completos.
+  - [ ] **P26.T17.j** — riesgo residual de host único (CF-10) documentado en `THREAT_MODEL.md` y entregado a P27.
 
 **Tests a implementar:**
 
-- [ ] **P26.TST** — `tofu validate`/`tofu plan` en CI (sin apply sin aprobación); tests de headers contra staging; test de restore.
-      Verificación: tests de headers/TLS contra staging + restore test registrado.
+- [ ] **P26.TST** — `docker compose ... config -q`, `check-compose-hardening`, `check-compose-secrets`, `check-env-production`, headers y acceptance del ensayo local, restore test.
+      Verificación: `pnpm --dir e2e test:acceptance --config=prod-rehearsal` + restore test (P26.T08).
 
 **Checks manuales:**
 
-- [ ] **P26.MAN** — revisión de IAM y key policies con un segundo revisor.
+- [ ] **P26.MAN** — un segundo revisor recorre `DEPLOYMENT_VPS.md`, los permisos de los directorios de secretos y la separación de redes del compose.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
-**Acceptance criteria:** todo lo listado en prompt §38 implementado o ensayado en staging con evidencia.
+**Acceptance criteria:** todo lo listado en prompt §38 queda preparado o ensayado en local; ningún componente depende de un proveedor cloud; ningún paso requiere acceso a la VPS.
 
 **Security checks:**
 
-- [ ] **P26.SEC** — escaneo de imágenes sin High/Critical; IAM mínimo; ninguna cuenta comparte administradores entre trust domains.
-      Verificación: Trivy sin High/Critical + `bash ci/scripts/ci-security.sh`.
+- [ ] **P26.SEC** — imágenes sin High/Critical (Trivy); contenedores no-root y de sólo lectura; secretos sólo por archivos; credenciales de desbloqueo separadas de los keystores; signer sin puertos publicados y en red interna.
+      Verificación: Trivy sin High/Critical + `node scripts/check-compose-hardening.mjs && node scripts/check-compose-secrets.mjs && bash ci/scripts/ci-security.sh`.
 
-**Commits:** `feat(infra): add production deployment layout`, `docs(wallet): add production deployment guide`.
+**Commits:** `feat(infra): add self-hosted production layout`, `docs(wallet): add vps deployment guide`.
 
 #### CHECKPOINT P26
 
-- [ ] build pasa: `bash ci/scripts/build-images.sh && tofu -chdir=infra/opentofu/envs/staging validate`.
-- [ ] tests pasan: tests de headers/TLS contra staging + restore test registrado.
-- [ ] security tests pasan: Trivy sin High/Critical + `bash ci/scripts/ci-security.sh`.
-- [ ] integración anterior sigue funcionando: `pnpm ci:local` + smoke en staging.
-- [ ] documentación actualizada: `node scripts/check-docs.mjs` (runbooks).
+- [ ] build pasa: `bash ci/scripts/build-images.sh && docker compose -f infra/production/docker-compose.production.yml --env-file infra/production/.env.production.example config -q`.
+- [ ] tests pasan: `pnpm --dir e2e test:acceptance --config=prod-rehearsal` + restore test (P26.T08).
+- [ ] security tests pasan: Trivy sin High/Critical + `node scripts/check-compose-hardening.mjs && node scripts/check-compose-secrets.mjs && bash ci/scripts/ci-security.sh`.
+- [ ] integración anterior sigue funcionando: `pnpm ci:local`.
+- [ ] documentación actualizada: `node scripts/check-docs.mjs` (`DEPLOYMENT_VPS.md` y runbooks).
 - [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
 - [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
-**Condición para pasar a P27:** gates de P26.T17 cumplidos excepto los que dependen de la auditoría.
+**Condición para pasar a P27:** gates de P26.T17 cumplidos (los que dependen de la auditoría se cierran en P28/P30).
 
 ---
 
@@ -2891,7 +2944,7 @@ Checks del preflight:
   - [ ] **P27.T02.h** — compromiso del backend (incluye alteración de DB y de la cola).
   - [ ] **P27.T02.i** — compromiso del frontend U.
   - [ ] **P27.T02.j** — compromiso del frontend R.
-  - [ ] **P27.T02.k** — compromiso del signer (un shard y la cuenta KMS).
+  - [ ] **P27.T02.k** — compromiso del signer (un shard: keystores + credencial de desbloqueo; y root del host único, CF-10).
   - [ ] **P27.T02.l** — manipulación de RPC.
   - [ ] **P27.T02.m** — reorgs.
 - [ ] **P27.T03** — Cada finding con el formato del prompt: `ID`, `Severity` (Critical/High/Medium/Low/Informational), `Title`, `Component`, `Description`, `Attack prerequisites`, `Step-by-step exploitation`, `Impact`, `Evidence` (test, tx en fork, logs), `Recommended fix`, `Recommendation` (MUST FIX / SHOULD FIX / ACCEPTABLE RISK).
@@ -2946,7 +2999,7 @@ Checks del preflight:
       Verificación: cada fix con su test de regresión en verde (`pnpm ci:local`).
 - [ ] **P28.T02** — Retest completo (CI + acceptance P23) y **re-ejecutar la auditoría** (P27.T01–T02) sobre los cambios.
       Verificación: `pnpm ci:local` + `pnpm --dir e2e test:acceptance` + re-ejecución de P27.T01 sin nuevos Critical/High.
-- [ ] **P28.T03** — Documentar riesgos residuales en `SECURITY_AUDIT.md#residual-risks` (incluye CF-01 si se aceptó el monorepo, G-USDT, dependencia de Circle/bridge de Base, liquidez de Uniswap, deprecación del flujo OAuth elegido).
+- [ ] **P28.T03** — Documentar riesgos residuales en `SECURITY_AUDIT.md#residual-risks` (incluye la decisión registrada sobre CF-01, el host único de producción CF-10, la dependencia del USDT bridged y del bridge de Base, Circle, la liquidez de Uniswap y la deprecación del flujo OAuth elegido).
       Verificación: `SECURITY_AUDIT.md#residual-risks` completo y revisado por el owner.
 - [ ] **P28.T04** — Gate: **no production-ready** mientras exista un Critical o High abierto, salvo decisión explícita y documentada del owner (nombre, fecha, alcance, justificación) en el propio documento.
       Verificación: 0 Critical/High abiertos (o decisión documentada y firmada por el owner).
@@ -3042,24 +3095,24 @@ Checks del preflight:
 
 ### P30 — PRODUCTION READINESS: GATE FINAL Y GO-LIVE
 
-**Objetivo:** cerrar el planner con la fase de PRODUCTION READINESS exigida por el prompt §38 (CF-09): re-verificar **todos** los gates después de auditoría, remediación y documentación, y desplegar producción sólo con aprobación explícita.
+**Objetivo:** cerrar el planner con la fase de PRODUCTION READINESS exigida por el prompt §38 (CF-09): re-verificar **todos** los gates después de auditoría, remediación y documentación; los despliegues en Base mainnet y en la VPS sólo ocurren con aprobación explícita y, en el caso de la VPS, a mano siguiendo `DEPLOYMENT_VPS.md`.
 
-**Archivos/componentes:** `contracts/deployments/base-mainnet.json`, `infra/opentofu/envs/production`, `config/policy/production/*`, `docs/runbooks/go-live.md`, §13 de este planner (aprobaciones y evidencia).
+**Archivos/componentes:** `contracts/deployments/base-mainnet.json`, `infra/production/*`, `release/images.lock`, `config/policy/production/*`, `docs/runbooks/go-live.md`, §13 de este planner (aprobaciones y evidencia).
 
 **Dependencias:** P29 (y P26–P28 completos).
 
 **Implementación requerida:**
 
-- [ ] **P30.T01** — Re-verificar los gates de P26.T17.a–l, el gate de P28.T04 (sin Critical/High abiertos o decisión documentada) y que CI esté verde en el commit candidato.
+- [ ] **P30.T01** — Re-verificar los gates de P26.T17.a–j, el gate de P28.T04 (sin Critical/High abiertos o decisión documentada) y que CI esté verde en el commit candidato.
       Verificación: checklist de `docs/runbooks/go-live.md` completo con links a evidencia; `gh run list --branch <rama-de-release>` muestra todos los required checks en verde.
-- [ ] **P30.T02** — **Aprobación explícita y escrita del owner** para producción (D-08), registrada en §13 con fecha, alcance y commit.
+- [ ] **P30.T02** — **Aprobación explícita y escrita del owner** para producción (H-06), registrada en §13 con fecha, alcance y commit.
       Verificación: entrada en §13 firmada por el owner.
 - [ ] **P30.T03** — Despliegue de contratos de producción con `DeployBase.s.sol` (hardware wallet), verificación en explorer de **todos** los contratos (incluido `RotationTimelock`), `deployments/base-mainnet.json` completo (address, implementation `null`/proxy `false`, compiler, settings, commit, codehash, URL de verificación) y `VerifyDeployment.s.sol` contra mainnet.
       Verificación: `forge script script/VerifyDeployment.s.sol --rpc-url $BASE_RPC_URL` OK y URLs de verificación accesibles.
 - [ ] **P30.T04** — `PolicyRegistry` de producción en RESTRICTED con exactamente el set V1, Governance Safe y guardianes de producción configurados; snapshot de policy de producción firmado por seguridad.
       Verificación: test de configuración de P25 ejecutado contra mainnet (`mode == RESTRICTED`, permisos exactos).
-- [ ] **P30.T05** — `system-contracts.production.json` generado desde `deployments/base-mainnet.json` y builds de producción de ambos frontends (reproducibles, firmados con sus claves de release); infra de producción aplicada con el pipeline de CD (P26.T02.a), headers verificados contra producción, integrity monitor activo y fail-closed, alertas enrutadas, gas tank fondeado.
-      Verificación: tests de headers y de integridad contra producción en verde; alerta de prueba recibida por guardia.
+- [ ] **P30.T05** — `system-contracts.production.json` generado desde `deployments/base-mainnet.json` y builds/imágenes de producción de ambos frontends (reproducibles, firmados con sus claves de release) incluidos en un `images.lock` de release; luego **despliegue manual en la VPS por el equipo**, fuera de la ejecución automática del planner y sólo tras P30.T02, siguiendo `docs/DEPLOYMENT_VPS.md` (secrets con `init-secrets.sh`, imágenes por digest, migraciones, reverse proxy existente configurado a mano, alta de shards, backups off-host), y verificación de headers, integridad (monitor local + off-host) y alertas.
+      Verificación: tests de headers e integridad contra producción en verde; alerta de prueba recibida; evidencia registrada en §13.
 - [ ] **P30.T06** — Smoke test de producción con montos mínimos por un usuario interno: onboarding, recepción, whitelist (24 h), send, swap ida y vuelta, cancelación de rotación; y ejecución soberana U+R de prueba.
       Verificación: registro de tx hashes en §13.
 - [ ] **P30.T07** — Apertura controlada (lista de usuarios habilitados) y monitoreo reforzado durante 7 días; criterio de rollback definido en `go-live.md`.
@@ -3151,7 +3204,7 @@ Mapa de cada requisito importante del prompt (`wallet/prompts/promptV1.md`, secc
 | RQ-45 | Nonce: evitar doble ejecución, carreras, nonce duplicado, fuera de orden; locking en DB; cancelación por mismo nonce | §15 | [B-NONCE], ADR-020, estado `CANCEL_REQUESTED` | P13.T02, P13.T08, P13.TST.b–c, P13.TST.i |
 | RQ-46 | SUBMITTED/MINED/CONFIRMED, política de confirmaciones para Base, reorg/receipt desaparecido/hash cambiado/replaced/dropped/RPC inconsistente, reconciliación | §16 | [B-FIN], ADR-018 | P13.T06–T07 |
 | RQ-47 | RPC primario/secundario con health checks; decisiones sensibles no basadas en respuestas inconsistentes | §17 | [B-RPC], ADR-017 | P08.T05 |
-| RQ-48 | S por Safe; nunca en claro en DB/.env/logs/código; dev signer; signer de producción; `SignerProvider`; arquitectura Backend → Policy → Signer Service → aislado; migración a HSM | §18, V9 §7 | [B-SIG], ADR-014 (Clef retirado → KMS/HSM, multi-Region) | P11, P15.T09, P26.T03.a |
+| RQ-48 | S por Safe; nunca en claro en DB/.env/logs/código; dev signer; signer de producción; `SignerProvider`; arquitectura Backend → Policy → Signer Service → aislado; migración a HSM | §18, V9 §7 | [B-SIG-04], [B-SIG-08], [B-SIG-09], ADR-014 (Clef sin mantenimiento; Web3Signer evaluado; `SelfHostedSoftwareSignerProvider`) | P11 (T01, T06–T08, T10), P15.T09, P24.T07 |
 | RQ-49 | API `/api/v1` con endpoints de auth, users, wallet, balances, whitelist, send, swap, operations, recovery, rotations, sessions, health; request/response/error schemas, auth, authz, rate limits, idempotencia | §19 | [B-API], [B-API-SCH], [B-AUTHZ], [B-RL] | P08–P15 (tests IDOR por grupo de [B-AUTHZ]) |
 | RQ-50 | Swagger en `/docs`, todos los endpoints documentados, prueba en dev, sin admin sensible expuesto en prod | §20, §44 | §7.11 | P08.T09, P10.T07 |
 | RQ-51 | Tablas de §21, migraciones, constraints, FKs, índices únicos, límites transaccionales, backup/restore | §21 | [B-DB] | P08.T03–T04, P26.T07–T08 |
@@ -3166,12 +3219,12 @@ Mapa de cada requisito importante del prompt (`wallet/prompts/promptV1.md`, secc
 | RQ-60 | Tests frontend unit/integration/E2E con los flujos listados | §30 | §10 | P17–P19, P22 |
 | RQ-61 | Acceptance full-system de 22 pasos con happy y failure paths | §31 | — | P23 |
 | RQ-62 | Security tooling (forge test/coverage/fuzz/invariant, Slither, dependency audit, secret scanning, SAST, lint, typecheck) | §32 | §10 | P02.T02 (`ci-contracts.sh` con Slither y umbrales; `ci-security.sh`), P07.T03–T04, P27.T01 |
-| RQ-63 | CI con todos los jobs; ningún deploy production si CI falla | §33 | CF-06, R-13 | P02, P26.T02.a (CD bloqueado por CI), P26.T17.c, P30.T01 |
+| RQ-63 | CI con todos los jobs; ningún deploy production si CI falla | §33 | CF-06 (aprobado), R-13 | P02, P26.T02.a (artefactos sólo desde commits en verde; sin deploy desde CI), P26.T17.c, P30.T01 |
 | RQ-64 | Observabilidad (logs estructurados, métricas, alertas, health, cola, RPC, tx fallidas, signer, operaciones atascadas, reorgs, ETH de S) y redacción | §34 | [B-OBS] | P08.T07, P24 |
 | RQ-65 | Audit trail append-oriented de eventos de seguridad | §35 | [B-AUD] | P08.T12, P24.T03 |
 | RQ-66 | Rate limiting y abuso por IP/usuario/sesión/Safe | §36 | [B-RL] | P08.T11, P24.T04 |
 | RQ-67 | Entornos local/staging/production sin reutilizar DB, OAuth, signer keys, session secrets, email, RPC keys | §37 | ADR-024 | P25.T01 |
-| RQ-68 | PRODUCTION READINESS con todos los ítems de §38, como fase final | §38 | ADR-022, CF-09 | P26 (preparación) y **P30** (gate final y go-live) |
+| RQ-68 | PRODUCTION READINESS con todos los ítems de §38, como fase final | §38 | ADR-022, ADR-030, ADR-031, CF-09 | P26 (preparación para la VPS y ensayo local, sin desplegar) y **P30** (gate final; despliegue manual) |
 | RQ-69 | Scripts de deploy/verify mainnet que registran addresses, bytecode hashes, compiler, commit; `deployments/base-mainnet.json`; sin deploy mainnet sin aprobación | §39 | [C-SCR-01/04] | P25.T02–T06 (staging), P30.T02–T03 (producción), R-09 |
 | RQ-70 | Verificación en explorer de todo contrato con address, implementation, compiler, commit, codehash, URL | §40 | §3.5 (Etherscan V2) | P25.T02 (campos `proxy`/`implementation`), P25.T04 (incluye `RotationTimelock`), P30.T03 |
 | RQ-71 | `SECURITY_AUDIT.md` adversarial con formato y filtros pedidos | §41 | §2.3 | P27 |
@@ -3195,7 +3248,12 @@ Mapa de cada requisito importante del prompt (`wallet/prompts/promptV1.md`, secc
 | RQ-89 | Verificación de la configuración on-chain de la Safe antes de cada co-firma (sin Guard no hay cooperación) | V9 §9/§10, A8/A9 | [B-Q-02] paso 7b, [B-FIN-03] | P13.T11, P13.TST.k, P11.T03 |
 | RQ-90 | Vía de upgrade del Guard para Safes existentes | V9 §16 (Guard inmutable) + continuidad operativa | [C-GRD-17], [C-POL-06], ADR-029 | P05.T06, P07.T01.r, P15.T08 |
 | RQ-91 | Formatos de intercambio compartidos entre apps independientes | V9 §6/§8/§17 | §7.15 [W-01…W-07] | P07.T05 (vectores), P11.T11, P12, P18, P19 |
-| RQ-92 | Separación administrativa de los tres dominios (repos, CODEOWNERS, cuentas cloud, DNS) | V9 §2/§17 | CF-01, ADR-022 | P26.T17.b, P26.T17.j, P26.T17.k |
+| RQ-92 | Separación de los tres dominios (proyectos, CODEOWNERS, claves de release fuera del host, contenedores y redes separadas) | V9 §2/§17 | CF-01, CF-10, ADR-022 | P02.T01, P26.T02, P26.T17.a, P26.T17.b, P26.T17.j |
+| RQ-93 | Producción self-hosted en VPS Linux, sin dependencias de proveedores cloud; preparar artefactos y documentación sin desplegar | instrucción del owner (2026-10-16) | ADR-022, §5.5, R-09 | P26 (T01–T16.b), P30.T05 |
+| RQ-94 | Inyección segura de secretos self-hosted; credenciales de desbloqueo del signer separadas de los keystores | instrucción del owner | ADR-030, [B-SIG-08] | P08.T02, P26.T09, P11.T06 |
+| RQ-95 | Backups agnósticos (PostgreSQL, keystores cifrados del signer, auditoría, configuración) con copia off-host cifrada | instrucción del owner, §38 | ADR-031, [B-DB-BK] | P26.T07, P26.T08, P11.T10 |
+| RQ-96 | Toolchain reproducible con detección y auto-remediación antes de STOP | instrucción del owner | ADR-032, P00 (PF-01…PF-08) | P00.T01.a, P00.T05, P01.T01 |
+| RQ-97 | USDT: representación canónica verificada automáticamente (fuentes oficiales + on-chain) | instrucción del owner | §3.3 | P03.T03, P03.T05 |
 
 ## 13. Registro de ejecución
 
@@ -3204,19 +3262,19 @@ Agregar una fila por sesión de trabajo, por cada CHECKPOINT y ante cualquier bl
 | Fecha | Fase / tarea | Estado | Commit | Notas |
 |---|---|---|---|---|
 | 2026-10-16 | Preparación (prompt §47) | Completado | commit de preparación (`git log -1 -- wallet/docs/PLANNER_WALLET_WEB.md`) | Branch `feat/walletWeb/cmarchese` creado desde `main` (`4ed7bf4`). V9 leída completa. Verificación oficial de Safe 1.5.0, Uniswap, USDC/USDT, Base, librerías y servicios (§3). Creados: este planner, `SETUP_EXTERNAL_SERVICES.md`, `.env.example`, `.env` (local, gitignored), `wallet/.gitignore`. Sin implementación de producto. |
+| 2026-10-16 | Corrección del planner (instrucción del owner) | Completado | commit `docs(wallet): adapt planner to self-hosted VPS architecture` | Producción self-hosted en VPS (sin dependencias cloud); signer `SelfHostedSoftwareSignerProvider` tras evaluar Clef y Web3Signer; secretos por Docker Compose secrets; backups con pgBackRest + age; toolchain local con auto-remediación; USDT canónico verificado; CI en raíz aprobado; blockers reducidos a acciones humanas reales (§13.1). |
 | | P00 — PREFLIGHT | Pendiente | | |
 
-### 13.1 Decisiones pendientes del owner
+### 13.1 Acciones humanas pendientes (sólo lo que no se puede obtener ni generar automáticamente)
 
-| ID | Decisión | Necesaria antes de | Estado |
+| ID | Acción | Necesaria antes de | Estado |
 |---|---|---|---|
-| D-01 (CF-01) | Repositorio separado para Recovery (extraer con `git subtree split`) o aceptación formal del monorepo como riesgo residual | P26 (producción) | Pendiente |
-| D-02 (CF-06) | Autorizar archivos disparadores en `.github/workflows/` (fuera de `wallet/`) | P02 (CI en GitHub) / P25 (gate) | Pendiente |
-| D-03 (G-USDT) | Aceptar que "USDT" en Base es el USDT bridged canónico (`0xfde4…bb2`), no emitido por Tether | P26 | Pendiente |
-| D-04 | Dominios `WALLET_DOMAIN` y `RECOVERY_DOMAIN` (registrables distintos) y cuentas DNS/hosting separadas | P25 | Pendiente |
-| D-05 | Cuentas AWS (organización principal + organización/cuenta independiente para Recovery) | P25 | Pendiente |
-| D-06 | Governance Safe (multisig con hardware wallets) y guardianes del `PolicyRegistry` | P25.T05 | Pendiente |
-| D-07 | Aprobación de despliegue de staging en Base mainnet | P25.T06 | Pendiente |
-| D-08 | Aprobación de despliegue de producción en Base mainnet | P30.T02 | Pendiente |
-| D-09 | Confirmar límites de policy por defecto (ADR-025) y retención legal de logs (P26.T13) | P25 | Pendiente |
-| D-10 | Confirmar región AWS (`sa-east-1` propuesta) y requisitos de residencia de datos | P26 | Pendiente |
+| H-01 | Credenciales externas de local que no existen todavía (verificado 2026-10-16: ausentes en el entorno y en `wallet/.env`): `BASE_RPC_URL` (Alchemy), `WALLETCONNECT_PROJECT_ID` (Reown), `GOOGLE_CLIENT_ID_WALLET` y `GOOGLE_CLIENT_ID_RECOVERY` (Google Cloud) — ver USER ACTION REQUIRED en `SETUP_EXTERNAL_SERVICES.md` | P00 | Pendiente |
+| H-02 | Credenciales externas de staging/producción: QuickNode, claves RPC separadas por componente, Postmark (y verificación de su dominio), Etherscan | P25 | Pendiente |
+| H-03 | Dominios de producción para Wallet y Recovery | P30 (despliegue) | Pendiente |
+| H-04 | Hardware wallets y direcciones de la Governance Safe y de los guardianes del `PolicyRegistry` | P25.T05 | Pendiente |
+| H-05 | Fondeo real de ETH en Base (gas tank) | P25/P30 | Pendiente |
+| H-06 | Aprobación explícita y escrita antes de desplegar o mover fondos en Base mainnet (staging: P25.T06; producción: P30.T02) | P25.T06 / P30.T02 | Pendiente |
+| H-07 | Custodia offline de las credenciales de desbloqueo del signer de producción (dos custodios) y destino de la copia off-host de backups | P30 (despliegue) | Pendiente |
+
+Ya resuelto y fuera de esta lista: archivos de CI en la raíz (aprobados 2026-10-16), representación de USDT (verificada automáticamente, §3.3), separación física de repositorios (evaluación no bloqueante en P26.T17.b), toolchain (auto-remediación en P00), región o cuentas cloud (no aplica: producción self-hosted).

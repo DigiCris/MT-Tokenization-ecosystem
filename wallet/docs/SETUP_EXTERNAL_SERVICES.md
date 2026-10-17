@@ -1,58 +1,103 @@
 # Setup de servicios externos, API keys y secretos — MT Wallet Web
 
-Este documento lista **cada** credencial, API key y secreto que necesita el sistema, para qué sirve, dónde y cómo obtenerla, con qué permisos mínimos, en qué entorno y si es obligatoria. El preflight (`cd wallet && pnpm preflight`, fase P00 del planner) referencia las secciones de este archivo cuando algo falta.
+Este documento lista **cada** dato, credencial y secreto que necesita el sistema y lo clasifica en tres categorías: lo que se obtiene **automáticamente** de fuentes públicas (AUTO-DISCOVERED), lo que se **genera automáticamente** (AUTO-GENERATED) y lo único que requiere **acción del usuario** (USER ACTION REQUIRED). El preflight (`cd wallet && pnpm preflight`, fase P00 del planner) referencia las secciones de este archivo cuando algo falta.
 
-Reglas:
+## Reglas
 
-- Los valores van en `wallet/.env` (local, gitignored). En staging/production **nunca** van en archivos: se cargan en AWS Secrets Manager o en el GitHub Environment del pipeline correspondiente.
-- Nada se reutiliza entre staging y production (proyectos, claves, servidores, cuentas).
-- Las interfaces web de los proveedores cambian con el tiempo: si un menú no coincide exactamente, seguir la documentación oficial enlazada y respetar los permisos mínimos indicados.
-- Verificado el 2026-10-16 (ver §3 del planner).
+1. **Autodiscovery antes de pedir nada.** El preflight busca cada credencial en las variables de entorno del proceso y en `wallet/.env`, la **valida sin mostrar el valor** (por ejemplo `eth_chainId` contra el RPC, `eth_chainId` contra el RPC de WalletConnect, el endpoint de autorización de Google) y la reutiliza. Sólo lo que no existe o no valida pasa a USER ACTION REQUIRED.
+2. **Local:** valores en `wallet/.env` (gitignored; `wallet/.env.example` sólo documenta variables).
+3. **Staging y producción** (target futuro: VPS Linux propia, self-hosted): nunca en archivos del repo ni en imágenes Docker. Los secretos son archivos de **secrets de Docker Compose** en el host (`/etc/mtw/<entorno>/secrets/`, root, 0400) que los servicios leen con `<VAR>_FILE`; las credenciales de desbloqueo del signer van en un directorio separado (`/etc/mtw/<entorno>/signer-unlock/`). Los genera `scripts/deploy/init-secrets.sh` **al desplegar** (planner ADR-030). Las variables no secretas de producción se documentan en `infra/production/.env.production.example` (P26).
+4. Nada se reutiliza entre staging y producción (proyectos, claves, servidores, cuentas).
+5. Las interfaces de los proveedores cambian: si un menú no coincide, seguir la documentación oficial enlazada respetando los permisos mínimos indicados.
+6. Verificado el 2026-10-16.
 
----
+## Estado al 2026-10-16
 
-## Resumen: qué conseguir y cuándo
-
-| Variable | Proveedor | Local | Staging / Production |
-|---|---|---|---|
-| [`BASE_RPC_URL`](#base_rpc_url) | Alchemy | **Obligatoria** (P00) | Obligatoria |
-| [`BASE_RPC_URL_SECONDARY`](#base_rpc_url_secondary) | QuickNode | Opcional | Obligatoria |
-| [`RPC_PRIMARY_URL` / `RPC_SECONDARY_URL`](#rpc_primary_url--rpc_secondary_url) | Alchemy / QuickNode | No (apuntan al fork) | Obligatorias |
-| [`SIGNER_RPC_PRIMARY_URL` / `SIGNER_RPC_SECONDARY_URL`](#signer_rpc_primary_url--signer_rpc_secondary_url) | Alchemy / QuickNode | No (fork) | Obligatorias |
-| [`WALLET_FRONTEND_RPC_URL` / `RECOVERY_FRONTEND_RPC_URL`](#wallet_frontend_rpc_url--recovery_frontend_rpc_url) | Alchemy | No (fork) | Obligatorias |
-| [`WALLETCONNECT_PROJECT_ID`](#walletconnect_project_id) | Reown (WalletConnect) | **Obligatoria** (P00) | Obligatoria (un proyecto por entorno) |
-| [`GOOGLE_CLIENT_ID_WALLET`](#google_client_id_wallet) | Google Cloud | **Obligatoria** (P00) | Obligatoria (cliente por entorno) |
-| [`GOOGLE_CLIENT_ID_RECOVERY`](#google_client_id_recovery) | Google Cloud | **Obligatoria** (P00) | Obligatoria (cliente por entorno) |
-| [`GOOGLE_CLIENT_SECRET_*`](#google_client_secret_wallet--google_client_secret_recovery) | — | **No se usa** | **No se usa** |
-| [`EMAIL_PROVIDER_API_KEY` / `EMAIL_FROM`](#email_provider_api_key--email_from) | Postmark | Opcional (local usa Mailpit) | Obligatorias |
-| [`ETHERSCAN_API_KEY`](#etherscan_api_key) | Etherscan | No | Obligatoria para desplegar/verificar |
-| [`AWS_REGION` / `KMS_KEY_ALIAS_PREFIX` / cuentas y roles](#aws_region--kms_key_alias_prefix--cuentas-aws) | AWS | No | Obligatorias |
-| [`AWS_ACCOUNT_ID_*` / `AWS_DEPLOY_ROLE_ARN_*` / secretos de CI](#aws_account_id_--aws_deploy_role_arn_--secretos-de-ci) | AWS + GitHub Environments | No | Obligatorias |
-| [`GOVERNANCE_SAFE_ADDRESS` / `POLICY_GUARDIANS`](#governance_safe_address--policy_guardians) | Safe{Wallet} + hardware wallets | No (lo crea el seed) | Obligatorias |
-| [`WALLET_DOMAIN` / `RECOVERY_DOMAIN`](#wallet_domain--recovery_domain) | Registrador + Route 53 | No | Obligatorias |
-| [Claves de release](#wallet_release_--recovery_release_-claves-de-release) | generadas por el equipo | Generadas por `secrets:local` | Obligatorias (una por app) |
-| [Clave de policy](#policy_signing_-clave-de-firma-de-policy) | generada por seguridad | Generada por `secrets:local` | Obligatoria |
-| [`ALERT_EMAIL` / `ALERT_SMS_NUMBER`](#alert_email--alert_sms_number) | — | No | Obligatorias |
-| [Fondeo del gas tank](#fondeo-del-gas-tank-eth-en-base) | — | No (fork) | Obligatorio |
-| [Secretos generados](#secretos-generados-no-provienen-de-terceros) | generados | `pnpm secrets:local` | Generados una vez y guardados en Secrets Manager |
-| [Tests opcionales](#tests-opcionales-con-servicios-reales) | Google / Postmark | Opcionales | Opcionales (CI nightly) |
-
-**Para pasar el preflight en local sólo hacen falta cuatro credenciales externas:** `BASE_RPC_URL`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET` y `GOOGLE_CLIENT_ID_RECOVERY`. El resto de los valores locales los genera `pnpm secrets:local`.
+Búsqueda realizada en las variables de entorno del proceso y en `wallet/.env` (sin mostrar valores): **ninguna** de las credenciales externas existe todavía. Todo lo demás está resuelto automáticamente (ver las tres secciones finales).
 
 ---
 
-## RPC de Base
+## AUTO-DISCOVERED
+
+Datos públicos verificados con fuentes oficiales y lecturas on-chain; quedan en el planner (§3) y en `config/chains/base-mainnet.json` (P00.T03.a). No requieren acción.
+
+| Dato | Valor | Fuente |
+|---|---|---|
+| Red y `CHAIN_ID` | Base mainnet, `8453` | `cast chain-id` |
+| `FORK_BLOCK_NUMBER` | `52700000` (finalizado; hash `0x64a292b057c55f118eb550d89bd860a5740598962f50536c719b375f1ca9c473`) | `cast block` |
+| Safe | v1.5.0: SafeL2 `0xEdd160fEBBD92E350D4D398fb636302fccd67C7e`, SafeProxyFactory `0x14F2982D601c9458F93bd70B218933A6f8165e7b`, codehash y runtime del proxy en planner §3.2 | safe-deployments + on-chain |
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` (FiatTokenProxy, implementación `0x2Ce6311ddAE708829bc0784C967b7d77D19FD779`), 6 decimales | Circle + on-chain |
+| USDT | `0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2` — **única representación canónica en Base** (Superchain token list; USDT0 sin despliegue en Base), 6 decimales; usada en V1 | Superchain token list, USDT0, Tether + on-chain |
+| Uniswap | pool v3 USDC/USDT 0,01 % (fee tier 100) `0xD56da2B74bA826f19015E6B7Dd9Dae1903E85DA1`, UniswapV3Factory `0x33128a8fC17869897dcE68Ed026d694621f6FDfD`, QuoterV2 `0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a` (y resto en §3.4) | developers.uniswap.org + on-chain |
+| Codehash de todos los contratos externos | planner §3.2–§3.4, verificados en el bloque de fork | `cast code` + `cast keccak` |
+| Explorer | `https://basescan.org/address/<address>` y `https://basescan.org/token/<address>` | BaseScan |
+| Finalidad de Base | `safe` ~1–2 min, `finalized` ~20 min; upgrade Denim (bloques de 200 ms) previsto | docs.base.org |
+| Versiones de toolchain | Node 26.x, pnpm 12.14.0, Foundry v1.8.5, Slither 0.11.6, gitleaks 8.30.1, TypeScript 6.0.3 y el resto de §3.6 | registries y releases oficiales |
+| Infra self-hosted | PostgreSQL 18.6, Valkey 9.2, pgBackRest 2.59.3, age 1.3.2, Caddy 2.11.7, Prometheus 3.15.0, Alertmanager 0.34.1, Grafana 13.2.4 | Docker Hub y releases oficiales |
+| Signer | Clef sin mantenimiento; Web3Signer evaluado (no genera claves); se usa `SelfHostedSoftwareSignerProvider` (ADR-014) | repos oficiales y docs.web3signer |
+| Servicios | Reown: projectId en `dashboard.reown.com`; Google: scope `drive.appdata` no sensible; Postmark: header `X-Postmark-Server-Token`, stream `outbound`; Etherscan API V2 con `chainid=8453` | documentación oficial de cada proveedor |
+
+## AUTO-GENERATED
+
+Secretos y claves que se generan criptográficamente: **no son acciones del usuario**. En local los genera `pnpm secrets:local` (se niega si `APP_ENV != local` y nunca sobrescribe valores existentes). En staging/producción los genera `scripts/deploy/init-secrets.sh` en el host al desplegar, como archivos de secrets de Docker Compose (ADR-030). Su rotación está en `docs/runbooks/key-rotation.md` (P26).
+
+| Variable / archivo | Uso | Generador | Entorno | Obligatoria | Quién lo lee |
+|---|---|---|---|---|---|
+| `SESSION_SECRET` | firma de cookies de sesión | `openssl rand -base64 32` | todos | Sí | api |
+| `CSRF_SECRET` | HMAC de tokens CSRF | `openssl rand -base64 32` | todos | Sí | api |
+| `SESSION_ISSUER_PRIVATE_KEY` / `SESSION_ISSUER_PUBLIC_KEY` | firma y verificación de tokens PlatformSession | Ed25519 (`node:crypto` / `openssl genpkey -algorithm ed25519`) | todos | Sí | api (privada); api, worker, signer (pública) |
+| `OPAQUE_SERVER_SETUP` | secreto de servidor OPAQUE (RFC 9807) | `pnpm --dir backend/app opaque:setup` (desde P10); rotarlo implica re-registro con `KEY_RESTORE` | todos | Sí | api |
+| `APP_FIELD_ENCRYPTION_KEY` | cifrado de campos sensibles en DB (secretos TOTP) | `openssl rand -base64 32` | todos | Sí | api |
+| `OTP_HMAC_KEY` | hash de códigos OTP | `openssl rand -base64 32` | todos | Sí | api |
+| `PASSWORD_PEPPER_V1` | pepper del hash Argon2id de passwords de cuenta | `openssl rand -base64 32` | todos | Sí | api |
+| `AUDIT_CHAIN_KEY` | cadena HMAC del audit log | `openssl rand -base64 32` | todos | Sí | api, worker, job `audit:verify` |
+| `INTEGRITY_MONITOR_PRIVATE_KEY` / `_PUBLIC_KEY` | atestaciones del integrity monitor | Ed25519 | todos | Sí | integrity-monitor (privada); signer (pública) |
+| `SIGNER_ATTESTATION_PRIVATE_KEY` / `_PUBLIC_KEY` | `SignerKeyAttestation` de cada S creada | Ed25519 | todos | Sí | signer (privada); frontends embeben la pública |
+| Credencial de desbloqueo de cada shard (`SIGNER_UNLOCK_CREDENTIAL_FILE`) | deriva las contraseñas de los keystores V3 de S | 32 bytes aleatorios; **separada** de los keystores | todos | Sí | sólo el signer de ese shard |
+| Keystores de S | una clave por Safe | los crea el propio signer al dar de alta cada wallet (nunca un humano) | todos | Sí | sólo el signer de ese shard |
+| Certificados mTLS (`MTLS_*`) | backend ↔ signer | CA privada por entorno con `openssl`, certificados de corta vida | todos | Sí | worker, api, gas-tank (cliente); signer (servidor) |
+| `POSTGRES_PASSWORD`, `MTW_APP_DB_PASSWORD`, `MTW_MIGRATOR_DB_PASSWORD`, `MTW_SIGNER_DB_PASSWORD`, `DATABASE_URL`, `DATABASE_MIGRATION_URL`, `SIGNER_DATABASE_URL` | acceso a las bases (roles separados) | `openssl rand -base64 24` + composición de URLs | todos | Sí | cada servicio, sólo su rol |
+| `REDIS_PASSWORD`, `REDIS_URL` | acceso a Valkey (usuario ACL de la cola) | `openssl rand -base64 24` | todos | Sí | api, worker |
+| Claves de release (`WALLET_RELEASE_*`, `RECOVERY_RELEASE_*`) | firma de manifests de cada frontend | Ed25519, una por app; en staging/prod se cargan sólo en el GitHub Environment de esa app (`gh secret set`) | todos | Sí | sólo el workflow de esa app; públicas en `config/release-keys/` |
+| Clave de policy (`POLICY_SIGNING_*`) | firma de snapshots de policy | Ed25519; en staging/prod se genera en una máquina offline y la privada nunca está en servidores | todos | Sí | backend y signer (pública) |
+| Par de claves de backup (`age`) | cifrado de backups off-host | `age-keygen`; la pública queda en la config del host, la privada en custodia offline | staging/prod | Sí | scripts de backup (pública) |
+| `LOCAL_SEED`, credencial y keystores del shard `dev-1`, `*_LOCAL`, `GRAFANA_ADMIN_PASSWORD` | sólo desarrollo local | `pnpm secrets:local` | local | Sí (local) | procesos locales |
+
+---
+
+## USER ACTION REQUIRED
+
+Sólo lo que no se puede conseguir ni generar automáticamente. Antes de pedir cualquier ítem, el preflight lo busca y lo valida sin mostrarlo; si ya existe, se reutiliza.
+
+| Ítem | Proveedor | Local (P00) | Staging / Producción | Estado 2026-10-16 |
+|---|---|---|---|---|
+| [`BASE_RPC_URL`](#base_rpc_url) | Alchemy | **Obligatoria** | Obligatoria | no existe |
+| [`WALLETCONNECT_PROJECT_ID`](#walletconnect_project_id) | Reown | **Obligatoria** | Obligatoria (un proyecto por entorno) | no existe |
+| [`GOOGLE_CLIENT_ID_WALLET`](#google_client_id_wallet) | Google Cloud | **Obligatoria** | Obligatoria (cliente por entorno) | no existe |
+| [`GOOGLE_CLIENT_ID_RECOVERY`](#google_client_id_recovery) | Google Cloud | **Obligatoria** | Obligatoria (cliente por entorno) | no existe |
+| [`BASE_RPC_URL_SECONDARY`](#base_rpc_url_secondary) | QuickNode | Opcional | Obligatoria | no existe |
+| [RPC por componente](#rpc_primary_url--rpc_secondary_url) | Alchemy / QuickNode | No (fork) | Obligatorias | no existen |
+| [`EMAIL_PROVIDER_API_KEY` / `EMAIL_FROM`](#email_provider_api_key--email_from) | Postmark | Opcional (local usa Mailpit) | Obligatorias | no existe |
+| [`ETHERSCAN_API_KEY`](#etherscan_api_key) | Etherscan | No | Obligatoria para verificar contratos | no existe |
+| [Dominios de producción](#wallet_domain--recovery_domain) | registrador a elección | No | Obligatorios al desplegar | pendiente |
+| [Governance Safe y guardianes](#governance_safe_address--policy_guardians) | Safe{Wallet} + hardware wallets | No (lo crea el seed) | Obligatorios | pendiente |
+| [`ALERT_EMAIL`](#alert_email--alert_webhook_url) | casilla propia | No (Mailpit) | Obligatoria | pendiente |
+| [Fondeo de ETH](#fondeo-de-eth-gas-tank) | — | No (fork) | Obligatorio | pendiente |
+| [Aprobaciones en Base mainnet](#aprobaciones-en-base-mainnet) | owner | No | Obligatorias | pendiente |
+| [Custodia offline y copia off-host](#custodia-offline-y-copia-off-host) | owner / equipo | No | Obligatorias al desplegar | pendiente |
+
+Condicionales (sólo si el preflight detecta que hacen falta): [Docker](#docker-sólo-si-falta), [branch protection](#branch-protection-sólo-si-gh-no-tiene-permisos), [tests opcionales](#tests-opcionales-con-servicios-reales).
 
 ### BASE_RPC_URL
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | RPC de **Base mainnet con datos archive**. En local/CI lo usa Anvil para forkear en `FORK_BLOCK_NUMBER`; en staging/production es la fuente del primario del backend si no se separan claves (recomendado separarlas, ver abajo). |
+| Para qué sirve | RPC de **Base mainnet con datos archive**: Anvil forkea desde aquí en `FORK_BLOCK_NUMBER` (local y CI). |
 | Proveedor | Alchemy |
 | URL | https://dashboard.alchemy.com |
-| Pasos | 1) Crear cuenta. 2) "Create new app" → cadena **Base** → red **Base Mainnet**. 3) Copiar la URL HTTPS (`https://base-mainnet.g.alchemy.com/v2/<API_KEY>`). 4) Pegarla en `BASE_RPC_URL`. 5) Correr `pnpm preflight`: el check PF-14 confirma que el endpoint sirve estado histórico en el bloque fijado. |
-| Permisos mínimos | Una app dedicada a este uso. Para CI, una app separada. Si el plan lo permite, restringir por IP (egress de CI) y desactivar métodos que no se usan. |
-| Entorno | local, CI, staging, production (una app distinta por entorno) |
+| Pasos | 1) Crear cuenta. 2) "Create new app" → cadena **Base** → red **Base Mainnet**. 3) Copiar la URL HTTPS (`https://base-mainnet.g.alchemy.com/v2/<API_KEY>`). 4) Pegarla en `BASE_RPC_URL` de `wallet/.env`. 5) `pnpm preflight`: PF-13/PF-14 validan cadena y estado histórico sin mostrar la clave. |
+| Permisos mínimos | App dedicada a este uso (y otra para CI). |
+| Entorno | local, CI (y staging/prod como upstream, con apps separadas) |
 | Obligatoria | Sí |
 
 ### BASE_RPC_URL_SECONDARY
@@ -62,78 +107,44 @@ Reglas:
 | Para qué sirve | Segundo proveedor independiente para lecturas de quórum y transmisión redundante (ADR-017). |
 | Proveedor | QuickNode |
 | URL | https://dashboard.quicknode.com |
-| Pasos | 1) Crear cuenta. 2) "Create endpoint" → **Base** → **Mainnet**. 3) Copiar la URL HTTPS del endpoint (incluye el token). 4) Pegarla en `BASE_RPC_URL_SECONDARY`. |
-| Permisos mínimos | Endpoint dedicado; activar autenticación por token y allowlist de IPs (egress del backend) si está disponible. No requiere archive. |
-| Entorno | staging, production (en local es opcional; si se define, el preflight la valida) |
+| Pasos | 1) Crear cuenta. 2) "Create endpoint" → **Base** → **Mainnet**. 3) Copiar la URL HTTPS (incluye el token). 4) Cargarla en `BASE_RPC_URL_SECONDARY`. |
+| Permisos mínimos | Endpoint dedicado con autenticación por token y allowlist de IPs del servidor si el plan lo permite. No requiere archive. |
+| Entorno | staging, production (opcional en local) |
 | Obligatoria | Sí en staging/production |
 
 ### RPC_PRIMARY_URL / RPC_SECONDARY_URL
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | RPC que usa **el backend** (API, worker, watcher, indexer). En local apuntan al fork (`http://127.0.0.1:8545`). |
-| Proveedor | Alchemy (primario) y QuickNode (secundario) |
+| Para qué sirve | RPC propios de cada componente en staging/producción: backend (`RPC_PRIMARY_URL`/`RPC_SECONDARY_URL`), signer (`SIGNER_RPC_PRIMARY_URL`/`SIGNER_RPC_SECONDARY_URL`, para re-verificar sin depender del backend) y cada frontend (`WALLET_FRONTEND_RPC_URL`, `RECOVERY_FRONTEND_RPC_URL`, públicas). En local apuntan al fork. |
+| Proveedor | Alchemy (primarios y frontends) y QuickNode (secundarios) |
 | URL | https://dashboard.alchemy.com · https://dashboard.quicknode.com |
-| Pasos | Crear en cada proveedor una app/endpoint llamado `backend-<entorno>` siguiendo los pasos de arriba y cargar las URLs. Poner `RPC_QUORUM_MODE=dual` y `CONFIRMATION_POLICY=tags`. |
-| Permisos mínimos | Allowlist de IPs de salida del backend. |
+| Pasos | Crear en cada proveedor una app/endpoint por componente y entorno (`backend-<env>`, `signer-<env>`, `wallet-frontend-<env>`, `recovery-frontend-<env>`) y copiar cada URL. En las apps de frontend configurar el **allowlist de dominio** (`https://wallet.<WALLET_DOMAIN>`, `https://recovery.<RECOVERY_DOMAIN>`). Los valores de backend y signer van como archivos de secrets en el host al desplegar. |
+| Permisos mínimos | Una clave por componente; allowlist de IP del servidor para backend/signer y de dominio para frontends. |
 | Entorno | staging, production |
 | Obligatoria | Sí en staging/production |
-
-### SIGNER_RPC_PRIMARY_URL / SIGNER_RPC_SECONDARY_URL
-
-| Campo | Valor |
-|---|---|
-| Para qué sirve | RPC **propio del signer** para re-verificar nonce, roles, whitelist y saldos sin depender del backend (V9 §8). |
-| Proveedor | Alchemy y QuickNode, con **apps/endpoints distintos** de los del backend (`signer-<entorno>`). |
-| URL | https://dashboard.alchemy.com · https://dashboard.quicknode.com |
-| Pasos | 1) En Alchemy crear la app `signer-<entorno>` (Base Mainnet) y copiar su URL a `SIGNER_RPC_PRIMARY_URL`. 2) En QuickNode crear el endpoint `signer-<entorno>` (Base Mainnet) y copiar su URL a `SIGNER_RPC_SECONDARY_URL`. 3) Restringir ambos a las IPs de salida (NAT) de la cuenta AWS del signer. 4) Cargar las URLs sólo en el Secrets Manager de la cuenta del signer (el backend no debe poder leerlas). |
-| Permisos mínimos | Allowlist de IPs de salida de la cuenta del signer. |
-| Entorno | staging, production |
-| Obligatoria | Sí en staging/production |
-
-### WALLET_FRONTEND_RPC_URL / RECOVERY_FRONTEND_RPC_URL
-
-| Campo | Valor |
-|---|---|
-| Para qué sirve | RPC que usa **cada frontend** para leer la cadena por su cuenta (verificar la Safe, saldos, whitelist y rotaciones) sin confiar en el backend. Son públicas (quedan en el bundle). |
-| Proveedor | Alchemy: una app `wallet-frontend-<entorno>` y otra `recovery-frontend-<entorno>`. |
-| URL | https://dashboard.alchemy.com |
-| Pasos | Crear cada app, copiar la URL y configurar en la app el **allowlist de dominios** (`https://wallet.<WALLET_DOMAIN>` para la primera, `https://recovery.<RECOVERY_DOMAIN>` para la segunda). |
-| Permisos mínimos | Allowlist de dominio obligatoria; sólo métodos de lectura más `eth_call`. |
-| Entorno | staging, production (en local apuntan al fork) |
-| Obligatoria | Sí en staging/production |
-
----
-
-## WalletConnect
 
 ### WALLETCONNECT_PROJECT_ID
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | Identificador del proyecto para el conector WalletConnect de la app **Recovery** (R mediante wallet externa por QR). La app Wallet no usa WalletConnect. |
+| Para qué sirve | Conector WalletConnect de la app **Recovery** (R mediante wallet externa por QR). Wallet no lo usa. |
 | Proveedor | Reown (ex WalletConnect Cloud) |
-| URL | https://dashboard.reown.com (cloud.reown.com redirige ahí) |
-| Pasos | 1) Crear cuenta. 2) Crear un proyecto por entorno (`mtw-recovery-local`, `mtw-recovery-staging`, `mtw-recovery-production`). 3) Copiar el **Project ID** (32 caracteres hex). 4) En la configuración del proyecto → **Domain** → "+ Domain": agregar `https://recovery.<RECOVERY_DOMAIN>` (staging/production). localhost está permitido siempre. Los cambios de allowlist tardan ~15 minutos. |
-| Permisos mínimos | Allowlist con **sólo** el origin de Recovery del entorno. Una lista vacía permite cualquier origin: no dejarla vacía fuera de local. |
+| URL | https://dashboard.reown.com |
+| Pasos | 1) Crear cuenta. 2) Crear un proyecto por entorno (`mtw-recovery-local`, `-staging`, `-production`). 3) Copiar el **Project ID** (32 hex) a `WALLETCONNECT_PROJECT_ID`. 4) En la configuración del proyecto → **Domain** → "+ Domain": `https://recovery.<RECOVERY_DOMAIN>` (staging/producción; localhost siempre está permitido; los cambios tardan ~15 min). 5) PF-19 lo valida con `eth_chainId` contra `https://rpc.walletconnect.org/v1/?chainId=eip155:8453&projectId=<ID>` (un ID inválido responde 401). |
+| Permisos mínimos | Allowlist con sólo el origin de Recovery del entorno (no dejarla vacía fuera de local). |
 | Entorno | local, staging, production |
 | Obligatoria | Sí |
-
----
-
-## Google Drive (appDataFolder)
-
-Los backups cifrados de U y R se guardan en el `appDataFolder` de Google Drive del usuario, directamente desde cada frontend. **Wallet y Recovery usan proyectos de Google Cloud distintos** (V9 §17: OAuth y appDataFolder separados). El scope `https://www.googleapis.com/auth/drive.appdata` es **no sensible** según Google, por lo que no requiere verificación de seguridad; en producción sí conviene la verificación de marca para mostrar nombre y logo.
 
 ### GOOGLE_CLIENT_ID_WALLET
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | OAuth client ID con el que la app **Wallet** pide al usuario acceso a su appDataFolder para guardar `U.enc` (cifrado en el navegador). |
+| Para qué sirve | OAuth client ID con el que la app **Wallet** guarda `U.enc` (cifrado en el navegador) en el appDataFolder del usuario. |
 | Proveedor | Google Cloud |
 | URL | https://console.cloud.google.com |
-| Pasos | 1) Crear un proyecto **exclusivo** por entorno: `mtw-wallet-local`, `mtw-wallet-staging`, `mtw-wallet-production`. 2) *APIs & Services → Library* → habilitar **Google Drive API**. 3) *Google Auth Platform* (antes "OAuth consent screen"): **Branding** (nombre de la app, email de soporte), **Audience** = External (en local/staging dejar en modo *Testing* y agregar como *test users* las cuentas que van a probar), **Data Access** → agregar el scope `.../auth/drive.appdata`. 4) *Clients* → *Create client* → tipo **Web application**. 5) *Authorized JavaScript origins*: `http://localhost:5173` (local) o `https://wallet.<WALLET_DOMAIN>`. 6) *Authorized redirect URIs*: `http://localhost:5173/oauth/google/callback` (local) o `https://wallet.<WALLET_DOMAIN>/oauth/google/callback`. 7) Copiar el **Client ID** (`…apps.googleusercontent.com`) a `GOOGLE_CLIENT_ID_WALLET`. No copiar el client secret a ningún lado. 8) Producción: dominio verificado en Search Console, homepage y política de privacidad publicadas, pasar a *In production*. |
-| Permisos mínimos | Sólo el scope `drive.appdata`. Ningún otro scope de Drive. |
+| Pasos | 1) Crear un proyecto **exclusivo** por entorno: `mtw-wallet-local`, `-staging`, `-production`. 2) *APIs & Services → Library* → habilitar **Google Drive API**. 3) *Google Auth Platform* (antes "OAuth consent screen"): **Branding**, **Audience** = External (en local/staging modo *Testing* con *test users*), **Data Access** → scope `.../auth/drive.appdata`. 4) *Clients* → *Create client* → **Web application**. 5) *Authorized JavaScript origins*: `http://localhost:5173` (local) o `https://wallet.<WALLET_DOMAIN>`. 6) *Authorized redirect URIs*: `http://localhost:5173/oauth/google/callback` o `https://wallet.<WALLET_DOMAIN>/oauth/google/callback`. 7) Copiar el **Client ID** a `GOOGLE_CLIENT_ID_WALLET` (no copiar el client secret a ningún lado). 8) Producción: dominio verificado, homepage y política de privacidad publicadas, pasar a *In production*. |
+| Permisos mínimos | Sólo el scope `drive.appdata` (no sensible). |
 | Entorno | local, staging, production (cliente y proyecto distintos en cada uno) |
 | Obligatoria | Sí |
 
@@ -141,180 +152,99 @@ Los backups cifrados de U y R se guardan en el `appDataFolder` de Google Drive d
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | Igual que el anterior, para la app **Recovery** (`R.enc`). Debe ser de **otro proyecto** de Google Cloud. |
+| Para qué sirve | Igual que el anterior para la app **Recovery** (`R.enc`), en **otro proyecto** de Google Cloud. |
 | Proveedor | Google Cloud |
 | URL | https://console.cloud.google.com |
-| Pasos | Repetir los pasos de `GOOGLE_CLIENT_ID_WALLET` en proyectos `mtw-recovery-local/staging/production` con origin `http://localhost:5174` / `https://recovery.<RECOVERY_DOMAIN>` y redirect `…/oauth/google/callback`. |
+| Pasos | Repetir los pasos de `GOOGLE_CLIENT_ID_WALLET` en proyectos `mtw-recovery-local/-staging/-production` con origin `http://localhost:5174` o `https://recovery.<RECOVERY_DOMAIN>` y redirect `…/oauth/google/callback`. |
 | Permisos mínimos | Sólo `drive.appdata`. |
 | Entorno | local, staging, production |
 | Obligatoria | Sí |
 
-### GOOGLE_CLIENT_SECRET_WALLET / GOOGLE_CLIENT_SECRET_RECOVERY
-
-**No se usan.** La integración Drive corre íntegramente en el navegador con un cliente OAuth público (authorization code + PKCE sin secret si Google lo acepta, o flujo implícito como alternativa — ADR-012 del planner). Un client secret no puede protegerse dentro de un frontend y usarlo en el backend convertiría al backend en parte del flujo de U. Si Google llegara a exigir un secret para el flujo elegido, se reabre ADR-012 antes de implementar cualquier alternativa.
-
----
-
-## Email transaccional
+Nota: `GOOGLE_CLIENT_SECRET_WALLET` y `GOOGLE_CLIENT_SECRET_RECOVERY` **no se usan** — la integración Drive corre íntegramente en el navegador con un cliente OAuth público (ADR-012); no hay que conseguirlos.
 
 ### EMAIL_PROVIDER_API_KEY / EMAIL_FROM
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | Envío de OTPs, challenges de whitelist (con la dirección exacta, red y expiración), avisos de rotación/recovery, reset de password y alertas de seguridad. |
+| Para qué sirve | Envío de OTPs, challenges de whitelist (con la dirección exacta, red y expiración), avisos de rotación/recovery, reset de password y alertas. |
 | Proveedor | Postmark |
 | URL | https://account.postmarkapp.com |
-| Pasos | 1) Crear cuenta. 2) Crear un **Server** por entorno (`mtw-staging`, `mtw-production`). 3) Usar el stream transaccional por defecto **`outbound`** (`EMAIL_MESSAGE_STREAM=outbound`). 4) En el server → pestaña **API Tokens** → copiar el **Server API Token** a `EMAIL_PROVIDER_API_KEY`. 5) **Sender Signatures / Domains** → agregar el dominio de envío y publicar los registros DNS que indica Postmark: **DKIM** (TXT, obligatorio para verificar el dominio) y **Return-Path** (CNAME `pm-bounces` → `pm.mtasv.net`). 6) `EMAIL_FROM` = una dirección del dominio verificado (p. ej. `no-reply@<WALLET_DOMAIN>`). 7) Solicitar la **aprobación de la cuenta** (Postmark revisa en < 24 h hábiles); hasta entonces sólo se puede enviar a dominios propios verificados. 8) Poner `EMAIL_PROVIDER=postmark`. |
-| Permisos mínimos | Usar el **Server** token (no el Account token). Un server por entorno. |
-| Entorno | staging, production. En local se usa Mailpit (`EMAIL_PROVIDER=smtp`); el token es opcional para un smoke test real. Para tests de formato sin enviar, Postmark acepta el token especial `POSTMARK_API_TEST`. |
+| Pasos | 1) Crear cuenta. 2) Crear un **Server** por entorno (`mtw-staging`, `mtw-production`). 3) Usar el stream transaccional **`outbound`**. 4) Pestaña **API Tokens** del server → copiar el **Server API Token**. 5) **Sender Signatures / Domains** → agregar el dominio de envío y publicar sus registros DNS (DKIM TXT y Return-Path CNAME `pm-bounces` → `pm.mtasv.net`) cuando existan los dominios. 6) `EMAIL_FROM` = una dirección de ese dominio. 7) Solicitar la aprobación de la cuenta (< 24 h hábiles). En staging/prod el token va como archivo de secrets al desplegar. |
+| Permisos mínimos | Server token (no el Account token), un server por entorno. |
+| Entorno | staging, production (en local se usa Mailpit; `POSTMARK_API_TEST` sirve para tests de formato sin envío) |
 | Obligatoria | Sí en staging/production |
-
----
-
-## Verificación de contratos
 
 ### ETHERSCAN_API_KEY
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | Verificar los contratos desplegados en Base con `forge verify-contract` (API V2 de Etherscan, `chainid=8453`). |
+| Para qué sirve | Verificar los contratos desplegados en Base con `forge verify-contract` (API V2, `chainid=8453`). |
 | Proveedor | Etherscan |
 | URL | https://etherscan.io/myapikey |
-| Pasos | 1) Crear cuenta en etherscan.io. 2) *API Dashboard* → crear una API key. 3) Cargarla en `ETHERSCAN_API_KEY` sólo en el entorno de despliegue (máquina del deployer o GitHub Environment). Las keys antiguas de BaseScan **no** sirven para la API V2. |
-| Permisos mínimos | Key dedicada al despliegue. El plan gratuito alcanza para verificación y lectura de ABI en Base (el resto de la API de Base es de pago y no se usa). |
-| Entorno | staging, production (despliegue) |
-| Obligatoria | Sí para P25 |
-
----
-
-## Infraestructura
-
-### AWS_REGION / KMS_KEY_ALIAS_PREFIX / cuentas AWS
-
-| Campo | Valor |
-|---|---|
-| Para qué sirve | Despliegue de producción y staging (ADR-022) y claves S en **AWS KMS** (`ECC_SECG_P256K1`, no exportables, una por Safe) para el signer. |
-| Proveedor | AWS |
-| URL | https://console.aws.amazon.com/organizations/ · https://console.aws.amazon.com/kms/ |
-| Pasos | 1) Crear una AWS Organization con cuentas separadas por trust domain y entorno: `backend-<env>`, `signer-<env>`, `wallet-frontend-<env>`. 2) Crear **fuera** de esa organización (cuenta raíz y administradores distintos) la cuenta `recovery-frontend-<env>`. 3) MFA obligatorio en todas las cuentas raíz; sin access keys de largo plazo. 4) Configurar en cada cuenta el proveedor OIDC de GitHub y un rol de despliegue por área y entorno (`AWS_DEPLOY_ROLE_ARN_<AREA>_<ENV>`), con confianza limitada al repositorio, al workflow y al Environment correspondientes. 5) Región: `AWS_REGION=sa-east-1` (decisión del planner, ADR-022; P26 verifica que soporte KMS `ECC_SECG_P256K1`, ECS Fargate, RDS PostgreSQL 18, ElastiCache for Valkey 9 y AMP/AMG; si falta algo se usa `us-east-1`). 6) Las claves KMS, VPCs, bases y demás recursos se crean con OpenTofu en P26; `KMS_KEY_ALIAS_PREFIX` = `alias/mtw/<env>`. |
-| Permisos mínimos | El rol del signer sólo puede `kms:Sign` y `kms:GetPublicKey` sobre sus claves; `kms:CreateKey` sólo para el rol de aprovisionamiento del shard; nadie en las cuentas backend/frontend tiene permisos sobre las claves del signer; borrado de claves con ventana de 30 días y aprobación de dos administradores. |
+| Pasos | 1) Crear cuenta. 2) *API Dashboard* → crear una API key. 3) Cargarla sólo donde se despliega (máquina del deployer o GitHub Environment). Las keys antiguas de BaseScan no sirven para la API V2. |
+| Permisos mínimos | Key dedicada al despliegue; el plan gratuito alcanza para verificación. |
 | Entorno | staging, production |
-| Obligatoria | Sí (P25–P26) |
+| Obligatoria | Sí para P25/P30 |
 
 ### WALLET_DOMAIN / RECOVERY_DOMAIN
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | Origins de los frontends (`wallet.<WALLET_DOMAIN>`, `recovery.<RECOVERY_DOMAIN>`) y de sus API hosts (`api.<WALLET_DOMAIN>`, `api.<RECOVERY_DOMAIN>`). |
-| Proveedor | Registrador de dominios a elección (con bloqueo de transferencia y 2FA) + Amazon Route 53 para las zonas DNS |
-| URL | https://console.aws.amazon.com/route53/ |
-| Pasos | 1) Registrar **dos dominios registrables distintos** (uno por app). 2) Crear la hosted zone de cada uno en la cuenta AWS de su frontend. 3) Activar DNSSEC y CAA (sólo Amazon/ACM). 4) Los registros `api.` apuntan al ALB del backend; el resto lo gestiona cada equipo de frontend. |
-| Permisos mínimos | Cuentas del registrador distintas por dominio (o al menos usuarios distintos con 2FA), registrar lock activo; en Route 53, sólo el equipo del frontend correspondiente administra su zona; el backend sólo tiene los registros `api.` que necesita. |
+| Para qué sirve | Origins de los frontends (`wallet.<WALLET_DOMAIN>`, `recovery.<RECOVERY_DOMAIN>`) y de sus API hosts (`api.<…>`), que se configuran en el reverse proxy existente al desplegar. |
+| Proveedor | Registrador de dominios a elección (con bloqueo de transferencia y 2FA) |
+| URL | panel del registrador elegido |
+| Pasos | Registrar **dos dominios registrables distintos** (uno por app) cuando llegue el momento de desplegar; los registros y el TLS se configuran a mano en esa etapa siguiendo `docs/DEPLOYMENT_VPS.md`. |
+| Permisos mínimos | 2FA en el registrador; acceso al DNS limitado a quien despliega. |
 | Entorno | staging (subdominios de staging), production |
-| Obligatoria | Sí |
-
-### ALERT_EMAIL / ALERT_SMS_NUMBER
-
-| Campo | Valor |
-|---|---|
-| Para qué sirve | Destinos de las alertas críticas (Amazon SNS ← Alertmanager de Amazon Managed Prometheus). |
-| Proveedor | AWS SNS (destinos: casilla y teléfono de guardia) |
-| URL | https://console.aws.amazon.com/sns/ |
-| Pasos | 1) Definir casilla de guardia (lista de distribución) y teléfono de guardia por entorno. 2) OpenTofu crea los topics y suscripciones en P26. 3) Confirmar la suscripción de email desde la casilla. 4) Disparar la alerta de prueba de P30.T05. |
-| Permisos mínimos | Sólo el rol de alertas puede publicar en los topics. |
-| Entorno | staging, production |
-| Obligatoria | Sí |
-
-### Fondeo del gas tank (ETH en Base)
-
-La cuenta gas tank/relayer (clave en KMS, creada en P26) necesita ETH en Base para desplegar Safes, recargar el ETH operativo de cada S y retransmitir cancelaciones. Fondear con un monto acotado (el tope diario de recargas se fija con `GAS_TANK_DAILY_CAP_WEI`) y monitorear el saldo (alerta en P24). Obligatorio en staging/production.
-
----
-
-### AWS_ACCOUNT_ID_* / AWS_DEPLOY_ROLE_ARN_* / secretos de CI
-
-| Variable | Para qué sirve | Dónde se obtiene / pasos | Permisos mínimos | Entorno | Obligatoria |
-|---|---|---|---|---|---|
-| `AWS_ACCOUNT_ID_BACKEND`, `AWS_ACCOUNT_ID_SIGNER`, `AWS_ACCOUNT_ID_WALLET_FE`, `AWS_ACCOUNT_ID_RECOVERY_FE` | Identificar las cuentas de cada trust domain en IaC y CI | Al crear cada cuenta (ver sección de AWS); se cargan como *variables* (no secretos) del GitHub Environment correspondiente | — | staging, production | Sí |
-| `AWS_DEPLOY_ROLE_ARN_<AREA>_<ENV>` | Rol que asume cada workflow de deploy vía OIDC (sin access keys) | IAM → Identity providers → `token.actions.githubusercontent.com`; rol con trust policy limitada a `repo:<owner>/<repo>:environment:<env>` y al workflow del área | Sólo los permisos de deploy de su área y entorno | staging, production | Sí |
-| `AWS_KMS_TEST_ROLE_ARN_STAGING` | Tests de integración de `KmsSignerProvider` contra KMS real (P11.T06) | Rol en la cuenta del signer de staging con `kms:CreateKey`/`kms:Sign`/`kms:GetPublicKey` sobre claves con tag `purpose=ci-test` | Sólo claves de test; nunca claves de usuarios | CI (staging) | Sí (desde P11) |
-| `BASE_RPC_URL` (secreto de CI) | Fork de Base en CI | App Alchemy dedicada a CI (ver `BASE_RPC_URL`) | Restringida a CI | CI | Sí |
-| `WALLET_RELEASE_SIGNING_KEY` / `RECOVERY_RELEASE_SIGNING_KEY` (secretos de Environment) | Firma de manifests de release | Ver claves de release | Sólo el workflow de esa app | staging, production | Sí |
-| Firma de imágenes | Firma de imágenes de contenedor en CD (P26.T01) | `cosign` keyless con el OIDC de GitHub (no requiere secreto almacenado) | — | staging, production | Sí |
-
-Amazon Managed Grafana se accede con usuarios de IAM Identity Center (SSO); no hay credenciales estáticas que conseguir.
-
-## Gobierno on-chain
+| Obligatoria | Sí al desplegar (no bloquea el desarrollo) |
 
 ### GOVERNANCE_SAFE_ADDRESS / POLICY_GUARDIANS
 
 | Campo | Valor |
 |---|---|
+| Para qué sirve | `GOVERNANCE_SAFE_ADDRESS` administra el `PolicyRegistry` (propone permisos con timelock de 24 h y autoriza migraciones excepcionales); `POLICY_GUARDIANS` pueden cancelar propuestas pendientes y revocar permisos. |
 | Proveedor | Safe{Wallet} (https://app.safe.global) + hardware wallets de los firmantes |
-| Para qué sirve | `GOVERNANCE_SAFE_ADDRESS` es el admin del `PolicyRegistry` (propone permisos con timelock de 24 h y autoriza migraciones excepcionales). `POLICY_GUARDIANS` son direcciones que pueden **cancelar** propuestas pendientes y revocar permisos. |
-| Pasos | 1) Comprar hardware wallets (una por firmante). 2) Crear en https://app.safe.global, red **Base**, una Safe multisig (recomendado 2-de-3 o 3-de-5) con esos firmantes. 3) Anotar la dirección en `GOVERNANCE_SAFE_ADDRESS`. 4) Elegir guardianes **independientes** del equipo que opera el backend (hardware wallets propias) y cargarlos en `POLICY_GUARDIANS`. |
-| Permisos mínimos | Ningún firmante de la Governance Safe puede ser operador del backend ni custodio de claves de release. |
-| Entorno | staging (Safe de staging), production (Safe de producción, distinta) |
+| URL | https://app.safe.global |
+| Pasos | 1) Conseguir hardware wallets (una por firmante). 2) Crear en red **Base** una Safe multisig (2-de-3 o 3-de-5) con esos firmantes. 3) Registrar la dirección. 4) Elegir guardianes independientes del equipo que opera el backend y registrar sus direcciones. |
+| Permisos mínimos | Ningún firmante es operador del backend ni custodio de claves de release. |
+| Entorno | staging (Safe propia), production (Safe distinta) |
 | Obligatoria | Sí |
 
----
-
-## Claves que genera el propio equipo
-
-### WALLET_RELEASE_* / RECOVERY_RELEASE_* (claves de release)
+### ALERT_EMAIL / ALERT_WEBHOOK_URL
 
 | Campo | Valor |
 |---|---|
-| Para qué sirve | Firmar el `release-manifest.json` de cada frontend; el integrity monitor verifica las firmas y, ante discrepancia, el signer deja de cooperar (V9 §17). |
-| Cómo generarlas | En una máquina offline: `openssl genpkey -algorithm ed25519 -out wallet-release.pem` y `openssl pkey -in wallet-release.pem -pubout -out wallet-release.pub` (repetir con otra persona y otra máquina para Recovery). |
-| Dónde van | Privada: secreto del **GitHub Environment** `production`/`staging` del workflow de esa app únicamente. Pública: `wallet/config/release-keys/<app>.pub` y `WALLET_RELEASE_PUBLIC_KEY` / `RECOVERY_RELEASE_PUBLIC_KEY` del monitor. |
-| Permisos mínimos | La clave de Wallet nunca es accesible para el pipeline de Recovery ni para el backend, y viceversa. |
-| Entorno | staging, production (en local las genera `pnpm secrets:local`) |
-| Obligatoria | Sí |
+| Para qué sirve | Destino de las alertas de Alertmanager (self-hosted); el webhook es opcional. |
+| Proveedor | casilla de guardia propia (lista de distribución); webhook opcional (p. ej. del canal de chat del equipo) |
+| URL | — |
+| Pasos | Definir la casilla de guardia por entorno; el envío usa el SMTP de Postmark. |
+| Permisos mínimos | Casilla con acceso del equipo de guardia. |
+| Entorno | staging, production |
+| Obligatoria | `ALERT_EMAIL` sí; webhook opcional |
 
-### POLICY_SIGNING_* (clave de firma de policy)
+### Fondeo de ETH (gas tank)
 
-| Campo | Valor |
-|---|---|
-| Para qué sirve | Firmar los snapshots de policy que aplican backend y signer (límites, operaciones habilitadas, direcciones). |
-| Cómo generarla | Equipo de seguridad, offline, Ed25519 (mismos comandos que arriba). |
-| Dónde va | Privada: custodia offline del equipo de seguridad (nunca en servidores). Pública: `POLICY_SIGNING_PUBLIC_KEY` del backend y del signer. |
-| Permisos mínimos | Sólo el equipo de seguridad (dos personas) puede firmar snapshots; ningún operador del backend tiene acceso a la privada; cada firma queda registrada con versión y hash. |
-| Entorno | staging, production (en local la genera `pnpm secrets:local`) |
-| Obligatoria | Sí |
+La cuenta gas tank/relayer (clave en un keystore del shard `platform`, generada por el signer) necesita ETH en Base para desplegar Safes, recargar el ETH operativo de cada S y retransmitir cancelaciones. Hay que fondearla con un monto acotado (el tope diario de recargas es `GAS_TANK_DAILY_CAP_WEI`). Obligatorio en staging y producción.
 
----
+### Aprobaciones en Base mainnet
 
-## Secretos generados (no provienen de terceros)
+Toda acción que despliegue contratos o mueva fondos reales en Base mainnet (staging en P25.T06, producción en P30.T02) requiere la **aprobación explícita y escrita del owner**, registrada en el Registro de ejecución del planner.
 
-En **local** los genera `pnpm secrets:local` (se niega a correr si `APP_ENV != local` y nunca sobrescribe valores existentes). En **staging/production** se generan una sola vez por entorno con los comandos indicados, se guardan en AWS Secrets Manager y se inyectan en los servicios; su rotación está en `docs/runbooks/key-rotation.md` (P26).
+### Custodia offline y copia off-host
 
-| Variable | Uso | Generación (staging/production) | Entorno | Obligatoria | Quién puede leerla |
-|---|---|---|---|---|---|
-| `SESSION_SECRET` | firma de cookies de sesión | `openssl rand -base64 32` | todos | Sí | API |
-| `CSRF_SECRET` | HMAC de tokens CSRF | `openssl rand -base64 32` | todos | Sí | API |
-| `SESSION_ISSUER_PRIVATE_KEY` | firma de tokens PlatformSession | `openssl genpkey -algorithm ed25519 -outform DER \| base64 -w0` | todos | Sí | API |
-| `SESSION_ISSUER_PUBLIC_KEY` | verificación de tokens PlatformSession | `openssl pkey -pubout -outform DER` de la anterior | todos | Sí | API, worker, signer (no es secreta) |
-| `OPAQUE_SERVER_SETUP` | secreto de servidor OPAQUE (RFC 9807) | `pnpm --dir backend/app opaque:setup` (desde P10). Rotarlo obliga a re-registrar a todos los usuarios | todos (desde P10) | Sí | API |
-| `APP_FIELD_ENCRYPTION_KEY` | cifrado de campos sensibles en DB (secretos TOTP) | `openssl rand -base64 32` | todos | Sí | API |
-| `OTP_HMAC_KEY` | hash de códigos OTP | `openssl rand -base64 32` | todos | Sí | API |
-| `PASSWORD_PEPPER_V1` | pepper del hash Argon2id de passwords de cuenta | `openssl rand -base64 32` | todos | Sí | API |
-| `AUDIT_CHAIN_KEY` | cadena HMAC del audit log | `openssl rand -base64 32` | todos | Sí | API, worker, job `audit:verify` |
-| `INTEGRITY_MONITOR_PRIVATE_KEY` | firma de atestaciones de integridad | Ed25519 como `SESSION_ISSUER_*` | todos | Sí | integrity monitor |
-| `INTEGRITY_MONITOR_PUBLIC_KEY` | verificación de atestaciones | pública de la anterior | todos | Sí | signer (no es secreta) |
-| `MTW_APP_DB_PASSWORD`, `MTW_MIGRATOR_DB_PASSWORD`, `DATABASE_URL`, `DATABASE_MIGRATION_URL` | acceso a la DB del backend (roles `mtw_app`, `mtw_migrator`) | gestionadas por RDS + Secrets Manager | todos | Sí | API/worker (app); job de migraciones (migrator) |
-| `MTW_SIGNER_DB_PASSWORD`, `SIGNER_DATABASE_URL` | DB propia del signer | RDS + Secrets Manager en la cuenta del signer | todos | Sí | signer |
-| `POSTGRES_PASSWORD` | superusuario del Postgres local | sólo local | local | Sí (local) | compose local |
-| `REDIS_PASSWORD`, `REDIS_URL` | acceso a Valkey | AUTH token de ElastiCache en Secrets Manager | todos | Sí | API, worker |
-| Certificados mTLS (`MTLS_*`) | backend ↔ signer | CA privada por entorno (AWS Private CA o CA offline con openssl), certificados de corta vida | todos | Sí | worker (cliente), signer (servidor) |
-| `GRAFANA_ADMIN_PASSWORD` | Grafana del perfil `observability` local | sólo local (producción usa SSO) | local | Opcional | compose local |
-| `DEV_SIGNER_KEYSTORE_PASSPHRASE`, `LOCAL_SEED`, `*_LOCAL` | sólo desarrollo | sólo `pnpm secrets:local`; **prohibidos** en staging/production (el preflight lo verifica) | local | Sí (local) | procesos locales |
+Al desplegar: definir quiénes custodian (dos personas distintas) las copias selladas de las credenciales de desbloqueo de cada shard del signer y la clave privada de backup (`age`), y elegir el destino de la copia off-host cifrada de los backups (ADR-031). No bloquea el desarrollo.
 
----
+### Docker (sólo si falta)
 
-## Tests opcionales con servicios reales
+Docker Engine con Compose v2 es la única dependencia de sistema que el preflight no puede instalar sin privilegios (PF-05). Si falta, instalarlo con la guía oficial de Docker para la distribución usada.
+
+### Branch protection (sólo si `gh` no tiene permisos)
+
+El planner aplica la protección de la rama principal con `gh api` (P02.T04). Sólo si las credenciales de `gh` del entorno no tienen permisos de administrador del repositorio, esa configuración puntual la hace el owner en GitHub (required checks, revisión de CODEOWNERS, "include administrators", commits firmados).
+
+### Tests opcionales con servicios reales
 
 | Variable | Para qué sirve | Cómo obtenerla | Entorno | Obligatoria |
 |---|---|---|---|---|
-| `GOOGLE_DRIVE_TEST_CLIENT_ID` / `GOOGLE_DRIVE_TEST_CLIENT_SECRET` / `GOOGLE_DRIVE_TEST_REFRESH_TOKEN` | Probar el cliente Drive contra la API real en CI nightly (Google no permite automatizar su login en E2E). | Proyecto de Google Cloud **de test** separado, cliente OAuth propio para tests, cuenta Google de pruebas; obtener un refresh token con scope `drive.appdata` (p. ej. con OAuth Playground configurado con ese cliente). Este cliente de test nunca lo usa el producto. | CI | Opcional |
-| `POSTMARK_TEST_RECIPIENT` | Smoke test real de email desde local/staging | Casilla propia de pruebas | local, staging | Opcional |
+| `GOOGLE_DRIVE_TEST_CLIENT_ID` / `GOOGLE_DRIVE_TEST_CLIENT_SECRET` / `GOOGLE_DRIVE_TEST_REFRESH_TOKEN` | Probar el cliente Drive contra la API real en CI nightly (Google no permite automatizar su login en E2E). | Proyecto de Google Cloud **de test** separado, cliente OAuth propio para tests y cuenta Google de pruebas; refresh token con scope `drive.appdata`. El producto nunca usa este cliente. | CI | Opcional |
+| `POSTMARK_TEST_RECIPIENT` | Smoke test real de email | Casilla propia de pruebas | local, staging | Opcional |
