@@ -50,6 +50,13 @@ match_path = "test/fork/*"
 [profile.fork.fuzz]
 runs = 1000
 
+# Caché de estado RPC sólo para endpoints remotos (el RPC archive de Base). El default de Foundry ("all") también
+# cachea el Anvil local bajo la misma ruta ~/.foundry/cache/rpc/base/<bloque>: tras un `fork:reset` los scripts leían
+# saldos de la corrida anterior y el estado local contaminaba la caché del Base real.
+[profile.default.rpc_storage_caching]
+chains = "all"
+endpoints = "remote"
+
 [soldeer]
 remappings_generate = false
 remappings_regenerate = false

@@ -35,6 +35,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.foundry/cache/rpc
-        key: foundry-rpc-base-${{ steps.fork.outputs.block }}-${{ github.run_id }}
+        # v2: descarta las cachés escritas mientras Foundry también cacheaba el Anvil efímero (endpoints = "all").
+        key: foundry-rpc-v2-base-${{ steps.fork.outputs.block }}-${{ github.run_id }}
         restore-keys: |
-          foundry-rpc-base-${{ steps.fork.outputs.block }}-
+          foundry-rpc-v2-base-${{ steps.fork.outputs.block }}-
