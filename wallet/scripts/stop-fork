@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Detiene el servicio anvil (el resto del stack sigue corriendo).
+set -euo pipefail
+WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$WALLET_ROOT"
+docker compose stop anvil

@@ -1,0 +1,90 @@
+# Stack local de desarrollo (P00). Imágenes fijadas por digest (scripts/tools/versions.json).
+# Todos los puertos se publican sólo en 127.0.0.1. Los secretos vienen de wallet/.env (gitignored;
+# `pnpm secrets:local` los genera). El BASE_RPC_URL queda visible en `docker inspect`: aceptable sólo en local.
+name: mtw-local
+
+services:
+  postgres:
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mtw_admin}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD: ejecutar pnpm secrets:local}"
+      POSTGRES_DB: ${POSTGRES_DB:-mtw_wallet}
+      MTW_APP_DB_PASSWORD: "${MTW_APP_DB_PASSWORD:?falta MTW_APP_DB_PASSWORD: ejecutar pnpm secrets:local}"
+      MTW_MIGRATOR_DB_PASSWORD: "${MTW_MIGRATOR_DB_PASSWORD:?falta MTW_MIGRATOR_DB_PASSWORD: ejecutar pnpm secrets:local}"
+      MTW_SIGNER_DB_PASSWORD: "${MTW_SIGNER_DB_PASSWORD:?falta MTW_SIGNER_DB_PASSWORD: ejecutar pnpm secrets:local}"
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./infra/local/postgres/init-db.sh:/docker-entrypoint-initdb.d/10-init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" && psql -U \"$${POSTGRES_USER}\" -d mtw_signer_dev -tAc 'select 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:9.2@sha256:247b5e730bdc9dc29fddb8274d1731b203a1a1a46af63eae3a9d55b4bf74853f
+    environment:
+      REDISCLI_AUTH: "${REDIS_PASSWORD:?falta REDIS_PASSWORD: ejecutar pnpm secrets:local}"
+    command: ["sh", "-c", "exec valkey-server --appendonly yes --maxmemory-policy noeviction --requirepass \"$$REDISCLI_AUTH\""]
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-56379}:6379"
+    volumes:
+      - valkeydata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:v1.8.5@sha256:32c8ea9ef052a440cb1620175987a3f49eff8b068a0c6a3d09ebf7f5f9a0e043
+    # El entrypoint de la imagen es `/bin/sh -c`: se le pasa el comando completo.
+    environment:
+      BASE_RPC_URL: "${BASE_RPC_URL:?falta BASE_RPC_URL: ver docs/SETUP_EXTERNAL_SERVICES.md#base_rpc_url}"
+      FORK_BLOCK_NUMBER: ${FORK_BLOCK_NUMBER:-52700000}
+    command:
+      - >-
+        exec anvil --host 0.0.0.0 --port 8545
+        --fork-url "$$BASE_RPC_URL"
+        --fork-block-number "$$FORK_BLOCK_NUMBER"
+        --chain-id 8453
+        --block-time 2
+        --fork-retry-backoff 1000 --retries 10 --timeout 60000
+    ports:
+      - "127.0.0.1:${ANVIL_HOST_PORT:-8545}:8545"
+    volumes:
+      # Se monta el home completo (existe en la imagen, dueño foundry:1000) para que el volumen nazca
+      # escribible por el usuario no-root de anvil; la caché RPC queda en ~/.foundry/cache.
+      - foundry-home:/home/foundry
+    healthcheck:
+      test: ["CMD", "cast", "chain-id", "--rpc-url", "http://127.0.0.1:8545"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+      MP_MAX_MESSAGES: "5000"
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  valkeydata:
+  foundry-home:

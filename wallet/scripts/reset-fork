@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Vuelve el fork al estado de FORK_BLOCK_NUMBER (anvil_reset) y verifica forkBlockNumber y eth_blockNumber.
+set -euo pipefail
+WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=env.sh
+source "$WALLET_ROOT/scripts/env.sh"
+cd "$WALLET_ROOT"
+docker compose up -d anvil >/dev/null
+node scripts/lib/fork.mjs reset

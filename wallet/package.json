@@ -1,0 +1,19 @@
+{
+  "name": "mtw-wallet",
+  "private": true,
+  "description": "Orquestación de wallet/ (sin dependencias de runtime): cada proyecto tiene su propio package.json y lockfile.",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": "26.12.0"
+  },
+  "scripts": {
+    "preflight": "bash scripts/preflight",
+    "secrets:local": "bash scripts/secrets-local",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "fork:start": "bash scripts/start-fork",
+    "fork:stop": "bash scripts/stop-fork",
+    "fork:reset": "bash scripts/reset-fork",
+    "test:preflight": "node --test scripts/preflight.d/__tests__/"
+  }
+}
