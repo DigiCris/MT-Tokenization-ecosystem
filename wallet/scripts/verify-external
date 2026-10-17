@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Verifica con cast el codehash de cada contrato externo de config/chains/base-mainnet.json (y la implementación
+# de los proxies de token) en un bloque dado (P03.T04). Lo usa PF-15 y sirve para monitoreo con --block latest.
+# Uso: scripts/verify-external [--block <n>|latest] [--config <ruta>] [--quiet]
+# RPC: BASE_RPC_URL del entorno o de wallet/.env. Nunca imprime la URL (puede contener la API key).
+set -euo pipefail
+WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=env.sh
+source "$WALLET_ROOT/scripts/env.sh"
+# shellcheck source=lib/common.sh
+source "$WALLET_ROOT/scripts/lib/common.sh"
+
+CONFIG="$WALLET_ROOT/config/chains/base-mainnet.json"
+BLOCK=""
+QUIET=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --block) BLOCK="${2:?falta el bloque}"; shift 2 ;;
+    --config) CONFIG="${2:?falta la ruta}"; shift 2 ;;
+    --quiet) QUIET=1; shift ;;
+    *) die "argumento desconocido: $1 (uso: --block <n>|latest --config <ruta> --quiet)" ;;
+  esac
+done
+require_cmd cast
+RPC="${BASE_RPC_URL:-}"
+[ -n "$RPC" ] || RPC="$(node "$WALLET_ROOT/scripts/lib/env-value.mjs" BASE_RPC_URL)" || die "falta BASE_RPC_URL"
+[ -n "$BLOCK" ] || BLOCK="$(json_get "$CONFIG" fork.blockNumber)"
+
+say() { [ "$QUIET" = 1 ] || printf '%s\n' "$*"; }
+# Una llamada a cast sin exponer la URL en caso de error.
+cast_q() { cast "$@" --block "$BLOCK" --rpc-url "$RPC" 2>/dev/null; }
+
+mapfile -t ROWS < <(node -e '
+  const c = require(process.argv[1]).contracts;
+  for (const [k, v] of Object.entries(c)) {
+    const i = v.implementation ?? {};
+    console.log([k, v.address, v.codehash, i.slot ?? "", i.address ?? "", i.codehash ?? ""].join("\t"));
+  }' "$CONFIG")
+
+# Lecturas en paralelo (el costo es bajar el bytecode de cada contrato): un archivo por consulta.
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+fetch() { # <archivo> <args de cast...>
+  local out="$1"; shift
+  if cast_q "$@" >"$out.tmp"; then mv "$out.tmp" "$out"; else rm -f "$out.tmp"; fi
+}
+for row in "${ROWS[@]}"; do
+  IFS=$'\t' read -r name addr _ slot impl _ <<<"$row"
+  fetch "$TMP/$name.codehash" codehash "$addr" &
+  if [ -n "$slot" ]; then
+    fetch "$TMP/$name.slot" storage "$addr" "$slot" &
+    fetch "$TMP/$name.impl" codehash "$impl" &
+  fi
+done
+wait
+
+fail=0
+for row in "${ROWS[@]}"; do
+  IFS=$'\t' read -r name addr expected slot impl implHash <<<"$row"
+  [ -s "$TMP/$name.codehash" ] || { echo "FALLA $name: no se pudo leer el código en el bloque $BLOCK" >&2; fail=1; continue; }
+  actual="$(cat "$TMP/$name.codehash")"
+  if [ "$actual" != "$expected" ]; then
+    echo "FALLA $name: codehash $actual ≠ $expected" >&2
+    fail=1
+    continue
+  fi
+  if [ -n "$slot" ]; then
+    [ -s "$TMP/$name.slot" ] && [ -s "$TMP/$name.impl" ] || { echo "FALLA $name: no se pudo leer la implementación" >&2; fail=1; continue; }
+    word="$(cat "$TMP/$name.slot")"
+    got="0x${word: -40}"
+    if [ "$(printf '%s' "$got" | tr 'A-F' 'a-f')" != "$(printf '%s' "$impl" | tr 'A-F' 'a-f')" ]; then
+      echo "FALLA $name: implementación $got ≠ $impl" >&2
+      fail=1
+      continue
+    fi
+    ih="$(cat "$TMP/$name.impl")"
+    if [ "$ih" != "$implHash" ]; then echo "FALLA $name: codehash de la implementación $ih ≠ $implHash" >&2; fail=1; continue; fi
+    say "OK    $name (implementación $impl)"
+  else
+    say "OK    $name"
+  fi
+done
+[ "$fail" = 0 ] || die "verify-external: hay contratos externos con codehash distinto en el bloque $BLOCK"
+ok "verify-external: ${#ROWS[@]} contratos externos verificados en el bloque $BLOCK"

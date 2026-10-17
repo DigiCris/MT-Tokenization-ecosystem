@@ -44,7 +44,7 @@ JSON
 secrets() {
   for env in "${CI_ENVS[@]}"; do
     for name in ${SECRETS[$env]}; do
-      node "$HERE/env-value.mjs" "$name" | gh secret set "$name" --env "$env" --repo "$REPO" >/dev/null
+      node "$WALLET_ROOT/scripts/lib/env-value.mjs" "$name" | gh secret set "$name" --env "$env" --repo "$REPO" >/dev/null
       echo "secret $env/$name"
     done
   done

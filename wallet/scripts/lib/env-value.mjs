@@ -3,7 +3,7 @@
 // `gh secret set` sin que aparezca en la línea de comandos ni en logs. Sale con 3 si falta.
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readEnvFile } from '../../scripts/preflight.d/lib/env.mjs';
+import { readEnvFile } from '../preflight.d/lib/env.mjs';
 
 const WALLET_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const name = process.argv[2];

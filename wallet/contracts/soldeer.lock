@@ -1,0 +1,28 @@
+version = 2
+
+[[dependencies]]
+name = "@openzeppelin-contracts"
+version = "5.6.1"
+url = "https://soldeer-revisions.s3.amazonaws.com/@openzeppelin-contracts/5_6_1_15-03-2026_09:19:50_contracts.zip"
+checksum = "a3b6bc661be858c7c27f60a1708cbebe8c71034b4cc1e9fe270d0a05b069352f"
+integrity = "bce03af7ada1eee21a7fff393f238bcd7cd75a022a4db55ffb6b0dbb32433d35"
+
+[[dependencies]]
+name = "@uniswap-v3-core"
+version = "1.0.1"
+url = "https://soldeer-revisions.s3.amazonaws.com/@uniswap-v3-core/1_0_1_22-01-2024_13:19:53_v3-core.zip"
+checksum = "96ad846c29246d5b9844c72239f5b722e6cd16378930c10d4461d98656d506a7"
+integrity = "fc895fca9ed19a0f2e445545d4569b2cbb2fd1c70ec25c64ed83ec252f88aa24"
+
+[[dependencies]]
+name = "forge-std"
+version = "1.17.0"
+url = "https://soldeer-revisions.s3.amazonaws.com/forge-std/1_17_0_01-10-2026_10:59:49_forge-std-1.17.zip"
+checksum = "a77ad38d5fbef0ec10d1f4d191698e5fbaa2bffbee5d1aced91a39da5e9b908c"
+integrity = "fa706c8a7caf3426c90f75e6aafa3224b0a6c899b490800cf6944e4ec42f9344"
+
+[[dependencies]]
+name = "safe-smart-account"
+version = "1.5.0"
+git = "https://github.com/safe-fndn/safe-smart-account.git"
+rev = "dc437e8fba8b4805d76bcbd1c668c9fd3d1e83be"

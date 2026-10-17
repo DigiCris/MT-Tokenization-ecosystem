@@ -2,7 +2,6 @@
 // secundario y servicios locales de docker compose. Nunca muestra URLs con credenciales (sólo host).
 import { join } from 'node:path';
 import { rpc, hostOf, fetchWithTimeout } from '../lib/net.mjs';
-import { codehash, toChecksumAddress } from '../lib/keccak.mjs';
 import { pgQuery } from '../lib/pg.mjs';
 import { respCommands } from '../lib/resp.mjs';
 import { run, runAsync } from '../lib/proc.mjs';
@@ -89,21 +88,16 @@ export const chainChecks = [
         if (Number(fin.number) < cfg.fork.blockNumber) return fail(`FORK_BLOCK_NUMBER ${cfg.fork.blockNumber} > finalizado ${Number(fin.number)}`, { what: 'bloque de fork finalizado', variable: 'FORK_BLOCK_NUMBER', how: 'usar un bloque ≤ finalized (runbooks/fork.md)', anchor: 'variables-de-configuración-local' });
         const { result: b } = await rpc(url, 'eth_getBlockByNumber', [block, false]);
         if (b.hash !== cfg.fork.blockHash) return fail('el hash del bloque de fork no coincide con config/chains/base-mainnet.json', { what: 'bloque de fork verificado', variable: 'FORK_BLOCK_NUMBER', how: 're-verificar el bloque (P03)', anchor: 'variables-de-configuración-local' });
-        const mismatches = [];
-        for (const [name, c] of Object.entries(cfg.contracts)) {
-          const { result: code } = await rpc(url, 'eth_getCode', [c.address, block]);
-          if (codehash(code) !== c.codehash) mismatches.push(name);
-          if (c.implementation) {
-            const { result: slot } = await rpc(url, 'eth_getStorageAt', [c.address, c.implementation.slot, block]);
-            const impl = toChecksumAddress('0x' + slot.slice(-40));
-            if (impl !== c.implementation.address) mismatches.push(`${name}.implementation`);
-            else {
-              const { result: icode } = await rpc(url, 'eth_getCode', [impl, block]);
-              if (codehash(icode) !== c.implementation.codehash) mismatches.push(`${name}.implementation.codehash`);
-            }
-          }
+        // Codehash de cada contrato externo (y de la implementación de los proxies de token) con
+        // scripts/verify-external (P03.T04), que nunca imprime la URL del RPC.
+        const r = await runAsync('bash', [join(ctx.root, 'scripts/verify-external'), '--block', String(cfg.fork.blockNumber), '--quiet'], {
+          env: { ...process.env, BASE_RPC_URL: url },
+          timeoutMs: 600000,
+        });
+        if (r.code !== 0) {
+          const mismatches = [...(r.stderr + r.stdout).matchAll(/FALLA (\S+?):/g)].map((m) => m[1]);
+          return fail(`codehash distinto en: ${mismatches.join(', ') || 'verify-external falló'}`, { what: 'contratos externos con el codehash verificado', variable: 'config/chains/base-mainnet.json', how: 're-verificar contra la fuente oficial (P03, scripts/verify-external); no continuar con direcciones no verificadas', anchor: 'auto-discovered' });
         }
-        if (mismatches.length) return fail(`codehash distinto en: ${mismatches.join(', ')}`, { what: 'contratos externos con el codehash verificado', variable: 'config/chains/base-mainnet.json', how: 're-verificar contra la fuente oficial (P03); no continuar con direcciones no verificadas', anchor: 'auto-discovered' });
         return pass(`bloque ${cfg.fork.blockNumber} ≤ finalized ${Number(fin.number)}; ${Object.keys(cfg.contracts).length} codehashes OK`);
       } catch (e) {
         return fail(e.message, { what: 'verificación on-chain del bloque de fork', variable: 'BASE_RPC_URL', how: 'verificar el RPC', anchor: 'base_rpc_url' });

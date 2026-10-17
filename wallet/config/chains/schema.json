@@ -3,88 +3,218 @@
   "$id": "https://mtw.local/schemas/chain-config.json",
   "title": "Configuración de cadena verificada (P00.T03.a / P03)",
   "type": "object",
-  "required": ["network", "chainId", "explorer", "fork", "confirmations", "verifiedAt", "contracts"],
+  "required": [
+    "network",
+    "chainId",
+    "explorer",
+    "fork",
+    "confirmations",
+    "verifiedAt",
+    "contracts"
+  ],
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-    "network": { "const": "base-mainnet" },
-    "chainId": { "const": 8453 },
+    "$schema": {
+      "type": "string"
+    },
+    "network": {
+      "const": "base-mainnet"
+    },
+    "chainId": {
+      "const": 8453
+    },
     "explorer": {
       "type": "object",
-      "required": ["address", "token", "tx"],
+      "required": [
+        "address",
+        "token",
+        "tx"
+      ],
       "additionalProperties": false,
       "properties": {
-        "address": { "type": "string", "pattern": "^https://" },
-        "token": { "type": "string", "pattern": "^https://" },
-        "tx": { "type": "string", "pattern": "^https://" }
+        "address": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "token": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "tx": {
+          "type": "string",
+          "pattern": "^https://"
+        }
       }
     },
     "fork": {
       "type": "object",
-      "required": ["blockNumber", "blockHash", "timestamp"],
+      "required": [
+        "blockNumber",
+        "blockHash",
+        "timestamp"
+      ],
       "additionalProperties": false,
       "properties": {
-        "blockNumber": { "type": "integer", "minimum": 1 },
-        "blockHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
-        "timestamp": { "type": "integer", "minimum": 1 }
+        "blockNumber": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "blockHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$"
+        },
+        "timestamp": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "confirmations": {
       "type": "object",
-      "required": ["policy", "confirmedTag", "finalizedTag", "localDepth"],
+      "required": [
+        "policy",
+        "confirmedTag",
+        "finalizedTag",
+        "localDepth"
+      ],
       "additionalProperties": false,
       "properties": {
-        "policy": { "enum": ["tags", "depth"] },
-        "confirmedTag": { "const": "safe" },
-        "finalizedTag": { "const": "finalized" },
+        "policy": {
+          "enum": [
+            "tags",
+            "depth"
+          ]
+        },
+        "confirmedTag": {
+          "const": "safe"
+        },
+        "finalizedTag": {
+          "const": "finalized"
+        },
         "localDepth": {
           "type": "object",
-          "required": ["confirmed", "finalized"],
+          "required": [
+            "confirmed",
+            "finalized"
+          ],
           "additionalProperties": false,
           "properties": {
-            "confirmed": { "type": "integer", "minimum": 1 },
-            "finalized": { "type": "integer", "minimum": 1 }
+            "confirmed": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "finalized": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         }
       }
     },
-    "verifiedAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "verifiedAt": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
     "contracts": {
       "type": "object",
       "minProperties": 1,
-      "additionalProperties": { "$ref": "#/$defs/contract" }
+      "additionalProperties": {
+        "$ref": "#/$defs/contract"
+      }
     }
   },
   "$defs": {
-    "address": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
-    "hash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+    "address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
     "contract": {
       "type": "object",
-      "required": ["address", "codehash", "role", "source"],
+      "required": [
+        "address",
+        "codehash",
+        "role",
+        "source",
+        "verifiedAt",
+        "notes"
+      ],
       "additionalProperties": false,
       "properties": {
-        "address": { "$ref": "#/$defs/address" },
-        "codehash": { "$ref": "#/$defs/hash" },
-        "role": { "type": "string", "minLength": 1 },
-        "source": { "type": "string", "pattern": "^https://" },
-        "version": { "type": "string" },
-        "decimals": { "type": "integer", "minimum": 0 },
-        "symbol": { "type": "string" },
-        "proxyCreationCodeHash": { "$ref": "#/$defs/hash" },
-        "proxyRuntimeCodehash": { "$ref": "#/$defs/hash" },
-        "token0": { "$ref": "#/$defs/address" },
-        "token1": { "$ref": "#/$defs/address" },
-        "fee": { "type": "integer", "minimum": 1 },
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "codehash": {
+          "$ref": "#/$defs/hash"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "version": {
+          "type": "string"
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "proxyCreationCodeHash": {
+          "$ref": "#/$defs/hash"
+        },
+        "proxyRuntimeCodehash": {
+          "$ref": "#/$defs/hash"
+        },
+        "token0": {
+          "$ref": "#/$defs/address"
+        },
+        "token1": {
+          "$ref": "#/$defs/address"
+        },
+        "fee": {
+          "type": "integer",
+          "minimum": 1
+        },
         "implementation": {
           "type": "object",
-          "required": ["address", "codehash", "slot", "slotScheme"],
+          "required": [
+            "address",
+            "codehash",
+            "slot",
+            "slotScheme"
+          ],
           "additionalProperties": false,
           "properties": {
-            "address": { "$ref": "#/$defs/address" },
-            "codehash": { "$ref": "#/$defs/hash" },
-            "slot": { "$ref": "#/$defs/hash" },
-            "slotScheme": { "type": "string" }
+            "address": {
+              "$ref": "#/$defs/address"
+            },
+            "codehash": {
+              "$ref": "#/$defs/hash"
+            },
+            "slot": {
+              "$ref": "#/$defs/hash"
+            },
+            "slotScheme": {
+              "type": "string"
+            }
           }
+        },
+        "verifiedAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }

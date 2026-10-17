@@ -8,6 +8,8 @@ section "tests de CI (workflows, gate de cobertura, áreas)"
 node --test ci/tests/
 section "check-docs"
 node scripts/check-docs.mjs
+section "contratos externos documentados (EXTERNAL_CONTRACTS.md ↔ base-mainnet.json)"
+node scripts/check-external-docs.mjs
 section "wordlist MTW-WORDLIST-V1"
 node scripts/verify-wordlist.mjs
 section "política de supply chain de pnpm"
