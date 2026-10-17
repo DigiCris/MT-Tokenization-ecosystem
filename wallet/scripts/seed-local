@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Seed determinístico del fork local (contracts/script/SeedLocal.s.sol, [C-SCR-03], P07.T07): Safe de prueba con U, R y
+# S derivadas de LOCAL_SEED, creada por la WalletFactory del deploy local y fondeada con USDC y USDT reales del fork.
+# Idempotente. Escribe el resultado en contracts/deployments/local.json (.seed) y muestra los saldos on-chain.
+# Uso: pnpm seed-local   (después de pnpm deploy-local)
+set -euo pipefail
+WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=env.sh
+source "$WALLET_ROOT/scripts/env.sh"
+# shellcheck source=lib/deploy-env.sh
+source "$WALLET_ROOT/scripts/lib/deploy-env.sh"
+export DEPLOYER_KEY_SOURCE=local-seed
+deploy_env local
+
+cd "$WALLET_ROOT/contracts"
+forge script script/FundForkAccounts.s.sol --rpc-url "$DEPLOY_RPC"
+forge script script/SeedLocal.s.sol --rpc-url "$DEPLOY_RPC" --broadcast --slow
+read_json() { node -e 'const v=process.argv[2].split(".").reduce((o,k)=>o[k],require(process.argv[1]));console.log(v)' "$WALLET_ROOT/contracts/deployments/local.json" "$1"; }
+chain_json() { node -e 'const v=process.argv[2].split(".").reduce((o,k)=>o[k],require(process.argv[1]));console.log(v)' "$WALLET_ROOT/config/chains/base-mainnet.json" "$1"; }
+safe="$(read_json seed.safe)"
+usdc="$(cast call "$(chain_json contracts.usdc.address)" 'balanceOf(address)(uint256)' "$safe" --rpc-url "$DEPLOY_RPC" | awk '{print $1}')"
+usdt="$(cast call "$(chain_json contracts.usdt.address)" 'balanceOf(address)(uint256)' "$safe" --rpc-url "$DEPLOY_RPC" | awk '{print $1}')"
+echo "seed-local: Safe $safe con $usdc USDC (6 decimales) y $usdt USDT (6 decimales)"
+[ "$usdc" -ge "$(read_json seed.balances.usdc)" ] && [ "$usdt" -ge "$(read_json seed.balances.usdt)" ]

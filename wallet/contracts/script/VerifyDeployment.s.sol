@@ -29,6 +29,7 @@ import {Role} from "../src/libraries/Roles.sol";
 contract VerifyDeployment is Script {
     uint256 private _checks;
     uint256 private _failures;
+    bool private _quiet;
 
     /// @notice Hubo `failures` verificaciones fallidas (detalle en el log).
     error VerificationFailed(uint256 failures);
@@ -80,6 +81,13 @@ contract VerifyDeployment is Script {
             && address(d.swapExecutor).code.length != 0 && address(d.policyRegistry).code.length != 0
             && address(d.securityGuard).code.length != 0 && address(d.rotationTimelock).code.length != 0
             && address(d.safeBootstrap).code.length != 0 && address(d.walletFactory).code.length != 0;
+    }
+
+    /// @notice Igual que `verify` pero sin imprimir cada diferencia (lo usa `DeployLocal` para decidir si redesplegar).
+    function verifyQuietly(string memory json) external returns (uint256 failures) {
+        _quiet = true;
+        failures = verify(json);
+        _quiet = false;
     }
 
     /// @notice Cantidad de verificaciones de la última corrida.
@@ -337,7 +345,7 @@ contract VerifyDeployment is Script {
         ++_checks;
         if (!ok) {
             ++_failures;
-            console.log("FALLA:", what);
+            if (!_quiet) console.log("FALLA:", what);
         }
     }
 }

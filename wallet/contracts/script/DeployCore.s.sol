@@ -76,7 +76,7 @@ contract DeployCore is Script {
     }
 
     /// @notice Despliega el sistema y escribe `deployments/<red>.json`.
-    function run() external returns (SystemDeployer.Deployment memory d) {
+    function run() public virtual returns (SystemDeployer.Deployment memory d) {
         ChainConfig.External memory ext = ChainConfig.load();
         _checkChain(ext);
         Inputs memory inp = _inputs();

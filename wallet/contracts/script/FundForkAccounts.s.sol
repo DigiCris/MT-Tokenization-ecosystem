@@ -6,8 +6,9 @@ import {DeploymentJson} from "./lib/DeploymentJson.sol";
 import {LocalKeys} from "./lib/LocalKeys.sol";
 
 /// @title FundForkAccounts
-/// @notice Fondea en Anvil (`anvil_setBalance`) las cuentas que transmiten `DeployCore`: en `local` y `ci`, el deployer y
-///         el creador de la Governance Safe derivados de `LOCAL_SEED`; en `fork/*`, `DEPLOYER_ADDRESS`.
+/// @notice Fondea en Anvil (`anvil_setBalance`) las cuentas que transmiten `DeployCore` y `SeedLocal`: en `local` y
+///         `ci`, el deployer, el creador de la Governance Safe y el relayer del seed derivados de `LOCAL_SEED`; en
+///         `fork/*`, `DEPLOYER_ADDRESS`.
 /// @dev Corre en una invocación de forge anterior a `DeployCore`, porque la simulación on-chain de `forge script`
 ///      usa el estado del bloque en que arrancó. Revierte fuera de Anvil.
 contract FundForkAccounts is Script {
@@ -21,13 +22,14 @@ contract FundForkAccounts is Script {
         if (DeploymentJson.isSeedNetwork(DeploymentJson.network())) {
             _fund(LocalKeys.addr("deployer"), DEPLOYER_FUNDING);
             _fund(LocalKeys.addr("governance-owner-1"), CREATOR_FUNDING);
+            _fund(LocalKeys.addr("seed-relayer"), CREATOR_FUNDING);
         } else {
             _fund(vm.envAddress("DEPLOYER_ADDRESS"), DEPLOYER_FUNDING);
         }
     }
 
     function _fund(address account, uint256 amount) private {
-        LocalKeys.fund(account, amount);
-        console.log("cuenta fondeada en el fork:", account);
+        if (LocalKeys.fund(account, amount)) console.log("cuenta fondeada en el fork:", account);
+        else console.log("cuenta con saldo suficiente:", account);
     }
 }

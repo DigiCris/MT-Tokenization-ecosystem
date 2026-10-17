@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Deploy idempotente del sistema en el fork local (contracts/script/DeployLocal.s.sol, [C-SCR-03], P07.T07): si
+# deployments/local.json verifica contra el estado del fork no transmite nada; si no, despliega (tras
+# `pnpm fork:reset`, siempre en las mismas direcciones). Termina con VerifyDeployment.
+# Uso: pnpm deploy-local [--policy-mode restricted|bootstrap]   (restricted por defecto, igual que producción)
+set -euo pipefail
+WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=env.sh
+source "$WALLET_ROOT/scripts/env.sh"
+# shellcheck source=lib/deploy-env.sh
+source "$WALLET_ROOT/scripts/lib/deploy-env.sh"
+
+mode=restricted
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --policy-mode) mode="${2:-}"; shift 2 ;;
+    --policy-mode=*) mode="${1#*=}"; shift ;;
+    *) echo "uso: scripts/deploy-local [--policy-mode restricted|bootstrap]" >&2; exit 2 ;;
+  esac
+done
+case "$mode" in
+  restricted|bootstrap) ;;
+  *) echo "deploy-local: --policy-mode debe ser restricted o bootstrap" >&2; exit 2 ;;
+esac
+export POLICY_MODE="$mode"
+export DEPLOYER_KEY_SOURCE=local-seed
+deploy_env local
+
+cd "$WALLET_ROOT/contracts"
+forge script script/FundForkAccounts.s.sol --rpc-url "$DEPLOY_RPC"
+forge script script/DeployLocal.s.sol --rpc-url "$DEPLOY_RPC" --broadcast --slow
+forge script script/VerifyDeployment.s.sol --rpc-url "$DEPLOY_RPC"

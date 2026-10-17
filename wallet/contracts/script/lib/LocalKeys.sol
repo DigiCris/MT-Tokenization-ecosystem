@@ -43,12 +43,13 @@ library LocalKeys {
     }
 
     /// @notice Lleva el saldo de `account` a `amount` en Anvil (`anvil_setBalance`) y en la simulación del script,
-    ///         si tiene menos.
-    function fund(address account, uint256 amount) internal {
+    ///         si tiene menos; devuelve si hizo falta fondear.
+    function fund(address account, uint256 amount) internal returns (bool funded) {
         if (!isAnvil()) revert NotAnvil();
-        if (account.balance >= amount) return;
+        if (account.balance >= amount) return false;
         VM.rpc("anvil_setBalance", string.concat('["', VM.toString(account), '","', VM.toString(bytes32(amount)), '"]'));
         VM.deal(account, amount);
+        return true;
     }
 
     function _seed() private view returns (bytes32 seed) {

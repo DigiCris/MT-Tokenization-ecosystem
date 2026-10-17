@@ -15,6 +15,7 @@ library ChainConfig {
         uint256 chainId;
         uint256 forkBlock;
         bytes32 forkBlockHash;
+        uint256 forkTimestamp;
         address safeSingleton;
         address safeL2Singleton;
         bytes32 safeL2SingletonCodehash;
@@ -38,6 +39,7 @@ library ChainConfig {
         e.chainId = VM.parseJsonUint(json, ".chainId");
         e.forkBlock = VM.parseJsonUint(json, ".fork.blockNumber");
         e.forkBlockHash = VM.parseJsonBytes32(json, ".fork.blockHash");
+        e.forkTimestamp = VM.parseJsonUint(json, ".fork.timestamp");
         e.safeSingleton = VM.parseJsonAddress(json, ".contracts.safeSingleton.address");
         e.safeL2Singleton = VM.parseJsonAddress(json, ".contracts.safeL2Singleton.address");
         e.safeL2SingletonCodehash = VM.parseJsonBytes32(json, ".contracts.safeL2Singleton.codehash");

@@ -58,6 +58,9 @@ library DeploymentJson {
 
     /// @notice JSON completo del deployment `d` (addresses, codehash, constructor args, compilador, commit,
     ///         timestamp, chainId, deployer y policy inicial).
+    /// @dev En las redes locales (`local`, `ci`) `block` y `timestamp` son los del bloque de fork base
+    ///      (`timeSource: fork-block`) para que el JSON sea reproducible entre ciclos `fork:reset` (P07.T07); en los
+    ///      ensayos son los de la simulación del deploy (`timeSource: deploy-simulation`).
     function build(
         ChainConfig.External memory ext,
         Header memory h,
@@ -69,8 +72,10 @@ library DeploymentJson {
         VM.serializeString(root, "network", h.network);
         VM.serializeUint(root, "chainId", block.chainid);
         VM.serializeUint(root, "forkBlock", ext.forkBlock);
-        VM.serializeUint(root, "block", block.number);
-        VM.serializeUint(root, "timestamp", block.timestamp);
+        bool seed = isSeedNetwork(h.network);
+        VM.serializeUint(root, "block", seed ? ext.forkBlock : block.number);
+        VM.serializeUint(root, "timestamp", seed ? ext.forkTimestamp : block.timestamp);
+        VM.serializeString(root, "timeSource", seed ? "fork-block" : "deploy-simulation");
         VM.serializeAddress(root, "deployer", h.deployer);
         VM.serializeUint(root, "deployerNonce", h.deployerNonce);
         VM.serializeString(root, "git", string.concat('{"commit":"', h.commit, '","dirty":', VM.toString(h.dirty), "}"));

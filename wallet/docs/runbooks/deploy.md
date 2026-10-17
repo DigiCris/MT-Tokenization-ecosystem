@@ -13,13 +13,26 @@ Redes:
 
 `DeployCore` se niega a transmitir si el RPC no es Anvil (`web3_clientVersion`). El deploy real en Base mainnet es otra cosa: lo hace `DeployBase` en el despliegue final ([C-SCR-04]), con hardware wallet y aprobación escrita del owner.
 
-## Deploy local
+## Deploy y seed locales (P07.T07)
 
 ```bash
 cd wallet
-pnpm fork:reset          # fork limpio en FORK_BLOCK_NUMBER (deployer con nonce 0)
-pnpm deploy:core         # = bash scripts/deploy-core local
+pnpm fork:reset                                  # fork limpio en FORK_BLOCK_NUMBER (deployer con nonce 0)
+pnpm deploy-local [--policy-mode restricted|bootstrap]   # restricted por defecto, igual que producción
+pnpm seed-local                                  # usuario de prueba con su Safe y USDC/USDT reales
 ```
+
+- **`deploy-local` es idempotente** (`DeployLocal.s.sol`).
+  - Si `deployments/local.json` verifica contra el estado actual del fork, no transmite nada.
+  - Si no (fork recién reseteado), despliega con `DeployCore` en la red `local`.
+  - Pedir otro modo de policy sobre un deploy existente revierte con `DifferentPolicyModeDeployed`; para cambiarlo, hay que correr antes `pnpm fork:reset`.
+- **`seed-local` también es idempotente** (`SeedLocal.s.sol`).
+  - Crea con la factory la Safe del usuario de prueba (U, R y S derivadas de `LOCAL_SEED`).
+  - Completa sus saldos hasta 10.000 USDC y 5.000 USDT. Las transferencias salen de holders reales del fork, impersonados en Anvil sólo en este script: Morpho Blue para USDC y un hot wallet de exchange para USDT.
+  - Agrega la sección `seed` a `deployments/local.json` y muestra los saldos on-chain.
+- **Reproducibilidad:** `pnpm fork:reset && pnpm deploy-local && pnpm seed-local` produce siempre el mismo `deployments/local.json` (mismas direcciones y saldos). En las redes locales, `block` y `timestamp` son los del bloque de fork base (`timeSource: fork-block`).
+
+`pnpm deploy:core` (`bash scripts/deploy-core local`) despliega sin la verificación previa de idempotencia.
 
 `scripts/deploy-core <red>` hace, en orden:
 
@@ -70,6 +83,8 @@ bash scripts/deploy-core fork/staging \
 | `deployer` | despliega los contratos del sistema |
 | `governance-owner-1`, `governance-owner-2`, `governance-owner-3` | owners de la Governance Safe local 2-de-3; el 1 la crea (saltNonce `keccak256("mtw-local-governance-safe")`) |
 | `guardian-1`, `guardian-2` | guardianes del `PolicyRegistry` |
+| `seed-user-key`, `seed-recovery-key`, `seed-executor-key` | U, R y S del usuario de prueba de `seed-local` |
+| `seed-relayer` | transmite el `createWallet` del seed |
 
 ## Qué verifica `VerifyDeployment`
 
@@ -117,6 +132,13 @@ Es el chequeo manual de P05.MAN.
 
 ## Formato de `deployments/<red>.json`
 
-`schemaVersion`, `network`, `chainId`, `forkBlock`, `block`, `timestamp`, `deployer`, `deployerNonce`, `git {commit, dirty}`, `compiler {solc, evmVersion, optimizer, optimizerRuns, viaIR, bytecodeHash, appendCBOR}`, `policy {admin, mode, guardians, v1Policy, predecessorGuard}` y, por contrato: `address`, `codehash`, `constructorArgs`, `proxy: false` e `implementation: null`.
+`schemaVersion`, `network`, `chainId`, `forkBlock`, `block`, `timestamp`, `timeSource` (`fork-block` en `local`/`ci`, `deploy-simulation` en los ensayos), `deployer`, `deployerNonce`, `git {commit, dirty}`, `compiler {solc, evmVersion, optimizer, optimizerRuns, viaIR, bytecodeHash, appendCBOR}`, `policy {admin, mode, guardians, v1Policy, predecessorGuard}` y, por contrato: `address`, `codehash`, `constructorArgs`, `proxy: false` e `implementation: null`.
 
-`DeployBase` (P25) agrega los hashes de transacción, los bloques y las URLs de verificación desde los artefactos de broadcast.
+En `local`, `seed-local` agrega `seed {safe, userKey, recoveryKey, executor, saltNonce, balances, funding}`. `DeployBase` (P25) agrega los hashes de transacción, los bloques y las URLs de verificación desde los artefactos de broadcast.
+
+## Caché RPC de Foundry
+
+`foundry.toml` cachea el estado RPC sólo de endpoints remotos (`[profile.default.rpc_storage_caching] endpoints = "remote"`). El default de Foundry también cacheaba el Anvil local bajo `~/.foundry/cache/rpc/base/<bloque>`, con dos efectos:
+
+- después de un `fork:reset`, los scripts leían saldos de la corrida anterior;
+- el estado local contaminaba la caché del Base real.
