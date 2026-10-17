@@ -27,7 +27,7 @@ for project in backend/app backend/signer backend/integrity-monitor frontend/wal
   fi
 done
 
-section "Semgrep: TypeScript/JavaScript, Solidity y reglas propias"
+section "Semgrep: TypeScript/JavaScript, Solidity y reglas propias (sin reglas de optimización de gas, docs/security/semgrep-triage.md)"
 targets=()
 for d in backend frontend e2e tools contracts/src scripts ci; do
   if [ -n "$(cd "$WALLET_ROOT" && git ls-files --cached --others --exclude-standard -- "$d" | grep -E '\.(ts|tsx|js|mjs|cjs|sol)$' | head -1)" ]; then targets+=("/src/$d"); fi
@@ -39,7 +39,12 @@ else
     semgrep scan --metrics=off --error --quiet --disable-version-check \
     --exclude node_modules --exclude dist --exclude coverage --exclude dependencies --exclude out \
     --config p/javascript --config p/typescript --config p/nodejs --config p/react --config p/secrets \
-    --config p/smart-contracts --config /src/ci/semgrep "${targets[@]}"
+    --config p/smart-contracts --config /src/ci/semgrep \
+    --exclude-rule solidity.performance.array-length-outside-loop.array-length-outside-loop \
+    --exclude-rule solidity.performance.non-payable-constructor.non-payable-constructor \
+    --exclude-rule solidity.performance.unnecessary-checked-arithmetic-in-loop.unnecessary-checked-arithmetic-in-loop \
+    --exclude-rule solidity.performance.use-nested-if.use-nested-if \
+    "${targets[@]}"
 fi
 
 section "zizmor: workflows wallet-*"
