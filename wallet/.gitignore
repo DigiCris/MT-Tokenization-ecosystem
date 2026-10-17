@@ -1,0 +1,30 @@
+# --- Secretos y entorno local: nunca commitear ---
+.env
+.env.*
+!.env.example
+.secrets/
+
+# --- Dependencias, builds y reportes ---
+node_modules/
+dist/
+coverage/
+*.log
+
+# --- Foundry ---
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/deployments/local.json
+
+# --- Playwright ---
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
+
+# --- OpenTofu ---
+infra/opentofu/**/.terraform/
+*.tfstate
+*.tfstate.*
+
+# --- Sistema / editor ---
+.DS_Store
