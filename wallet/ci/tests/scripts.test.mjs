@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { summarize, THRESHOLDS } from '../scripts/coverage-gate.mjs';
+import { compareBaseline, suppressedFindings } from '../scripts/slither-baseline.mjs';
 
 const CI = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -29,4 +30,22 @@ test('match-areas respeta la semántica de * y ** de GitHub Actions', () => {
   assert.deepEqual(run('.github/workflows/wallet-signer.yml\n'), ['wallet-signer', 'wallet-security']);
   assert.deepEqual(run('.github/workflows/otro.yml\n'), []);
   assert.ok(run('wallet/frontend/recovery/src/main.tsx\n').includes('wallet-repro-build'));
+});
+
+test('slither-baseline: suprimidos = todos − visibles, ubicación estable y diferencias contra el baseline', () => {
+  const fn = (contract, name) => ({ type: 'function', name, type_specific_fields: { parent: { name: contract } } });
+  const variable = { type: 'variable', name: 'predecessor', type_specific_fields: { parent: { name: 'constructor', type_specific_fields: { parent: { name: 'SecurityGuard' } } } } };
+  const all = [
+    { id: 'a1', check: 'reentrancy-balance', impact: 'High', description: 'Reentrancy in X.swap() (src/X.sol#1-9):\n', elements: [fn('X', 'swap')] },
+    { id: 'b2', check: 'missing-zero-check', impact: 'Low', description: 'G.constructor().predecessor (src/G.sol#3) lacks a zero-check', elements: [variable] },
+    { id: 'c3', check: 'timestamp', impact: 'Low', description: 'visible', elements: [fn('T', 'f')] },
+  ];
+  const visible = [all[2]];
+  const current = suppressedFindings(all, visible);
+  assert.deepEqual(current.map((f) => [f.id, f.location]), [['b2', 'SecurityGuard.constructor.predecessor'], ['a1', 'X.swap']]);
+  assert.equal(current[1].summary, 'Reentrancy in X.swap():');
+  assert.deepEqual(compareBaseline(current, current), { added: [], removed: [] });
+  const changed = compareBaseline([{ ...current[0], id: 'zz' }, current[1]], current);
+  assert.deepEqual(changed.added.map((f) => f.id), ['zz']);
+  assert.deepEqual(changed.removed.map((f) => f.id), ['b2']);
 });

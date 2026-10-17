@@ -39,6 +39,8 @@ contract SecurityGuard is ITransactionGuard, ISecurityGuard {
     bytes32 private constant GUARD_SLOT = 0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8;
     bytes32 private constant MODULE_GUARD_SLOT = 0xb104e0b93118902c651344349b610029d694cfdec91c589c91ebafbcd0289947;
     bytes32 private constant FALLBACK_SLOT = 0x6c9a6c4a39284e37ed1cf53d337577d14212a4870fb976a4366c693b939918d5;
+    /// @dev Tope de gas de la lectura del slot de guard de un `SafeProxy` ajeno (una Safe real usa < 10.000).
+    uint256 private constant GUARD_SLOT_READ_GAS = 50_000;
     address private constant SENTINEL = address(0x1);
 
     uint256 private constant PATH_SOVEREIGN = 1;
@@ -232,6 +234,8 @@ contract SecurityGuard is ITransactionGuard, ISecurityGuard {
         r.recoveryKey = recoveryKey;
         r.executor = executor;
         r.version += 1;
+        // las únicas llamadas previas son lecturas (`isOwner` y la `staticcall` acotada del slot de guard): sin reentrada.
+        // forge-lint: disable-next-line(reentrancy-events)
         emit RolesUpdated(safe, userKey, recoveryKey, executor);
     }
 
@@ -767,14 +771,29 @@ contract SecurityGuard is ITransactionGuard, ISecurityGuard {
         } catch {}
     }
 
-    /// @dev Slot de guard de `safe` sin revertir nunca: un `SafeProxy` con un singleton que no es una Safe puede
-    ///      revertir o devolver datos malformados en `getStorageAt` (que `try/catch` no captura al decodificar).
+    /// @dev Slot de guard de `safe` sin revertir: un `SafeProxy` con un singleton que no es una Safe puede revertir,
+    ///      devolver datos malformados (que `try/catch` no captura al decodificar) o intentar agotar el gas (bucle o
+    ///      return-data bomb). La `staticcall` tiene tope de gas, copia sólo 96 bytes y exige exactamente un `bytes`
+    ///      ABI-encoded de una palabra (offset 32 ‖ longitud 32 ‖ palabra). Sólo un llamador sin gas suficiente para el
+    ///      tope puede ver `ok == false` con una Safe real (y su transacción se puede reenviar con más gas).
     function _tryGuardSlot(address safe) private view returns (bool ok, address guard) {
-        (bool success, bytes memory ret) = safe.staticcall(abi.encodeCall(ISafe.getStorageAt, (uint256(GUARD_SLOT), 1)));
-        // `bytes` ABI-encoded de una palabra: offset (32) ‖ longitud (32) ‖ palabra.
-        if (!success || ret.length != 96) return (false, address(0));
-        (uint256 offset, uint256 length, bytes32 word) = abi.decode(ret, (uint256, uint256, bytes32));
-        if (offset != 32 || length != 32) return (false, address(0));
+        bytes memory input = abi.encodeCall(ISafe.getStorageAt, (uint256(GUARD_SLOT), 1));
+        bool success;
+        uint256 size;
+        uint256 offset;
+        uint256 length;
+        bytes32 word;
+        // lectura acotada: tope de gas y copia de 96 bytes en memoria libre (sin mover el puntero).
+        // solhint-disable-next-line no-inline-assembly
+        assembly ("memory-safe") {
+            let out := mload(0x40)
+            success := staticcall(GUARD_SLOT_READ_GAS, safe, add(input, 32), mload(input), out, 96)
+            size := returndatasize()
+            offset := mload(out)
+            length := mload(add(out, 32))
+            word := mload(add(out, 64))
+        }
+        if (!success || size != 96 || offset != 32 || length != 32) return (false, address(0));
         // el slot guarda una dirección (20 bytes) alineada a la derecha; el truncado descarta sólo ceros.
         // forge-lint: disable-next-line(unsafe-typecast)
         return (true, address(uint160(uint256(word))));
@@ -785,6 +804,8 @@ contract SecurityGuard is ITransactionGuard, ISecurityGuard {
         SafeRoles memory p = _predecessorRoles(safe);
         if (!p.initialized) return false;
         _roles[safe] = SafeRoles(p.userKey, p.recoveryKey, p.executor, true, p.version + 1);
+        // las únicas llamadas previas son lecturas (`staticcall` acotada y `rolesOf` del predecesor): sin reentrada.
+        // forge-lint: disable-next-line(reentrancy-events)
         emit RolesImported(safe, PREDECESSOR, p.userKey, p.recoveryKey, p.executor);
         return true;
     }

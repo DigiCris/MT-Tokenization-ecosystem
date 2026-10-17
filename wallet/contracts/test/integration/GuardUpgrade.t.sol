@@ -37,6 +37,34 @@ contract MalformedReturnSingleton {
     }
 }
 
+/// @notice Singleton hostil que consume todo el gas que recibe.
+contract GasBurnerSingleton {
+    fallback() external {
+        uint256 i;
+        while (true) {
+            unchecked {
+                ++i;
+            }
+        }
+    }
+}
+
+/// @notice Singleton hostil que devuelve `SIZE` bytes de retorno (return-data bomb si es grande).
+contract ReturnBombSingleton {
+    uint256 internal immutable SIZE;
+
+    constructor(uint256 size) {
+        SIZE = size;
+    }
+
+    fallback() external {
+        uint256 size = SIZE;
+        assembly ("memory-safe") {
+            return(0, size)
+        }
+    }
+}
+
 /// @notice P05.T06 (upgrade) — [C-GRD-17], [C-POL-06] y ADR-029: sucesor registrado (24 h + guardianes) + propuesta
 ///         por Safe en el timelock (48 h, cancelable por U o R) + SafeTx asistida U+S `setGuard`/`setModuleGuard`.
 ///         El sucesor es un `SecurityGuard` real que importa los roles del anterior en su primer uso.
@@ -211,6 +239,22 @@ contract GuardUpgradeTest is SystemFixture {
             assertEq(proxy.codehash, ext.proxyRuntimeCodehash, "SafeProxy canonico");
             assertFalse(v2.isRegistered(proxy));
             assertEq(uint8(v2.roleOf(proxy, userKey)), 0);
+        }
+    }
+
+    /// Un singleton hostil no agota el gas del llamador: la lectura del slot tiene tope de gas y copia sólo 96 bytes.
+    function test_successorReadsHostileProxiesWithBoundedGas() public {
+        address[3] memory singletons = [
+            address(new GasBurnerSingleton()),
+            address(new ReturnBombSingleton(2_000_000)),
+            address(new ReturnBombSingleton(4096))
+        ];
+        for (uint256 i; i < singletons.length; ++i) {
+            address proxy = ISafeProxyFactory(ext.safeProxyFactory).createProxyWithNonceL2(singletons[i], "", 950 + i);
+            assertEq(proxy.codehash, ext.proxyRuntimeCodehash, "SafeProxy canonico");
+            uint256 before = gasleft();
+            assertFalse(v2.isRegistered{gas: 300_000}(proxy));
+            assertLt(before - gasleft(), 300_000, "gas acotado");
         }
     }
 

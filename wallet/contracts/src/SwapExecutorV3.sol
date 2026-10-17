@@ -88,10 +88,6 @@ contract SwapExecutorV3 is ISwapExecutor, IUniswapV3SwapCallback, ReentrancyGuar
     }
 
     /// @inheritdoc ISwapExecutor
-    // Slither (reentrancy-balance, reentrancy-benign, missing-zero-check): tokenOutFor rechaza address(0); los saldos de msg.sender se miden antes y después a propósito (débito exacto y crédito mínimo); swap es nonReentrant y el transient se limpia al final.
-    // slither-disable-start reentrancy-balance,reentrancy-benign,missing-zero-check
-    // tokenOutFor(tokenIn) revierte con UnsupportedToken para address(0).
-    // forge-lint: disable-next-line(missing-zero-check)
     function swap(address tokenIn, uint256 amountIn, uint256 minAmountOut, uint256 deadline)
         external
         nonReentrant
@@ -108,11 +104,17 @@ contract SwapExecutorV3 is ISwapExecutor, IUniswapV3SwapCallback, ReentrancyGuar
         if (deadline < block.timestamp) revert DeadlineExpired();
         if (minAmountOut < amountIn * (10_000 - MAX_SLIPPAGE_BPS) / 10_000) revert MinOutBelowFloor();
 
+        // Slither (reentrancy-balance): los saldos de msg.sender se miden antes y después a propósito (débito exacto y
+        // crédito mínimo); swap es nonReentrant y durante la llamada sólo corren el pool canónico, USDC/USDT y el callback.
+        // slither-disable-next-line reentrancy-balance
         uint256 inBefore = IERC20(tokenIn).balanceOf(msg.sender);
+        // slither-disable-next-line reentrancy-balance
         uint256 outBefore = IERC20(tokenOut).balanceOf(msg.sender);
         bool zeroForOne = tokenIn == TOKEN0;
+        uint160 sqrtPriceLimitX96 = zeroForOne ? MIN_SQRT_RATIO_PLUS_ONE : MAX_SQRT_RATIO_MINUS_ONE;
         _payer = msg.sender;
-        _tokenIn = tokenIn;
+        // tokenOutFor ya restringió tokenIn a {TOKEN0, TOKEN1}.
+        _tokenIn = zeroForOne ? TOKEN0 : TOKEN1;
         _amountIn = amountIn;
         (int256 amount0, int256 amount1) = IUniswapV3PoolMinimal(POOL)
             .swap(
@@ -121,9 +123,11 @@ contract SwapExecutorV3 is ISwapExecutor, IUniswapV3SwapCallback, ReentrancyGuar
                 // amountIn <= type(int256).max verificado arriba (AmountTooLarge).
                 // forge-lint: disable-next-line(unsafe-typecast)
                 int256(amountIn),
-                zeroForOne ? MIN_SQRT_RATIO_PLUS_ONE : MAX_SQRT_RATIO_MINUS_ONE,
+                sqrtPriceLimitX96,
                 ""
             );
+        // Slither (reentrancy-benign): limpieza del transient del swap en curso (también se borra al terminar la tx).
+        // slither-disable-next-line reentrancy-benign
         _payer = address(0);
         _tokenIn = address(0);
         _amountIn = 0;
@@ -140,8 +144,6 @@ contract SwapExecutorV3 is ISwapExecutor, IUniswapV3SwapCallback, ReentrancyGuar
         // forge-lint: disable-next-line(reentrancy-events)
         emit Swapped(msg.sender, tokenIn, tokenOut, amountIn, amountOut);
     }
-
-    // slither-disable-end reentrancy-balance,reentrancy-benign,missing-zero-check
 
     /// @inheritdoc IUniswapV3SwapCallback
     /// @dev Sólo el pool, con un swap en curso; paga exactamente el delta pedido, que debe ser `amountIn`.

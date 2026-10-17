@@ -145,10 +145,11 @@ contract WalletFactory is IWalletFactory, ReentrancyGuardTransient {
 
         _setCreating(safe, true);
         ISafeProxyFactory proxyFactory = ISafeProxyFactory(SAFE_PROXY_FACTORY);
-        // createWallet es nonReentrant y la creación sólo ejecuta código verificado (proxy factory, SafeL2,
-        // Slither (reentrancy-no-eth): createWallet es nonReentrant y la creación sólo ejecuta código verificado; isWallet se marca recién después de verificar la Safe.
+        // Slither (reentrancy-no-eth): `isWallet` se escribe después de la creación y lo leen funciones reentrables
+        // (`verifyWallet` y el getter), que durante la creación devuelven false / NOT_WALLET (lo correcto). Ningún contrato
+        // del sistema autoriza con `isWallet` (el Guard usa `isCreating`) y la única reentrada esperada es
+        // `initializeSafe` → `isCreating` (view).
         // slither-disable-start reentrancy-no-eth
-        // SafeBootstrap y Guard).
         // forge-lint: disable-next-line(reentrancy-no-eth)
         address deployed = proxyFactory.createProxyWithNonceL2(SAFE_SINGLETON, initializer, saltNonce);
         // slither-disable-end reentrancy-no-eth

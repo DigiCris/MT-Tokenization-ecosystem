@@ -22,7 +22,11 @@ Para cada llamada se registra:
 
 Reglas generales que valen para todas las llamadas:
 
-- **Efectos antes de interacciones.** Ninguna función del Guard escribe storage después de una llamada externa con efectos.
+- **Efectos antes de interacciones.** Ninguna función del Guard escribe storage persistente después de una llamada externa con efectos. Las escrituras de transient storage posteriores son intencionales:
+  - la limpieza del contexto después de `markExecuted` (al timelock propio, que no llama afuera);
+  - en la factory, `_setCreating(safe, false)` después de la creación.
+
+  Slither no modela el transient storage en assembly ([slither-triage.md](slither-triage.md#límites-de-la-herramienta)); esas propiedades las cubren los tests y las invariantes.
 - **Una única llamada con efectos fuera del constructor.** Es `RotationTimelock.markExecuted` en `checkAfterExecution`. Va después de actualizar roles y emitir eventos, y el destino es el timelock que el propio Guard creó.
 - **Sin llamadas a direcciones elegidas por la transacción.** Todo destino es un inmutable, la Safe que llama (`msg.sender`), o un token o executor habilitado por el `PolicyRegistry` (timelock de 24 h más guardianes en `RESTRICTED`).
 - **Sin envío de ETH.** Ninguna llamada transfiere ETH ni usa `delegatecall`.
@@ -49,7 +53,7 @@ La Safe llama a `initializeSafe` durante su `setup`, vía `SafeBootstrap` por `D
 
 | Llamada | Destino | Tipo | Camino | Si falla o miente |
 |---|---|---|---|---|
-| `_importRoles`: `safe.codehash`, `_tryGuardSlot` (`staticcall` de bajo nivel a `getStorageAt`) y `try PREDECESSOR.rolesOf` | la Safe que llama y `PREDECESSOR` (inmutable; `0` en V1) | `STATICCALL` | sólo si la Safe no está registrada | Nunca revierte. Ver la [nota sobre `_tryGuardSlot`](#nota-sobre-_tryguardslot). Sin roles → `UnregisteredSafe`, por especificación ([C-GRD-03] paso 1): una Safe ajena que instala este Guard queda bloqueada, porque el Guard sólo se instala en `SafeBootstrap`. |
+| `_importRoles`: `safe.codehash`, `_tryGuardSlot` (`staticcall` en assembly a `getStorageAt`, con tope de gas y copia de 96 bytes) y `try PREDECESSOR.rolesOf` | la Safe que llama y `PREDECESSOR` (inmutable; `0` en V1) | `STATICCALL` | sólo si la Safe no está registrada | Nunca revierte. Ver la [nota sobre `_tryGuardSlot`](#nota-sobre-_tryguardslot). Sin roles → `UnregisteredSafe`, por especificación ([C-GRD-03] paso 1): una Safe ajena que instala este Guard queda bloqueada, porque el Guard sólo se instala en `SafeBootstrap`. |
 | `nonce()` y `getTransactionHash(..., nonce - 1)` | la Safe que llama | `STATICCALL` | los dos | Es la propia Safe la que calcula el hash que acaba de validar en `checkNSignatures`. |
 | `getThreshold()` | la Safe que llama | `STATICCALL` | los dos | |
 | `ecrecover` (precompile `0x01`) | precompile | `STATICCALL` | los dos | `SafeSignatureParser` refleja la lectura de `signatureSplit` de Safe; test diferencial contra `checkNSignatures` real. |
@@ -82,7 +86,23 @@ La Safe llama a `initializeSafe` durante su `setup`, vía `SafeBootstrap` por `D
 
 Antes de esta revisión, `_predecessorRoles` leía el slot de guard con `getStorageAt` sin `try`/`catch`. Con un `SafeProxy` cuyo singleton no es una Safe, la lectura revertía, aunque la función está documentada como "nunca revierte".
 
-Ahora la lectura es una `staticcall` de bajo nivel que exige un retorno de exactamente 96 bytes con offset 32 y longitud 32, y lo decodifica como tipos estáticos. Así no puede revertir ni con datos malformados, que el `try`/`catch` de Solidity no captura. El test es `GuardUpgradeTest.test_successorReadsForeignProxiesWithoutReverting`, con cuatro singletons: uno que revierte, uno con retorno corto, uno con offset inválido y uno con longitud inválida.
+Ahora la lectura es una `staticcall` en assembly con estas restricciones:
+
+- tope de gas `GUARD_SLOT_READ_GAS = 50_000` (una Safe real usa menos de 10.000);
+- copia sólo 96 bytes de retorno;
+- exige que el retorno sea exactamente un `bytes` ABI-encoded de una palabra: 96 bytes, offset 32 y longitud 32.
+
+Así no puede revertir:
+
+- ni con datos malformados, que el `try`/`catch` de Solidity no captura;
+- ni ante un singleton hostil que intente agotar el gas del llamador con un bucle o con una return-data bomb. Con 63/64 del gas reenviado y la copia completa del retorno, eso sí provocaba un out-of-gas no capturable. La revisión independiente de P07.MAN lo encontró sobre la primera versión de esta corrección.
+
+La única excepción es un llamador sin gas suficiente para el tope, que vería `ok == false` con una Safe real y puede reenviar su transacción con más gas.
+
+Tests:
+
+- `GuardUpgradeTest.test_successorReadsForeignProxiesWithoutReverting`: cuatro singletons (uno que revierte, uno con retorno corto, uno con offset inválido y uno con longitud inválida).
+- `GuardUpgradeTest.test_successorReadsHostileProxiesWithBoundedGas`: un singleton que quema todo el gas y return-data bombs de 2 MB y de 4 KB. La vista termina con un límite de 300.000 de gas.
 
 Ningún camino soberano de una Safe sana dependía de esto: sólo afectaba a vistas, a la importación de una Safe con singleton propio y a migraciones asistidas. Igual se corrigió para que el código cumpla lo que documenta.
 
@@ -118,8 +138,11 @@ Otras llamadas del executor:
 ## Resultado
 
 - Ninguna llamada externa del Guard puede hacer revertir el camino soberano de una Safe registrada sana.
-- Las que alcanzan direcciones no fijadas (`dest` de una migración, Safes hostiles en vistas) nunca revierten.
+- Las que alcanzan direcciones no fijadas (`dest` de una migración, Safes hostiles en vistas) nunca revierten ni agotan el gas del llamador.
 - La única llamada con efectos es al timelock propio, después de los efectos.
 - No existe una ruta de `transferFrom` con payer distinto de `msg.sender`.
 
-Hallazgo corregido en esta revisión: lectura de `getStorageAt` sin protección en `_predecessorRoles`.
+Hallazgos corregidos:
+
+- lectura de `getStorageAt` sin protección en `_predecessorRoles` (P05.SEC);
+- consumo de gas no acotado en esa lectura ante un singleton hostil (P07.MAN).

@@ -1,0 +1,100 @@
+[
+  {
+    "id": "8c6f82c60d3b902844c54597e7eb26be4816b95870883d0242fa6db4ddaece39",
+    "check": "arbitrary-send-erc20",
+    "impact": "High",
+    "location": "SwapExecutorV3.uniswapV3SwapCallback",
+    "summary": "SwapExecutorV3.uniswapV3SwapCallback(int256,int256,bytes) uses arbitrary from in transferFrom: IERC20(tokenIn).safeTransferFrom(payer,POOL,uint256(delta))"
+  },
+  {
+    "id": "3397e21c082cc6bb37904e53225666cd73192904c491703b9a1f2247ce6bebbb",
+    "check": "incorrect-equality",
+    "impact": "Medium",
+    "location": "RotationTimelock.activeProposal",
+    "summary": "RotationTimelock.activeProposal(address,RotationKind) uses a dangerous strict equality:"
+  },
+  {
+    "id": "ddaf41be09882211e266c4d4b83d2b1ccb4906f8d97643b7c97b8b274145eaf1",
+    "check": "incorrect-equality",
+    "impact": "Medium",
+    "location": "RotationTimelock.propose",
+    "summary": "RotationTimelock.propose(uint8,address,address) uses a dangerous strict equality:"
+  },
+  {
+    "id": "a0d7de4c0131915bae5c28174efc6287087e150b2c1c23eb62181caa997bacd1",
+    "check": "missing-zero-check",
+    "impact": "Low",
+    "location": "SecurityGuard.constructor.predecessor",
+    "summary": "SecurityGuard.constructor(address,address,address,address,address,bytes32,address,address).predecessor lacks a zero-check on :"
+  },
+  {
+    "id": "c73f74fadc032cab365717bf1d9e3febbc529c3842a894def268aa9b01af7bfb",
+    "check": "reentrancy-balance",
+    "impact": "High",
+    "location": "SwapExecutorV3.swap",
+    "summary": "Reentrancy in SwapExecutorV3.swap(address,uint256,uint256,uint256):"
+  },
+  {
+    "id": "dcf696fa467fbbff6392a2f17d5406178967faf9762805e340b787f02b55465e",
+    "check": "reentrancy-balance",
+    "impact": "High",
+    "location": "SwapExecutorV3.swap",
+    "summary": "Reentrancy in SwapExecutorV3.swap(address,uint256,uint256,uint256):"
+  },
+  {
+    "id": "ebbf105ec9425c6b5468decbfb004cb4334ab21ed98962bd5a92cad9a5ad1991",
+    "check": "reentrancy-benign",
+    "impact": "Low",
+    "location": "SwapExecutorV3.swap",
+    "summary": "Reentrancy in SwapExecutorV3.swap(address,uint256,uint256,uint256):"
+  },
+  {
+    "id": "e9e67c12a6af80f47daafe7ef54cbd5c08d7bd8e7bae337de65af722a368eba5",
+    "check": "reentrancy-no-eth",
+    "impact": "Medium",
+    "location": "WalletFactory.createWallet",
+    "summary": "Reentrancy in WalletFactory.createWallet(address,address,address,uint256):"
+  },
+  {
+    "id": "a2d67986dfa1f0d84c0a07ba4685c31d64c35a1f1f904147fbd11f7f654a0362",
+    "check": "unused-return",
+    "impact": "Medium",
+    "location": "SecurityGuard._classifyRotationExecute",
+    "summary": "SecurityGuard._classifyRotationExecute(address,ISecurityGuard.SafeRoles,bytes) ignores return value by (None,oldKey,newKey) = CallDecoder.decodeSwapOwner(data)"
+  },
+  {
+    "id": "cbb208930bf99f9f6ccc0c75a6597cebcc055d194a50b1cdfe3bdf213670f50f",
+    "check": "unused-return",
+    "impact": "Medium",
+    "location": "SecurityGuard._classifyWhitelist",
+    "summary": "SecurityGuard._classifyWhitelist(address,Role,bytes4,bytes,IPolicyRegistry) ignores return value by CallDecoder.decodeAddress(data)"
+  },
+  {
+    "id": "6ef596398fe29eeeaa3328a80c592cc77498b387b5f141fd1331daf704a721a1",
+    "check": "unused-return",
+    "impact": "Medium",
+    "location": "SecurityGuard._evaluate",
+    "summary": "SecurityGuard._evaluate(address,ISecurityGuard.SafeRoles,Role,address,uint256,bytes) ignores return value by CallDecoder.decodeBytes32(data)"
+  },
+  {
+    "id": "a39008b4b60c30a0c8936248ab694af7a4249ea835b4f18563ac3b683d670162",
+    "check": "unused-return",
+    "impact": "Medium",
+    "location": "SecurityGuard._hasModules",
+    "summary": "SecurityGuard._hasModules(address) ignores return value by (modules,None) = ISafe(safe).getModulesPaginated(SENTINEL,1)"
+  },
+  {
+    "id": "14963ccf22a0d8c0fcd314336d1955e55d87b3b444be085b74e4865a16ac8220",
+    "check": "unused-return",
+    "impact": "Medium",
+    "location": "SecurityGuard.evaluateAssisted",
+    "summary": "SecurityGuard.evaluateAssisted(address,Role,address,uint256,bytes) ignores return value by this.classifyAssisted(safe,role,to,value,data)"
+  },
+  {
+    "id": "5847b1452bf7a20d529373a52a98afa254d7d2651dca21b8d39cbc61152fea84",
+    "check": "unused-return",
+    "impact": "Medium",
+    "location": "WalletFactory._verify",
+    "summary": "WalletFactory._verify(address,bool) ignores return value by (modules,None) = ISafe(safe).getModulesPaginated(SENTINEL,1)"
+  }
+]
