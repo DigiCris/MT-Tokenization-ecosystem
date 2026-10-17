@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Inspección manual con cast de una Safe del sistema (P05.MAN, docs/runbooks/deploy.md): codehash del proxy,
+# singleton, versión, owners, threshold, nonce, guard, module guard, fallback handler, módulos, roles del Guard y
+# verifyWallet de la factory, cada uno contra su valor esperado.
+# Uso: scripts/inspect-wallet <safe> [red: local (por defecto) | ci | fork/staging | fork/production]
+set -euo pipefail
+WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=env.sh
+source "$WALLET_ROOT/scripts/env.sh"
+
+safe="${1:?uso: scripts/inspect-wallet <safe> [red]}"
+network="${2:-local}"
+json="$WALLET_ROOT/contracts/deployments/$network.json"
+chains="$WALLET_ROOT/config/chains/base-mainnet.json"
+[ -f "$json" ] || { echo "inspect-wallet: no existe $json (correr scripts/deploy-core $network)" >&2; exit 1; }
+rpc="${LOCAL_RPC_URL:-$(node "$WALLET_ROOT/scripts/lib/env-value.mjs" LOCAL_RPC_URL 2>/dev/null || true)}"
+[ -n "$rpc" ] || { echo "inspect-wallet: falta LOCAL_RPC_URL" >&2; exit 1; }
+
+jq_node() { node -e 'const v=process.argv[2].split(".").reduce((o,k)=>o[k],require(process.argv[1]));console.log(v)' "$1" "$2"; }
+guard="$(jq_node "$json" contracts.SecurityGuard.address)"
+deny_all="$(jq_node "$json" contracts.DenyAllModuleGuard.address)"
+factory="$(jq_node "$json" contracts.WalletFactory.address)"
+singleton="$(jq_node "$chains" contracts.safeL2Singleton.address)"
+proxy_codehash="$(jq_node "$chains" contracts.safeProxyFactory.proxyRuntimeCodehash)"
+
+GUARD_SLOT=0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8
+MODULE_GUARD_SLOT=0xb104e0b93118902c651344349b610029d694cfdec91c589c91ebafbcd0289947
+FALLBACK_SLOT=0x6c9a6c4a39284e37ed1cf53d337577d14212a4870fb976a4366c693b939918d5
+
+lower() { tr '[:upper:]' '[:lower:]'; }
+slot_address() { cast parse-bytes32-address "$(cast storage "$safe" "$1" --rpc-url "$rpc")"; }
+failures=0
+row() { # <campo> <valor> <esperado>
+  local mark=OK
+  if [ "$(printf '%s' "$2" | lower)" != "$(printf '%s' "$3" | lower)" ]; then mark=FALLA; failures=$((failures + 1)); fi
+  printf '%-22s %-68s %s (esperado: %s)\n' "$1" "$2" "$mark" "$3"
+}
+
+owners="$(cast call "$safe" 'getOwners()(address[])' --rpc-url "$rpc")"
+roles="$(cast call "$guard" 'rolesOf(address)((address,address,address,bool,uint64))' "$safe" --rpc-url "$rpc")"
+read -r role_u role_r role_s registered version < <(printf '%s' "$roles" | tr -d '()[],' | awk '{print $1, $2, $3, $4, $5}')
+
+echo "Safe $safe (red $network)"
+row codehash "$(cast codehash "$safe" --rpc-url "$rpc")" "$proxy_codehash"
+row singleton "$(slot_address 0x0)" "$singleton"
+row VERSION "$(cast call "$safe" 'VERSION()(string)' --rpc-url "$rpc" | tr -d '"')" "1.5.0"
+row owners "$owners" "[$role_u, $role_r, $role_s]"
+row threshold "$(cast call "$safe" 'getThreshold()(uint256)' --rpc-url "$rpc")" 2
+echo "nonce                  $(cast call "$safe" 'nonce()(uint256)' --rpc-url "$rpc")"
+row guard "$(slot_address "$GUARD_SLOT")" "$guard"
+row "module guard" "$(slot_address "$MODULE_GUARD_SLOT")" "$deny_all"
+row "fallback handler" "$(slot_address "$FALLBACK_SLOT")" 0x0000000000000000000000000000000000000000
+row "módulos" "$(cast call "$safe" 'getModulesPaginated(address,uint256)(address[],address)' 0x0000000000000000000000000000000000000001 10 --rpc-url "$rpc" | head -1)" "[]"
+row "rolesOf.registrada" "$registered" true
+echo "rolesOf (U, R, S, v)   $role_u $role_r $role_s $version"
+row "factory.isWallet" "$(cast call "$factory" 'isWallet(address)(bool)' "$safe" --rpc-url "$rpc")" true
+row "factory.verifyWallet" "$(cast call "$factory" 'verifyWallet(address)(bool,bytes32)' "$safe" --rpc-url "$rpc" | head -1)" true
+
+if [ "$failures" -ne 0 ]; then
+  echo "inspect-wallet: $failures diferencias" >&2
+  exit 1
+fi
+echo "inspect-wallet: OK"

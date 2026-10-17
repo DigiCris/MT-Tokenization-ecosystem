@@ -20,6 +20,8 @@ fs_permissions = [
   { access = "read", path = "../config" },
   { access = "read-write", path = "./test/vectors" },
   { access = "read-write", path = "./deployments" },
+  # VerifyDeployment compara el runtime on-chain con los artefactos y registra la metadata del compilador.
+  { access = "read", path = "./out" },
 ]
 
 [profile.default.fuzz]

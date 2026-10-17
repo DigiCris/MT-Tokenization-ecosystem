@@ -11,6 +11,9 @@ on:
       - "wallet/config/chains/**"
       - "wallet/ci/**"
       - "wallet/scripts/tools/**"
+      - "wallet/scripts/deploy-core"
+      - "wallet/scripts/env.sh"
+      - "wallet/scripts/lib/**"
       - ".github/workflows/wallet-contracts.yml"
   pull_request:
     paths:
@@ -18,6 +21,9 @@ on:
       - "wallet/config/chains/**"
       - "wallet/ci/**"
       - "wallet/scripts/tools/**"
+      - "wallet/scripts/deploy-core"
+      - "wallet/scripts/env.sh"
+      - "wallet/scripts/lib/**"
       - ".github/workflows/wallet-contracts.yml"
   workflow_dispatch:
 

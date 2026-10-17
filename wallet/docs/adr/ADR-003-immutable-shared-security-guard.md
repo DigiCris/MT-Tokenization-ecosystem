@@ -24,6 +24,7 @@ Detalle ([C-GRD], [C-PAR]):
 - **Post-check** ([C-GRD-04]): en ASSISTED, en orden: `success == true`; post-checks y efectos del opType; estado posterior intacto (fallback 0, module guard DenyAll, sin módulos, guard == este contrato, threshold 2, owners == roles ya actualizados); limpieza del contexto. El contexto por Safe vive en transient storage (EIP-1153), apilado por profundidad (`depth[safe]`).
 - **Vistas** ([C-GRD-02]): `rolesOf(safe)`, `isRegistered(safe)` y `evaluateAssisted(safe, role, to, value, data)` (misma lógica sin efectos; backend y signer la usan como pre-check). `supportsInterface`: `0xe6d7a83a` (ITransactionGuard) y `0x01ffc9a7` (IERC165) ([C-GRD-15]).
 - **Regla de tamaño** ([C-GRD-16]): si el runtime supera 24.576 bytes (`forge build --sizes` en P05), la evaluación se mueve a un contrato `AssistedPolicyEngine` inmutable y sin estado, llamado por `staticcall`, con dirección y codehash fijados en el Guard; la decisión se documenta en este ADR (P05.T02).
+  Resultado de P05.T02 (2026-10-17): el runtime del Guard es de 22.707 bytes (solc 0.8.37, optimizer 200, sin `via_ir`), con un margen de 1.869 bytes, así que no se aplica [C-GRD-16] y no existe `AssistedPolicyEngine`.
 
 ## Alternativas consideradas
 

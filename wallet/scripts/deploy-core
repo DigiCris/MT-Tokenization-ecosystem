@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Deploy de los contratos del sistema sobre el fork (contracts/script/DeployCore.s.sol, [C-SCR-01]) seguido de la
+# verificación completa on-chain (VerifyDeployment.s.sol, [C-SCR-02]). Ver docs/runbooks/deploy.md.
+#
+# Uso: scripts/deploy-core [local|ci|fork/staging|fork/production] [argumentos extra de forge script]
+#   local      deployer, Governance Safe 2-de-3 y guardianes derivados de LOCAL_SEED (sólo Anvil).
+#   ci         igual que local sobre el Anvil efímero del job de contratos (deployments/ci.json).
+#   fork/*     ensayo de staging/producción sobre el fork: GOVERNANCE_SAFE_ADDRESS, POLICY_GUARDIANS,
+#              DEPLOYER_KEY_SOURCE=keystore y la wallet del deployer por argumentos
+#              (--keystore <archivo> --password-file <archivo>); exige árbol limpio y deployer con nonce 0.
+#
+# Lee de wallet/.env sólo las variables que el script necesita y las pasa por entorno (nunca por línea de
+# comandos ni a la salida). DeployCore se niega a transmitir si el RPC no es Anvil.
+set -euo pipefail
+WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=env.sh
+source "$WALLET_ROOT/scripts/env.sh"
+
+network="${1:-local}"
+[ "$#" -gt 0 ] && shift
+
+env_value() { node "$WALLET_ROOT/scripts/lib/env-value.mjs" "$1" 2>/dev/null || true; }
+# Exporta la variable desde wallet/.env salvo que ya venga en el entorno.
+export_from_env_file() {
+  local name="$1" value
+  [ -n "${!name:-}" ] && return 0
+  value="$(env_value "$name")"
+  [ -n "$value" ] && export "$name=$value"
+  return 0
+}
+
+rpc="${LOCAL_RPC_URL:-$(env_value LOCAL_RPC_URL)}"
+if [ -z "$rpc" ]; then
+  echo "deploy-core: falta LOCAL_RPC_URL (wallet/.env)" >&2
+  exit 1
+fi
+
+export DEPLOY_NETWORK="$network"
+for name in DEPLOYER_KEY_SOURCE GOVERNANCE_SAFE_ADDRESS POLICY_GUARDIANS; do
+  export_from_env_file "$name"
+done
+if [ "$network" = local ] || [ "$network" = ci ]; then
+  export_from_env_file LOCAL_SEED
+else
+  # La semilla local nunca participa de un ensayo de staging o producción.
+  unset LOCAL_SEED
+fi
+
+DEPLOY_GIT_COMMIT="$(git -C "$WALLET_ROOT" rev-parse HEAD)"
+if [ -n "$(git -C "$WALLET_ROOT" status --porcelain -- contracts config/chains)" ]; then
+  DEPLOY_GIT_DIRTY=true
+else
+  DEPLOY_GIT_DIRTY=false
+fi
+export DEPLOY_GIT_COMMIT DEPLOY_GIT_DIRTY
+
+if [ "$network" != local ] && [ "$network" != ci ] && [ -z "${DEPLOYER_ADDRESS:-}" ]; then
+  echo "deploy-core: falta DEPLOYER_ADDRESS (dirección del deployer del ensayo, ~/.config/mtw/<env>.env)" >&2
+  exit 1
+fi
+
+cd "$WALLET_ROOT/contracts"
+# Fondeo previo en otra invocación: la simulación on-chain de forge usa el estado del bloque en que arranca.
+forge script script/FundForkAccounts.s.sol --rpc-url "$rpc"
+forge script script/DeployCore.s.sol --rpc-url "$rpc" --broadcast --slow "$@"
+forge script script/VerifyDeployment.s.sol --rpc-url "$rpc"

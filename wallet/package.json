@@ -14,6 +14,8 @@
     "fork:start": "bash scripts/start-fork",
     "fork:stop": "bash scripts/stop-fork",
     "fork:reset": "bash scripts/reset-fork",
+    "deploy:core": "bash scripts/deploy-core",
+    "inspect:wallet": "bash scripts/inspect-wallet",
     "test:preflight": "node --test scripts/preflight.d/__tests__/",
     "ci:local": "bash ci/scripts/ci-all.sh",
     "test:ci": "node --test ci/tests/"

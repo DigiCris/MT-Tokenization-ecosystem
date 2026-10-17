@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # CI de contratos (P02.T02): build con tamaños, tests (unit, integración, fork, fuzz, invariants),
-# cobertura con umbrales (≥ 95 % líneas, ≥ 90 % ramas en src/) y Slither (falla en High/Medium).
+# cobertura con umbrales (≥ 95 % líneas, ≥ 90 % ramas en src/), Slither (falla en High/Medium) y
+# DeployCore + VerifyDeployment de punta a punta sobre un Anvil efímero (P05.T05).
 source "$(dirname "$0")/lib.sh"
 skip_if_missing contracts/foundry.toml P03
 # Fork tests: en CI FORK_RPC_URL llega del secret BASE_RPC_URL; en local se toma de wallet/.env sin imprimirlo.
@@ -24,3 +25,5 @@ section "forge coverage (umbrales: líneas ≥ 95 %, ramas ≥ 90 % en src/)"
 node "$WALLET_ROOT/ci/scripts/coverage-gate.mjs" contracts
 section "slither"
 slither . --config-file slither.config.json --fail-medium
+section "DeployCore + VerifyDeployment sobre un Anvil efímero (red ci)"
+bash "$WALLET_ROOT/ci/scripts/deploy-ephemeral.sh"

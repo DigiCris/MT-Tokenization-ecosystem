@@ -1,12 +1,12 @@
 # CI de wallet/
 
-Pipelines por trust domain (P02). La lógica vive en `wallet/ci/scripts/*.sh` y es la misma en GitHub Actions y en local (`pnpm ci:local`); los workflows sólo preparan el runner, instalan la toolchain fijada y llaman al script del área. Ningún workflow despliega.
+Pipelines por trust domain (P02). La lógica vive en `wallet/ci/scripts/*.sh` y es la misma en GitHub Actions y en local (`pnpm ci:local`); los workflows sólo preparan el runner, instalan la toolchain fijada y llaman al script del área. Ningún workflow despliega a una red real ni publica artefactos: el único `--broadcast` es el de `DeployCore` sobre un Anvil efímero local dentro del job de contratos (red `ci`), y `ci/tests/workflows.test.mjs` lo verifica.
 
 ## Matriz de workflows y jobs
 
 | Workflow | Disparadores | Jobs | Script | Environment (secretos) |
 |---|---|---|---|---|
-| `wallet-contracts` | push/PR con cambios en contratos, `config/chains`, `ci`, toolchain | `contracts`: `forge build --sizes`, `forge test` (perfil `ci`: unit, integración, fork, fuzz, invariants), cobertura (≥ 95 % líneas, ≥ 90 % ramas en `src/`), Slither (`--fail-medium`) | `ci-contracts.sh` | `wallet-ci-contracts` (`BASE_RPC_URL`) |
+| `wallet-contracts` | push/PR con cambios en contratos, `config/chains`, `ci`, toolchain, `scripts/deploy-core`, `scripts/env.sh`, `scripts/lib` | `contracts`: `forge build --sizes`, `forge test` (perfil `ci`: unit, integración, fork, fuzz, invariants), cobertura (≥ 95 % líneas, ≥ 90 % ramas en `src/`), Slither (`--fail-medium`), `DeployCore` + `VerifyDeployment` de punta a punta sobre un Anvil efímero (red `ci`, `ci/scripts/deploy-ephemeral.sh`) | `ci-contracts.sh` | `wallet-ci-contracts` (`BASE_RPC_URL`) |
 | `wallet-backend` | push/PR en `backend/app`, `backend/integrity-monitor`, vectores, `config`, `ci`, toolchain | `backend`, `integrity-monitor`: install congelado, lint, typecheck, tests, integración, cobertura, build | `ci-backend.sh`, `ci-integrity-monitor.sh` | `wallet-ci-backend` (`BASE_RPC_URL`, `EMAIL_PROVIDER_*`, `EMAIL_TEST_*`) |
 | `wallet-signer` | push/PR en `backend/signer`, vectores, `config`, `ci`, toolchain | `signer` | `ci-signer.sh` | `wallet-ci-signer` (`BASE_RPC_URL`) |
 | `wallet-frontend-wallet` | push/PR en `frontend/wallet`, `design-tokens`, vectores, `config`, `ci`, toolchain | `frontend-wallet` | `ci-frontend-wallet.sh` | `wallet-ci-frontend-wallet` (`BASE_RPC_URL`, `GOOGLE_DRIVE_TEST_*`) |
@@ -23,6 +23,7 @@ Mientras un proyecto no existe, su script imprime `SKIP: proyecto no creado aún
 - Acciones de terceros fijadas por SHA de commit (`docs/VERSIONS.md#github-actions-fijadas-por-sha-de-commit-p02`); la única acción propia es `wallet/ci/actions/setup-toolchain` (composite).
 - `permissions: contents: read` por defecto (el gate agrega `actions: read`); sin `pull_request_target`; `actions/checkout` con `persist-credentials: false`; `concurrency` por workflow y ref.
 - Toolchain: `scripts/tools/bootstrap` instala Node, pnpm, Foundry, gitleaks y Slither con checksums verificados (ADR-032); caché de `wallet/.tools` por hash de `versions.json`.
+- Deploy de punta a punta en el job de contratos: Anvil efímero en un puerto libre que forkea el bloque fijado, `LOCAL_SEED` aleatoria por corrida (nunca se imprime) y `scripts/deploy-core ci` (fondeo, `DeployCore --broadcast` y `VerifyDeployment`); no toca el Anvil del compose ni `deployments/local.json` (`docs/runbooks/deploy.md`).
 - Caché RPC de Foundry por `FORK_BLOCK_NUMBER` (`~/.foundry/cache/rpc`, clave `foundry-rpc-base-<bloque>`). Los fork tests usan `FORK_RPC_URL` (en CI, el secret `BASE_RPC_URL`; en local, el Anvil del compose) fijando siempre el bloque de `config/chains/base-mainnet.json`.
 - Runners hospedados de GitHub (`ubuntu-24.04`), efímeros por diseño.
 - Secretos: sólo por GitHub Environment y por área; los valores se enmascaran en los logs y ningún script los imprime. Los PRs desde forks no reciben secretos.

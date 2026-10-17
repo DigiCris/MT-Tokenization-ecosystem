@@ -69,10 +69,40 @@ test('los filtros paths de cada workflow coinciden con ci/areas.json', () => {
   }
 });
 
+/** Texto del workflow sin las listas `paths:` (globs de archivos que disparan el workflow, no comandos). */
+function withoutPathFilters(text) {
+  const out = [];
+  let inPaths = false;
+  for (const line of text.split('\n')) {
+    if (/^ {4}paths:\s*$/.test(line)) { inPaths = true; continue; }
+    if (inPaths && /^ {6}- "[^"]+"\s*$/.test(line)) continue;
+    inPaths = false;
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
 test('ningún workflow despliega ni usa secretos en el gate', () => {
   for (const f of workflows) {
-    const text = read(f);
+    const text = withoutPathFilters(read(f));
     assert.doesNotMatch(text, /\b(deploy|forge script .*--broadcast|docker push|ssh )/i, `${f}: no debe desplegar`);
   }
   assert.doesNotMatch(read('wallet-ci-gate.yml'), /secrets\./, 'el gate no usa secretos');
+});
+
+test('el único broadcast de CI es DeployCore sobre el Anvil efímero de la red ci', () => {
+  const dir = join(WALLET_ROOT, 'ci/scripts');
+  for (const f of readdirSync(dir)) {
+    const text = readFileSync(join(dir, f), 'utf8');
+    assert.doesNotMatch(text, /--broadcast|docker push|ssh /, `${f}: sin broadcast ni publicación directa`);
+    if (/scripts\/deploy-core/.test(text)) {
+      assert.equal(f, 'deploy-ephemeral.sh', `${f}: sólo deploy-ephemeral.sh invoca deploy-core`);
+      assert.match(text, /^rpc="http:\/\/127\.0\.0\.1:\$port"$/m, 'RPC local del Anvil efímero');
+      assert.match(text, /^export LOCAL_SEED LOCAL_RPC_URL="\$rpc"/m, 'deploy contra ese RPC');
+      assert.match(text, /scripts\/deploy-core" ci$/m, 'red ci');
+    }
+  }
+  // DeployCore se niega a transmitir fuera de Anvil.
+  const deployCore = readFileSync(join(WALLET_ROOT, 'contracts/script/DeployCore.s.sol'), 'utf8');
+  assert.match(deployCore, /if \(!LocalKeys\.isAnvil\(\)\) revert NotAFork\(\);/);
 });

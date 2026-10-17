@@ -19,6 +19,7 @@ contracts/out/
 contracts/cache/
 contracts/broadcast/
 contracts/deployments/local.json
+contracts/deployments/ci.json
 
 # --- Playwright ---
 e2e/test-results/
