@@ -1,0 +1,62 @@
+# gitleaks 8.30.1 — reglas por defecto + patrones propios de wallet/ (P01.T09).
+title = "mtw-wallet"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "mtw-ed25519-pkcs8-base64"
+description = "Clave privada Ed25519 PKCS#8 en base64 (prefijo DER MC4CAQAwBQYDK2Vw)"
+regex = '''MC4CAQAwBQYDK2VwBCIEI[A-Za-z0-9+/]{43}='''
+keywords = ["MC4CAQAwBQYDK2Vw"]
+
+[[rules]]
+id = "mtw-pem-private-key"
+description = "Clave privada PEM (cualquier algoritmo)"
+regex = '''-----BEGIN (?:EC |ED25519 |ENCRYPTED |RSA )?PRIVATE KEY-----'''
+keywords = ["PRIVATE KEY-----"]
+
+[[rules]]
+id = "mtw-opaque-server-setup"
+description = "Secreto de servidor OPAQUE"
+regex = '''OPAQUE_SERVER_SETUP\s*=\s*['"]?[A-Za-z0-9_\-+/=]{40,}'''
+keywords = ["OPAQUE_SERVER_SETUP"]
+
+[[rules]]
+id = "mtw-ethereum-v3-keystore"
+description = "Keystore Ethereum V3 (scrypt/pbkdf2 + ciphertext)"
+regex = '''"ciphertext"\s*:\s*"[0-9a-f]{64}"'''
+keywords = ["ciphertext"]
+
+[[rules]]
+id = "mtw-local-seed"
+description = "Semilla local de claves determinísticas"
+regex = '''LOCAL_SEED\s*=\s*['"]?(0x)?[0-9a-f]{64}'''
+keywords = ["LOCAL_SEED"]
+
+[[rules]]
+id = "mtw-signer-unlock-credential"
+description = "Credencial de desbloqueo del signer en texto"
+regex = '''SIGNER_UNLOCK_CREDENTIAL\s*=\s*['"]?[0-9a-f]{64}'''
+keywords = ["SIGNER_UNLOCK_CREDENTIAL"]
+
+[[rules]]
+id = "mtw-secp256k1-private-key-hex"
+description = "Clave privada secp256k1 en hex asignada a una variable de clave"
+regex = '''(?i)(private[_-]?key|priv[_-]?key|deployer[_-]?key)\s*[=:]\s*['"]?0x[0-9a-f]{64}'''
+keywords = ["private", "priv", "deployer"]
+
+[allowlist]
+description = "Vectores de prueba públicos y ejemplos sin secretos"
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.env\.production\.example$''',
+  '''(^|/)test/vectors/''',
+  '''(^|/)docs/PLANNER_WALLET_WEB\.md$''',
+]
+# Direcciones EVM (20 bytes): siempre públicas; la regla genérica las confunde con API keys cuando la clave
+# del JSON contiene "token" (p. ej. token0/token1 del pool). Las claves privadas (32 bytes) no coinciden.
+regexTarget = "secret"
+regexes = [
+  '''^0x[0-9a-fA-F]{40}$''',
+]

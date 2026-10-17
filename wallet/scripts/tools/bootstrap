@@ -149,15 +149,36 @@ ensure() {
   ok "$tool $want: instalado y verificado"
 }
 
+# Hook pre-commit (P01.T09): wrapper en .git/hooks/pre-commit que delega en wallet/scripts/hooks/pre-commit.
+# No usa core.hooksPath para no desactivar otros hooks del repo; nunca pisa un hook ajeno.
+install_hook() {
+  local git_dir hook marker="# mtw-wallet pre-commit wrapper"
+  git_dir="$(git -C "$WALLET_ROOT" rev-parse --absolute-git-dir 2>/dev/null)" || { warn "hook: no es un repositorio git; se omite"; return 0; }
+  hook="$git_dir/hooks/pre-commit"
+  if [ -e "$hook" ] && ! grep -qF "$marker" "$hook"; then
+    warn "hook: ya existe $hook y no es el de wallet; agregá a mano: exec \"\$(git rev-parse --show-toplevel)/wallet/scripts/hooks/pre-commit\""
+    return 0
+  fi
+  mkdir -p "$git_dir/hooks"
+  cat > "$hook" <<HOOK
+#!/usr/bin/env bash
+$marker
+exec "\$(git rev-parse --show-toplevel)/wallet/scripts/hooks/pre-commit" "\$@"
+HOOK
+  chmod +x "$hook"
+  ok "hook pre-commit instalado ($hook)"
+}
+
 main() {
   local targets=("$@")
   [ ${#targets[@]} -gt 0 ] || targets=(all)
   local t
   for t in "${targets[@]}"; do
     case "$t" in
-      all) ensure node; ensure pnpm; ensure foundry; ensure gitleaks; ensure slither ;;
+      all) ensure node; ensure pnpm; ensure foundry; ensure gitleaks; ensure slither; install_hook ;;
       node|pnpm|foundry|gitleaks|slither) ensure "$t" ;;
-      *) die "herramienta desconocida: $t (válidas: all node pnpm foundry gitleaks slither)" ;;
+      hook) install_hook ;;
+      *) die "herramienta desconocida: $t (válidas: all node pnpm foundry gitleaks slither hook)" ;;
     esac
   done
 }

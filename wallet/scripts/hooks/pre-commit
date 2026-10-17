@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Hook pre-commit de wallet/ (P01.T09): gitleaks sobre lo staged + chequeo de fin de línea y
+# lint de los archivos tocados por proyecto. Lo instala `scripts/tools/bootstrap hook` como wrapper en
+# .git/hooks/pre-commit. Los chequeos de formato se limitan a los archivos de wallet/ (el resto del
+# repositorio no se toca); gitleaks revisa todo lo staged.
+set -euo pipefail
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+WALLET_ROOT="$REPO_ROOT/wallet"
+# shellcheck source=../env.sh
+source "$WALLET_ROOT/scripts/env.sh"
+
+command -v gitleaks >/dev/null 2>&1 || { echo "pre-commit: falta gitleaks (bash wallet/scripts/tools/bootstrap gitleaks)" >&2; exit 1; }
+gitleaks git --staged --redact --no-banner --exit-code 1 --config "$WALLET_ROOT/.gitleaks.toml" "$REPO_ROOT" >&2 || {
+  echo "pre-commit: gitleaks detectó posibles secretos en lo staged; commit bloqueado." >&2
+  exit 1
+}
+
+git diff --cached --check -- wallet .github/workflows .github/CODEOWNERS >&2 || {
+  echo "pre-commit: espacios en blanco o fin de línea inválidos." >&2
+  exit 1
+}
+
+# Lint por proyecto de los archivos tocados (cada proyecto define su propio script "lint:staged").
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+for project in backend/app backend/signer backend/integrity-monitor frontend/wallet frontend/recovery e2e; do
+  if printf '%s\n' "$staged" | grep -q "^wallet/$project/" && [ -f "$WALLET_ROOT/$project/package.json" ]; then
+    if node -e "process.exit(require('$WALLET_ROOT/$project/package.json').scripts?.['lint:staged']?0:1)"; then
+      files="$(printf '%s\n' "$staged" | grep "^wallet/$project/" | sed "s#^wallet/$project/##")"
+      (cd "$WALLET_ROOT/$project" && pnpm run -s lint:staged -- $files) || { echo "pre-commit: lint falló en $project" >&2; exit 1; }
+    fi
+  fi
+done
+if printf '%s\n' "$staged" | grep -q '^wallet/contracts/.*\.sol$' && [ -f "$WALLET_ROOT/contracts/foundry.toml" ]; then
+  (cd "$WALLET_ROOT/contracts" && forge fmt --check) >&2 || { echo "pre-commit: forge fmt --check falló" >&2; exit 1; }
+fi
