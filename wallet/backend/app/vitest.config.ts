@@ -1,9 +1,11 @@
-// Vitest del backend: unit + integración (PostgreSQL 18 y Valkey 9 reales vía Testcontainers, Anvil sobre el fork de
-// Base) + API (Fastify inject). El proyecto `security` agrupa los tests de P08.SEC (`pnpm test:security`); `pnpm test`
-// corre los dos proyectos (cada archivo una sola vez) con cobertura.
+// Vitest del backend: unit + integración (PostgreSQL 18, Valkey 9 y Mailpit reales vía Testcontainers, Anvil sobre el
+// fork de Base) + API (Fastify inject). El proyecto `security` agrupa los tests de P08.SEC/P09.SEC (`pnpm
+// test:security`); `pnpm test` corre `backend` y `security` (cada archivo una sola vez) con cobertura. El proyecto
+// `live` (`pnpm test:live`) son los tests contra servicios externos reales con cuota (Mailgun, Gmail API): CI los corre
+// cuando cambian email/auth y en la corrida diaria (docs/CI.md).
 import { defineConfig } from 'vitest/config';
 
-/** Tests de seguridad (P08.SEC): canarios de logs, inmutabilidad de audit_events, CORS, schemas de rutas. */
+/** Tests de seguridad: canarios de logs, inmutabilidad de audit_events, CORS, schemas de rutas, autenticación. */
 const SECURITY_TESTS = [
   'test/observability/**/*.test.ts',
   'test/api/server-cors.test.ts',
@@ -11,6 +13,9 @@ const SECURITY_TESTS = [
   'test/audit/**/*.test.ts',
   'test/security/**/*.test.ts',
 ];
+
+/** Contra servicios externos reales (`*.live.test.ts`). */
+const LIVE_TESTS = ['test/**/*.live.test.ts'];
 
 const shared = {
   globalSetup: ['test/setup/global-setup.ts'],
@@ -22,8 +27,16 @@ const shared = {
 export default defineConfig({
   test: {
     projects: [
-      { test: { ...shared, name: 'backend', include: ['test/**/*.test.ts'], exclude: SECURITY_TESTS } },
-      { test: { ...shared, name: 'security', include: SECURITY_TESTS } },
+      {
+        test: {
+          ...shared,
+          name: 'backend',
+          include: ['test/**/*.test.ts'],
+          exclude: [...SECURITY_TESTS, ...LIVE_TESTS],
+        },
+      },
+      { test: { ...shared, name: 'security', include: SECURITY_TESTS, exclude: LIVE_TESTS } },
+      { test: { ...shared, name: 'live', include: LIVE_TESTS, testTimeout: 420_000 } },
     ],
     coverage: {
       provider: 'v8',

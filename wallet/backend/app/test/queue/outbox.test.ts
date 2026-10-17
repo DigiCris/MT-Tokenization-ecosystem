@@ -23,8 +23,9 @@ import {
 import { createRedis, type Redis } from '../../src/queue/redis.ts';
 import { testRedisUrl } from '../helpers/api.ts';
 import { createTestDatabase, type TestDatabase } from '../helpers/db.ts';
+import { REDIS_DBS } from '../helpers/redis-dbs.ts';
 
-const REDIS_DB = 3;
+const REDIS_DB = REDIS_DBS.outbox;
 const logger = createLogger({ level: 'silent', service: 'test' });
 
 let db: TestDatabase;

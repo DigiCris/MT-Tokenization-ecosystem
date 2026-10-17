@@ -18,6 +18,9 @@ export interface Metrics {
   rpcDisagreements: Counter<'method'>;
   auditChainVerified: Gauge;
   auditEventsWritten: Counter<'event_type'>;
+  emailsSent: Counter<'template' | 'provider'>;
+  emailSendErrors: Counter<'template' | 'provider' | 'retryable'>;
+  emailsSkipped: Counter<'template' | 'reason'>;
 }
 
 export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metrics {
@@ -101,6 +104,24 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_audit_events_written_total',
       help: 'Eventos de auditoría escritos',
       labelNames: ['event_type'],
+      registers,
+    }),
+    emailsSent: new Counter({
+      name: 'mtw_emails_sent_total',
+      help: 'Emails entregados al proveedor por plantilla',
+      labelNames: ['template', 'provider'],
+      registers,
+    }),
+    emailSendErrors: new Counter({
+      name: 'mtw_email_send_errors_total',
+      help: 'Errores al enviar emails (los reintentables vuelven a la cola)',
+      labelNames: ['template', 'provider', 'retryable'],
+      registers,
+    }),
+    emailsSkipped: new Counter({
+      name: 'mtw_emails_skipped_total',
+      help: 'Emails no enviados a propósito (p. ej. el código ya venció cuando el job se ejecutó)',
+      labelNames: ['template', 'reason'],
       registers,
     }),
   };

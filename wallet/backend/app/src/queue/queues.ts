@@ -39,6 +39,16 @@ export const DEFAULT_JOB_OPTIONS: JobsOptions = {
   removeOnFail: { age: 7 * 24 * 3600 },
 };
 
+/**
+ * Ajustes por cola sobre DEFAULT_JOB_OPTIONS. Email: 8 intentos con espera exponencial desde 5 s (≈ 10,5 min en total,
+ * dentro del TTL de 15 min de los códigos): una caída breve del proveedor no pierde el email.
+ */
+export const QUEUE_JOB_OPTIONS: Readonly<Record<QueueName, JobsOptions>> = {
+  [QUEUES.walletOperations]: DEFAULT_JOB_OPTIONS,
+  [QUEUES.email]: { ...DEFAULT_JOB_OPTIONS, attempts: 8, backoff: { type: 'exponential', delay: 5_000 } },
+  [QUEUES.notifications]: DEFAULT_JOB_OPTIONS,
+};
+
 export type Queues = Readonly<Record<QueueName, Queue<OutboxJobData>>>;
 
 /**
@@ -50,7 +60,7 @@ export function createQueues(connection: Redis, onError: (error: Error) => void)
     const queue = new Queue<OutboxJobData>(name, {
       connection,
       prefix: QUEUE_PREFIX,
-      defaultJobOptions: DEFAULT_JOB_OPTIONS,
+      defaultJobOptions: QUEUE_JOB_OPTIONS[name],
     });
     queue.on('error', onError);
     return queue;

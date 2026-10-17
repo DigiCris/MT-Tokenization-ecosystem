@@ -54,6 +54,7 @@ function productionEnv(overrides: Record<string, string | undefined> = {}): Reco
     OTP_HMAC_KEY: randomKey32(),
     PASSWORD_PEPPER_V1: randomKey32(),
     SESSION_ISSUER_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64'),
+    EMAIL_PROVIDER_API_KEY: randomBytes(24).toString('hex'),
   };
   const env: Record<string, string | undefined> = {
     APP_ENV: 'production',
@@ -66,6 +67,9 @@ function productionEnv(overrides: Record<string, string | undefined> = {}): Reco
     RECOVERY_ORIGIN: 'https://recovery.mtw-prod.test',
     RPC_QUORUM_MODE: 'dual',
     CONFIRMATION_POLICY: 'tags',
+    EMAIL_PROVIDER: 'mailgun',
+    EMAIL_PROVIDER_DOMAIN: 'mail.mtw-prod.test',
+    EMAIL_FROM: 'no-reply@mail.mtw-prod.test',
     SESSION_ISSUER_PUBLIC_KEY: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
   };
   for (const [name, value] of Object.entries(files)) env[`${name}_FILE`] = secretFile(name, value);

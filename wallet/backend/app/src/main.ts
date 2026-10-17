@@ -9,11 +9,14 @@ import { createDatabase } from './db/kysely.ts';
 import { IdempotencyRepository } from './db/repositories/idempotency-repository.ts';
 import { OutboxRepository } from './db/repositories/outbox-repository.ts';
 import type { Database } from './db/schema.ts';
+import { emailJobHandler } from './email/email-outbox.ts';
+import { createEmailProvider } from './email/provider.ts';
 import { createLogger, type Logger } from './observability/logger.ts';
 import { createMetrics, registerScrapeGauges, startMetricsServer, type Metrics } from './observability/metrics.ts';
 import { scrubString } from './observability/redaction.ts';
+import { createOutboxWorker } from './queue/outbox-consumer.ts';
 import { OutboxDispatcher } from './queue/outbox-dispatcher.ts';
-import { closeQueues, createQueues, queueCounts } from './queue/queues.ts';
+import { closeQueues, createQueues, queueCounts, QUEUES } from './queue/queues.ts';
 import { createRedis } from './queue/redis.ts';
 import { serviceVersion } from './version.ts';
 
@@ -107,6 +110,32 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
     });
     dispatcher.start();
     closers.unshift(() => dispatcher.stop());
+    // Consumidor de la cola de email [B-MAIL-01] (Mailgun en staging/producción, SMTP/Mailpit en local).
+    const provider = createEmailProvider(config.email);
+    closers.push(() => provider.close());
+    const emailConnection = createRedis(
+      config.redis.url.reveal(),
+      'worker',
+      'mtw-worker-email',
+      throttledWarn(logger, 'error de conexión con Valkey (cola de email)'),
+    );
+    closers.push(() => emailConnection.quit());
+    const emailWorker = createOutboxWorker({
+      queue: QUEUES.email,
+      connection: emailConnection,
+      outbox,
+      logger,
+      concurrency: 4,
+      handler: emailJobHandler({
+        provider,
+        fieldKey: config.secrets.fieldEncryptionKey,
+        appEnv: config.appEnv,
+        networkLabel: config.email.networkLabel,
+        logger,
+        metrics,
+      }),
+    });
+    closers.unshift(() => emailWorker.close());
     const maintenance = setInterval(() => {
       idempotency.deleteExpired().catch((error: unknown) => {
         logger.warn({ err: error }, 'limpieza de claves de idempotencia falló');
@@ -122,7 +151,10 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       outboxLagSeconds: () => outbox.oldestUndispatchedAgeSeconds(),
     });
     metricsServer = await startMetricsServer(metrics.registry, config.metrics.bindHost, config.metrics.workerPort);
-    logger.info({ metricsPort: config.metrics.workerPort }, 'worker iniciado (dispatcher del outbox)');
+    logger.info(
+      { metricsPort: config.metrics.workerPort, emailProvider: provider.name },
+      'worker iniciado (outbox y email)',
+    );
   }
   closers.unshift(
     () =>

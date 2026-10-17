@@ -10,6 +10,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { networkLabel } from '../email/format.ts';
 import { parseDotenv } from './dotenv.ts';
 import { Secret } from './secret.ts';
 import {
@@ -17,6 +18,7 @@ import {
   isExampleValue,
   isLocalHost,
   parseKey32,
+  passwordProblem,
   remoteRpcUrlProblem,
 } from './secret-quality.ts';
 
@@ -41,6 +43,7 @@ export const SECRET_VARS = [
   'APP_FIELD_ENCRYPTION_KEY',
   'OTP_HMAC_KEY',
   'SESSION_ISSUER_PRIVATE_KEY',
+  'EMAIL_PROVIDER_API_KEY',
 ] as const;
 const PEPPER_VAR = /^PASSWORD_PEPPER_V([1-9][0-9]{0,2})$/;
 
@@ -299,6 +302,37 @@ const rpcFields = {
   FINALIZATION_DEPTH: positiveInt(10, 100_000),
 };
 
+const EMAIL_ADDRESS = /^[^\s@<>]{1,64}@[a-z0-9.-]{1,253}\.[a-z]{2,}$/i;
+const DOMAIN = /^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,}$/i;
+
+const emailFields = {
+  EMAIL_PROVIDER: z.enum(['smtp', 'mailgun'], { error: 'debe ser smtp o mailgun' }),
+  EMAIL_FROM: z.string({ error: 'falta' }).regex(EMAIL_ADDRESS, { error: 'debe ser una dirección de email' }),
+  EMAIL_PROVIDER_API_KEY: z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      if (v === undefined) return undefined;
+      const problem = passwordProblem(v);
+      if (problem) {
+        ctx.addIssue({ code: 'custom', message: `la API key ${problem}` });
+        return z.NEVER;
+      }
+      return new Secret(v);
+    }),
+  EMAIL_PROVIDER_DOMAIN: z.string().regex(DOMAIN, { error: 'debe ser un dominio' }).optional(),
+  EMAIL_PROVIDER_BASE_URL: z
+    .string()
+    .default('https://api.mailgun.net')
+    .refine((v) => ['https://api.mailgun.net', 'https://api.eu.mailgun.net'].includes(v), {
+      error: 'debe ser https://api.mailgun.net (US) o https://api.eu.mailgun.net (EU)',
+    }),
+  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_PORT: port.optional(),
+  /** Red que muestran los emails sensibles [B-MAIL-02]; default por APP_ENV (staging sobre el fork lo sobreescribe). */
+  EMAIL_NETWORK_LABEL: z.string().min(3).max(80).optional(),
+};
+
 const secretFields = {
   AUDIT_CHAIN_KEY: key32,
   SESSION_SECRET: key32,
@@ -348,7 +382,15 @@ function collectPeppers(values: Record<string, string>, problems: string[]): Map
 // Configuración completa (API y worker)
 
 const appSchema = z
-  .object({ ...baseFields, ...apiFields, ...databaseFields, ...queueFields, ...rpcFields, ...secretFields })
+  .object({
+    ...baseFields,
+    ...apiFields,
+    ...databaseFields,
+    ...queueFields,
+    ...rpcFields,
+    ...emailFields,
+    ...secretFields,
+  })
   .superRefine((v, ctx) => {
     const strict = v.APP_ENV !== 'local';
     const issue = (path: string, message: string) => {
@@ -369,7 +411,22 @@ const appSchema = z
     if (new Set(keys.map((k) => k.reveal().toString('hex'))).size !== keys.length) {
       issue('AUDIT_CHAIN_KEY', 'las claves simétricas deben ser distintas entre sí');
     }
+    if (v.EMAIL_PROVIDER === 'mailgun') {
+      if (!v.EMAIL_PROVIDER_API_KEY) issue('EMAIL_PROVIDER_API_KEY', 'falta (EMAIL_PROVIDER=mailgun)');
+      if (!v.EMAIL_PROVIDER_DOMAIN) issue('EMAIL_PROVIDER_DOMAIN', 'falta (EMAIL_PROVIDER=mailgun)');
+      else if (!v.EMAIL_FROM.toLowerCase().endsWith(`@${v.EMAIL_PROVIDER_DOMAIN.toLowerCase()}`)) {
+        issue('EMAIL_FROM', 'debe ser del dominio de envío (EMAIL_PROVIDER_DOMAIN)');
+      }
+    } else {
+      if (!v.SMTP_HOST) issue('SMTP_HOST', 'falta (EMAIL_PROVIDER=smtp)');
+      if (v.SMTP_PORT === undefined) issue('SMTP_PORT', 'falta (EMAIL_PROVIDER=smtp)');
+    }
     if (!strict) return;
+    // ADR-016: SMTP (Mailpit) es sólo de local/CI; staging y producción envían por Mailgun con dominio propio.
+    if (v.EMAIL_PROVIDER !== 'mailgun') issue('EMAIL_PROVIDER', `en ${v.APP_ENV} debe ser mailgun (ADR-016)`);
+    if (v.EMAIL_PROVIDER_DOMAIN?.toLowerCase().endsWith('.mailgun.org')) {
+      issue('EMAIL_PROVIDER_DOMAIN', `en ${v.APP_ENV} debe ser un dominio propio verificado, no el sandbox`);
+    }
     for (const name of [
       'API_PUBLIC_URL_WALLET',
       'API_PUBLIC_URL_RECOVERY',
@@ -390,6 +447,11 @@ const appSchema = z
     const secondaryHost = new URL(v.RPC_SECONDARY_URL.reveal()).hostname;
     if (primaryHost === secondaryHost) issue('RPC_SECONDARY_URL', 'debe ser de un proveedor distinto del primario');
   });
+
+export type EmailConfig = { from: string; networkLabel: string } & (
+  | { provider: 'smtp'; smtpHost: string; smtpPort: number }
+  | { provider: 'mailgun'; apiKey: Secret<string>; domain: string; baseUrl: string }
+);
 
 export interface AppConfig {
   appEnv: AppEnv;
@@ -425,6 +487,7 @@ export interface AppConfig {
     quorumBackoffMs: number;
   };
   confirmations: { policy: 'depth' | 'tags'; confirmationDepth: number; finalizationDepth: number };
+  email: EmailConfig;
   secrets: {
     auditChainKey: Secret<Buffer>;
     sessionSecret: Secret<Buffer>;
@@ -474,6 +537,23 @@ export function loadConfig(options: LoadOptions = {}): AppConfig {
       quorumRetries: v.RPC_QUORUM_RETRIES,
       quorumBackoffMs: v.RPC_QUORUM_BACKOFF_MS,
     },
+    email:
+      v.EMAIL_PROVIDER === 'mailgun' && v.EMAIL_PROVIDER_API_KEY && v.EMAIL_PROVIDER_DOMAIN
+        ? {
+            provider: 'mailgun',
+            from: v.EMAIL_FROM,
+            networkLabel: networkLabel(v.APP_ENV, v.EMAIL_NETWORK_LABEL),
+            apiKey: v.EMAIL_PROVIDER_API_KEY,
+            domain: v.EMAIL_PROVIDER_DOMAIN,
+            baseUrl: v.EMAIL_PROVIDER_BASE_URL,
+          }
+        : {
+            provider: 'smtp',
+            from: v.EMAIL_FROM,
+            networkLabel: networkLabel(v.APP_ENV, v.EMAIL_NETWORK_LABEL),
+            smtpHost: v.SMTP_HOST ?? '',
+            smtpPort: v.SMTP_PORT ?? 0,
+          },
     confirmations: {
       policy: v.CONFIRMATION_POLICY,
       confirmationDepth: v.CONFIRMATION_DEPTH,

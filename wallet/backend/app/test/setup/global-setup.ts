@@ -23,10 +23,17 @@ export interface PgInfo {
   migratorPassword: string;
 }
 
+export interface MailpitInfo {
+  smtpHost: string;
+  smtpPort: number;
+  apiUrl: string;
+}
+
 declare module 'vitest' {
   export interface ProvidedContext {
     pg: PgInfo;
     redisUrl: string;
+    mailpit: MailpitInfo;
   }
 }
 
@@ -34,14 +41,14 @@ const secret = () => randomBytes(24).toString('hex');
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
   const versions = JSON.parse(readFileSync(resolve(WALLET_ROOT, 'scripts/tools/versions.json'), 'utf8')) as {
-    images: { postgres: string; valkey: string };
+    images: { postgres: string; valkey: string; mailpit: string };
   };
   const adminPassword = secret();
   const appPassword = secret();
   const migratorPassword = secret();
   const redisPassword = secret();
 
-  const [postgres, valkey] = await Promise.all([
+  const [postgres, valkey, mailpit] = await Promise.all([
     new PostgreSqlContainer(versions.images.postgres)
       .withDatabase('mtw_wallet')
       .withUsername('mtw_admin')
@@ -66,11 +73,26 @@ export default async function setup(project: TestProject): Promise<() => Promise
         'yes',
         '--maxmemory-policy',
         'noeviction',
+        // Una base por archivo de test (test/helpers/redis-dbs.ts).
+        '--databases',
+        '64',
         '--requirepass',
         redisPassword,
       ])
       .withExposedPorts(6379)
       .withWaitStrategy(Wait.forLogMessage(/Ready to accept connections/))
+      .start(),
+    // Mailpit: SMTP real local y su API para leer los emails que envía el worker. Sólo acepta destinatarios de
+    // test.invalid: cualquier otro recibe un 550 real (los tests de rechazo definitivo lo usan).
+    new GenericContainer(versions.images.mailpit)
+      .withEnvironment({
+        MP_SMTP_AUTH_ACCEPT_ANY: '1',
+        MP_SMTP_AUTH_ALLOW_INSECURE: '1',
+        MP_MAX_MESSAGES: '5000',
+        MP_SMTP_ALLOWED_RECIPIENTS: '@([a-z0-9-]+\\.)*test\\.invalid$',
+      })
+      .withExposedPorts(1025, 8025)
+      .withWaitStrategy(Wait.forHttp('/readyz', 8025))
       .start(),
   ]);
 
@@ -104,8 +126,13 @@ export default async function setup(project: TestProject): Promise<() => Promise
 
   project.provide('pg', info);
   project.provide('redisUrl', `redis://:${redisPassword}@${valkey.getHost()}:${valkey.getMappedPort(6379)}/0`);
+  project.provide('mailpit', {
+    smtpHost: mailpit.getHost(),
+    smtpPort: mailpit.getMappedPort(1025),
+    apiUrl: `http://${mailpit.getHost()}:${mailpit.getMappedPort(8025)}`,
+  });
 
   return async () => {
-    await Promise.all([postgres.stop(), valkey.stop()]);
+    await Promise.all([postgres.stop(), valkey.stop(), mailpit.stop()]);
   };
 }

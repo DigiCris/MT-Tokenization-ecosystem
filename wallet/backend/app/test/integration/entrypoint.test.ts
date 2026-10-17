@@ -15,9 +15,10 @@ import { testRedisUrl } from '../helpers/api.ts';
 import { localEnv } from '../helpers/config.ts';
 import { createTestDatabase, type TestDatabase } from '../helpers/db.ts';
 import { freePort, startAnvil, type AnvilInstance } from '../helpers/fork.ts';
+import { REDIS_DBS } from '../helpers/redis-dbs.ts';
 
 const APP = resolve(import.meta.dirname, '../..');
-const REDIS_DB = 7;
+const REDIS_DB = REDIS_DBS.entrypoint;
 
 interface Running {
   child: ChildProcess;

@@ -1,0 +1,424 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`snapshots > cooperation-paused 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Pausa preventiva de operaciones</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Pausamos la cooperación de la plataforma</h1><p>El monitor de integridad detectó un problema en la app Wallet: el manifest servido no coincide con el firmado. Mientras dure la pausa no se co-firman operaciones; tus fondos siguen bajo tu control con tus claves U y R.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Pausa de cooperación de S</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Desde</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Desde (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr></table><p><strong>Si no fuiste vos:</strong> no tenés que hacer nada; no ingreses tus claves en sitios que no sean los oficiales.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Pausa preventiva de operaciones",
+  "text": "Pausamos la cooperación de la plataforma
+
+El monitor de integridad detectó un problema en la app Wallet: el manifest servido no coincide con el firmado. Mientras dure la pausa no se co-firman operaciones; tus fondos siguen bajo tu control con tus claves U y R.
+
+Acción: Pausa de cooperación de S
+Red: Base mainnet — chainId 8453
+Desde: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Desde (UTC): 17/10/2026, 15:04 UTC
+
+Si no fuiste vos: no tenés que hacer nada; no ingreses tus claves en sitios que no sean los oficiales.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > email-verification 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Verificá tu email</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Verificá tu email</h1><p>Ingresá este código en la app para verificar tu email.</p><p style="font-size:28px;font-family:monospace;letter-spacing:4px;margin:24px 0"><strong>48213907</strong></p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Verificación de email de la cuenta</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:19 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:19 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> ignorá este email; sin el código no se verifica ninguna cuenta.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.</p></body></html>",
+  "subject": "Verificá tu email",
+  "text": "Verificá tu email
+
+Ingresá este código en la app para verificar tu email.
+
+Código: 48213907
+
+Acción: Verificación de email de la cuenta
+Vence: 17/10/2026, 12:19 (America/Argentina/Buenos_Aires)
+Vence (UTC): 17/10/2026, 15:19 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: ignorá este email; sin el código no se verifica ninguna cuenta.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.
+",
+}
+`;
+
+exports[`snapshots > high-value-challenge 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Confirmá una operación de alto valor</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Confirmá el envío</h1><p>Ingresá este código en la app para autorizar esta operación. El código sólo sirve para esta operación exacta.</p><p style="font-size:28px;font-family:monospace;letter-spacing:4px;margin:24px 0"><strong>27182818</strong></p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Envío de 12.500,00 USDC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Destino</td><td style="padding:4px 0;font-family:monospace">0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Nonce de la Safe</td><td style="padding:4px 0;font-family:monospace">42</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:19 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:19 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> no ingreses el código y cancelá la operación desde la app. Cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.</p></body></html>",
+  "subject": "Confirmá una operación de alto valor",
+  "text": "Confirmá el envío
+
+Ingresá este código en la app para autorizar esta operación. El código sólo sirve para esta operación exacta.
+
+Código: 27182818
+
+Acción: Envío de 12.500,00 USDC
+Destino: 0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Nonce de la Safe: 42
+Vence: 17/10/2026, 12:19 (America/Argentina/Buenos_Aires)
+Vence (UTC): 17/10/2026, 15:19 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: no ingreses el código y cancelá la operación desde la app. Cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.
+",
+}
+`;
+
+exports[`snapshots > high-value-executed 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Operación de alto valor ejecutada</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Se ejecutó un envío de alto valor</h1><p>Se enviaron 12.500,00 USDT.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Envío de 12.500,00 USDT</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Destino</td><td style="padding:4px 0;font-family:monospace">0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Transacción</td><td style="padding:4px 0;font-family:monospace">0x9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr></table><p><strong>Si no fuiste vos:</strong> quitá los destinos que no reconozcas desde la app Recovery y contactá a soporte.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Operación de alto valor ejecutada",
+  "text": "Se ejecutó un envío de alto valor
+
+Se enviaron 12.500,00 USDT.
+
+Acción: Envío de 12.500,00 USDT
+Destino: 0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Transacción: 0x9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+
+Si no fuiste vos: quitá los destinos que no reconozcas desde la app Recovery y contactá a soporte.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > login-unlock 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Desbloqueá tu cuenta</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Tu cuenta quedó bloqueada por intentos fallidos</h1><p>Hubo varios intentos de inicio de sesión con contraseña incorrecta. Ingresá este código en la app para desbloquearla.</p><p style="font-size:28px;font-family:monospace;letter-spacing:4px;margin:24px 0"><strong>00912345</strong></p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Desbloqueo de la cuenta</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:19 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:19 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> alguien intentó entrar a tu cuenta. Cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.</p></body></html>",
+  "subject": "Desbloqueá tu cuenta",
+  "text": "Tu cuenta quedó bloqueada por intentos fallidos
+
+Hubo varios intentos de inicio de sesión con contraseña incorrecta. Ingresá este código en la app para desbloquearla.
+
+Código: 00912345
+
+Acción: Desbloqueo de la cuenta
+Vence: 17/10/2026, 12:19 (America/Argentina/Buenos_Aires)
+Vence (UTC): 17/10/2026, 15:19 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: alguien intentó entrar a tu cuenta. Cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.
+",
+}
+`;
+
+exports[`snapshots > new-login 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Nuevo inicio de sesión</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Nuevo inicio de sesión en tu cuenta</h1><p>Se inició una sesión en tu cuenta.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Inicio de sesión</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Nuevo inicio de sesión",
+  "text": "Nuevo inicio de sesión en tu cuenta
+
+Se inició una sesión en tu cuenta.
+
+Acción: Inicio de sesión
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > password-reset 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Restablecé tu contraseña</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Pedido de restablecimiento de contraseña</h1><p>Abrí este enlace para elegir una contraseña nueva de tu cuenta. Restablecerla cierra todas tus sesiones y no modifica tus claves de la wallet.</p><p><a href="https://wallet.example/reset-password#token=0192a0c4-1111-7000-8000-000000000001.c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LXNlY3I">Elegir una contraseña nueva</a></p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Restablecimiento de contraseña de la cuenta</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:34 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:34 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> ignorá este email: tu contraseña no cambia si no abrís el enlace.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones. El enlace sólo abre el formulario en la app; no ejecuta nada por sí mismo.</p></body></html>",
+  "subject": "Restablecé tu contraseña",
+  "text": "Pedido de restablecimiento de contraseña
+
+Abrí este enlace para elegir una contraseña nueva de tu cuenta. Restablecerla cierra todas tus sesiones y no modifica tus claves de la wallet.
+
+Elegir una contraseña nueva: https://wallet.example/reset-password#token=0192a0c4-1111-7000-8000-000000000001.c2VjcmV0LXNlY3JldC1zZWNyZXQtc2VjcmV0LXNlY3I
+
+Acción: Restablecimiento de contraseña de la cuenta
+Vence: 17/10/2026, 12:34 (America/Argentina/Buenos_Aires)
+Vence (UTC): 17/10/2026, 15:34 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: ignorá este email: tu contraseña no cambia si no abrís el enlace.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones. El enlace sólo abre el formulario en la app; no ejecuta nada por sí mismo.
+",
+}
+`;
+
+exports[`snapshots > password-reset-completed 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Tu contraseña cambió</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Se restableció la contraseña de tu cuenta</h1><p>Se cerraron todas tus sesiones. Tus claves de la wallet no cambiaron.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Contraseña restablecida</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> pedí un restablecimiento nuevo y contactá a soporte de inmediato.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Tu contraseña cambió",
+  "text": "Se restableció la contraseña de tu cuenta
+
+Se cerraron todas tus sesiones. Tus claves de la wallet no cambiaron.
+
+Acción: Contraseña restablecida
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: pedí un restablecimiento nuevo y contactá a soporte de inmediato.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > recovery-started 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Se inició un proceso de recuperación</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Proceso de recuperación iniciado</h1><p>Se inició: reemplazo de la clave de usuario (U) con la clave de recuperación.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">reemplazo de la clave de usuario (U) con la clave de recuperación</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> cancelá desde la app con tu clave de usuario y contactá a soporte.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Se inició un proceso de recuperación",
+  "text": "Proceso de recuperación iniciado
+
+Se inició: reemplazo de la clave de usuario (U) con la clave de recuperación.
+
+Acción: reemplazo de la clave de usuario (U) con la clave de recuperación
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: cancelá desde la app con tu clave de usuario y contactá a soporte.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > registration-attempt 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Intento de registro con tu email</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Alguien intentó crear una cuenta con tu email</h1><p>Tu email ya tiene una cuenta. Si fuiste vos, iniciá sesión o restablecé tu contraseña desde la app.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Intento de registro con un email existente</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> no tenés que hacer nada: no se creó ninguna cuenta nueva ni cambió tu contraseña.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Intento de registro con tu email",
+  "text": "Alguien intentó crear una cuenta con tu email
+
+Tu email ya tiene una cuenta. Si fuiste vos, iniciá sesión o restablecé tu contraseña desde la app.
+
+Acción: Intento de registro con un email existente
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: no tenés que hacer nada: no se creó ninguna cuenta nueva ni cambió tu contraseña.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > rotation-cancelled 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Rotación de clave cancelada</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Se canceló la rotación de tu clave de usuario (U)</h1><p>La cancelación la hizo tu clave de recuperación.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Cancelación de la rotación de clave de usuario (U)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr></table><p><strong>Si no fuiste vos:</strong> revisá la propuesta en la app y contactá a soporte.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Rotación de clave cancelada",
+  "text": "Se canceló la rotación de tu clave de usuario (U)
+
+La cancelación la hizo tu clave de recuperación.
+
+Acción: Cancelación de la rotación de clave de usuario (U)
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+
+Si no fuiste vos: revisá la propuesta en la app y contactá a soporte.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > rotation-executed 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Rotación de clave ejecutada</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Se rotó tu clave de la plataforma (S)</h1><p>La clave anterior ya no tiene control sobre la Safe.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Rotación ejecutada de clave de la plataforma (S)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Clave anterior</td><td style="padding:4px 0;font-family:monospace">0x1111 1111 1111 1111 1111 1111 1111 1111 1111 1111</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Clave nueva</td><td style="padding:4px 0;font-family:monospace">0xAb58 01a7 D398 351b 8bE1 1C43 9e05 C5B3 259a eC9B</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr></table><p><strong>Si no fuiste vos:</strong> usá tu otra clave para proponer la rotación de vuelta y contactá a soporte de inmediato.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Rotación de clave ejecutada",
+  "text": "Se rotó tu clave de la plataforma (S)
+
+La clave anterior ya no tiene control sobre la Safe.
+
+Acción: Rotación ejecutada de clave de la plataforma (S)
+Clave anterior: 0x1111 1111 1111 1111 1111 1111 1111 1111 1111 1111
+Clave nueva: 0xAb58 01a7 D398 351b 8bE1 1C43 9e05 C5B3 259a eC9B
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+
+Si no fuiste vos: usá tu otra clave para proponer la rotación de vuelta y contactá a soporte de inmediato.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > rotation-proposed 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Propuesta de rotación de clave</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Se propuso rotar tu clave de usuario (U)</h1><p>La rotación se puede ejecutar recién cuando termine el plazo de 48 h. Hasta entonces podés cancelarla con tu clave de usuario o tu clave de recuperación.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Rotación de clave de usuario (U)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Clave actual</td><td style="padding:4px 0;font-family:monospace">0x1111 1111 1111 1111 1111 1111 1111 1111 1111 1111</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Clave nueva</td><td style="padding:4px 0;font-family:monospace">0xAb58 01a7 D398 351b 8bE1 1C43 9e05 C5B3 259a eC9B</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Ejecutable desde</td><td style="padding:4px 0;font-family:monospace">19/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Ejecutable desde (UTC)</td><td style="padding:4px 0;font-family:monospace">19/10/2026, 15:04 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Propuesta</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Propuesta (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> cancelá la rotación desde la app (Wallet o Recovery) antes del plazo y contactá a soporte.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Propuesta de rotación de clave",
+  "text": "Se propuso rotar tu clave de usuario (U)
+
+La rotación se puede ejecutar recién cuando termine el plazo de 48 h. Hasta entonces podés cancelarla con tu clave de usuario o tu clave de recuperación.
+
+Acción: Rotación de clave de usuario (U)
+Clave actual: 0x1111 1111 1111 1111 1111 1111 1111 1111 1111 1111
+Clave nueva: 0xAb58 01a7 D398 351b 8bE1 1C43 9e05 C5B3 259a eC9B
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Ejecutable desde: 19/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Ejecutable desde (UTC): 19/10/2026, 15:04 UTC
+Propuesta: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Propuesta (UTC): 17/10/2026, 15:04 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: cancelá la rotación desde la app (Wallet o Recovery) antes del plazo y contactá a soporte.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > step-up-code 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Código de verificación</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Confirmá que sos vos</h1><p>Ingresá este código en la app para continuar.</p><p style="font-size:28px;font-family:monospace;letter-spacing:4px;margin:24px 0"><strong>77441122</strong></p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Verificación adicional: onboarding de la wallet</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:19 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:19 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> no ingreses el código en ningún lado; cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.</p></body></html>",
+  "subject": "Código de verificación",
+  "text": "Confirmá que sos vos
+
+Ingresá este código en la app para continuar.
+
+Código: 77441122
+
+Acción: Verificación adicional: onboarding de la wallet
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Vence: 17/10/2026, 12:19 (America/Argentina/Buenos_Aires)
+Vence (UTC): 17/10/2026, 15:19 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: no ingreses el código en ningún lado; cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.
+",
+}
+`;
+
+exports[`snapshots > totp-disabled 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Desactivaste la verificación en dos pasos</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Verificación en dos pasos desactivada</h1><p>Tu cuenta ya no pide un código de app autenticadora al iniciar sesión.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">TOTP desactivado</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas. Volvé a activar la verificación en dos pasos.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Desactivaste la verificación en dos pasos",
+  "text": "Verificación en dos pasos desactivada
+
+Tu cuenta ya no pide un código de app autenticadora al iniciar sesión.
+
+Acción: TOTP desactivado
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas. Volvé a activar la verificación en dos pasos.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > totp-enabled 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Activaste la verificación en dos pasos</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Verificación en dos pasos activada</h1><p>Desde ahora se te va a pedir un código de tu app autenticadora al iniciar sesión.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">TOTP activado</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Activaste la verificación en dos pasos",
+  "text": "Verificación en dos pasos activada
+
+Desde ahora se te va a pedir un código de tu app autenticadora al iniciar sesión.
+
+Acción: TOTP activado
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > whitelist-activated 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Destino autorizado activo</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Un destino autorizado quedó activo</h1><p>Ya podés enviar fondos a este destino.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Destino activado en la whitelist</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Dirección</td><td style="padding:4px 0;font-family:monospace">0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Etiqueta</td><td style="padding:4px 0;font-family:monospace">Cuenta de Ana</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr></table><p><strong>Si no fuiste vos:</strong> quitá el destino desde la app Recovery con tu clave de recuperación y contactá a soporte.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Destino autorizado activo",
+  "text": "Un destino autorizado quedó activo
+
+Ya podés enviar fondos a este destino.
+
+Acción: Destino activado en la whitelist
+Dirección: 0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045
+Etiqueta: Cuenta de Ana
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+
+Si no fuiste vos: quitá el destino desde la app Recovery con tu clave de recuperación y contactá a soporte.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
+exports[`snapshots > whitelist-challenge 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Confirmá el nuevo destino autorizado</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Pedido para agregar un destino autorizado</h1><p>Ingresá este código en la app para autorizar el destino. Se activa 24 h después de confirmarse en la red; hasta entonces podés cancelarlo.</p><p style="font-size:28px;font-family:monospace;letter-spacing:4px;margin:24px 0"><strong>31415926</strong></p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Agregar destino a la whitelist</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Dirección</td><td style="padding:4px 0;font-family:monospace">0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Etiqueta</td><td style="padding:4px 0;font-family:monospace">Cuenta de &lt;script&gt;alert(1)&lt;/script&gt; Ana</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:19 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:19 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> no ingreses el código: el destino no se agrega sin él. Cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.</p></body></html>",
+  "subject": "Confirmá el nuevo destino autorizado",
+  "text": "Pedido para agregar un destino autorizado
+
+Ingresá este código en la app para autorizar el destino. Se activa 24 h después de confirmarse en la red; hasta entonces podés cancelarlo.
+
+Código: 31415926
+
+Acción: Agregar destino a la whitelist
+Dirección: 0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045
+Etiqueta: Cuenta de <script>alert(1)</script> Ana
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Vence: 17/10/2026, 12:19 (America/Argentina/Buenos_Aires)
+Vence (UTC): 17/10/2026, 15:19 UTC
+Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+
+Si no fuiste vos: no ingreses el código: el destino no se agrega sin él. Cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.
+",
+}
+`;
+
+exports[`snapshots > whitelist-removed 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Destino autorizado eliminado</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Se quitó un destino autorizado</h1><p>El destino fue eliminado por tu clave de recuperación.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Destino quitado de la whitelist</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Dirección</td><td style="padding:4px 0;font-family:monospace">0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Etiqueta</td><td style="padding:4px 0;font-family:monospace">Cuenta de Ana</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr></table><p><strong>Si no fuiste vos:</strong> cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "Destino autorizado eliminado",
+  "text": "Se quitó un destino autorizado
+
+El destino fue eliminado por tu clave de recuperación.
+
+Acción: Destino quitado de la whitelist
+Dirección: 0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045
+Etiqueta: Cuenta de Ana
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+
+Si no fuiste vos: cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
