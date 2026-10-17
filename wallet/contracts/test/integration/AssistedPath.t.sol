@@ -69,7 +69,7 @@ contract AssistedPathTest is SystemFixture {
         SafeTx memory pending = _call(ext.usdc, _transfer(dest, 10e6));
         bytes memory pendingSigs = _sigs(_txHash(safe, pending, safe.nonce()), _pair(userPk, executorPk));
         assertTrue(_assisted(userPk, address(safe), ""));
-        vm.expectRevert();
+        vm.expectRevert(bytes("GS026"));
         _execRaw(safe, executor, pending, pendingSigs);
         assertEq(usdc.balanceOf(dest), 0);
     }

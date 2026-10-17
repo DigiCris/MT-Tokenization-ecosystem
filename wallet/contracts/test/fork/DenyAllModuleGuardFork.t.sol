@@ -70,7 +70,7 @@ contract DenyAllModuleGuardForkTest is ForkTest, SafeHelpers {
     function test_safeRejectsModuleGuardWithoutErc165() public {
         bytes memory data = abi.encodeCall(ISafe.setModuleGuard, (address(this)));
         bytes memory sigs = _sigs(_txHash(safe, _call(address(safe), data), safe.nonce()), _pair(pkA, pkB));
-        vm.expectRevert();
+        vm.expectRevert(bytes(""));
         _execRaw(safe, address(this), _call(address(safe), data), sigs);
     }
 }

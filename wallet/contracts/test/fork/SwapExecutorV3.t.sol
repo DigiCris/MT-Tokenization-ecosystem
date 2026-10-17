@@ -226,7 +226,7 @@ contract SwapExecutorV3Test is ForkTest {
         vm.prank(trader);
         usdc.approve(address(ex), 500e6);
         vm.prank(attacker);
-        vm.expectRevert();
+        vm.expectRevert(bytes("ERC20: transfer amount exceeds allowance"));
         ex.swap(ext.usdc, 500e6, 500e6, block.timestamp);
         assertEq(usdc.allowance(trader, address(ex)), 500e6);
         assertEq(usdc.balanceOf(trader), 20_000e6);

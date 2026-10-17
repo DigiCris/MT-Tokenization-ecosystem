@@ -151,11 +151,11 @@ contract CallDecoderTest is Test {
     /// Bits altos en una dirección o un uint8 → abi.decode revierte (encoding ambiguo).
     function test_dirtyHighBitsRevert() public {
         bytes memory transfer = abi.encodeWithSelector(IERC20.transfer.selector, uint256(1) << 160 | 0xBEEF, 1);
-        vm.expectRevert();
+        vm.expectRevert(bytes(""));
         h.decodeAddressAmount(transfer);
         bytes memory propose =
             abi.encodeWithSelector(IRotationTimelock.propose.selector, uint256(256), address(1), address(2));
-        vm.expectRevert();
+        vm.expectRevert(bytes(""));
         h.decodePropose(propose);
     }
 

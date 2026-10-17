@@ -52,6 +52,15 @@ abstract contract SystemFixture is ForkTest, SafeHelpers {
         _setUpSystem(PolicyRegistry.Mode.Restricted);
     }
 
+    /// @notice Modo de policy de las suites adversarial e invariantes (P07.T09): `POLICY_MODE=restricted` (por
+    ///         defecto, igual que producción) o `POLICY_MODE=bootstrap`.
+    function _policyMode() internal view returns (PolicyRegistry.Mode) {
+        bytes32 mode = keccak256(bytes(vm.envOr("POLICY_MODE", string("restricted"))));
+        if (mode == keccak256("bootstrap")) return PolicyRegistry.Mode.Bootstrap;
+        require(mode == keccak256("restricted"), "POLICY_MODE: restricted | bootstrap");
+        return PolicyRegistry.Mode.Restricted;
+    }
+
     function _setUpSystem(PolicyRegistry.Mode mode) internal {
         _fork();
         _keys();

@@ -38,7 +38,7 @@ contract SafeBootstrapTest is SystemFixture {
         (address r,) = makeAddrAndKey("outside-r");
         (address s,) = makeAddrAndKey("outside-s");
         bytes memory init = sys.walletFactory.initializerFor(u, r, s);
-        vm.expectRevert();
+        vm.expectRevert(bytes("GS000"));
         ISafeProxyFactory(ext.safeProxyFactory).createProxyWithNonceL2(ext.safeL2Singleton, init, 5);
     }
 
@@ -59,7 +59,7 @@ contract SafeBootstrapTest is SystemFixture {
         ISafe plain = _deployPlainSafe(ext.safeProxyFactory, ext.safeL2Singleton, owners, 2, 99);
         bytes memory call = abi.encodeCall(SecurityGuard.initializeSafe, (userKey, recoveryKey, executor));
         bytes memory sigs = _sigs(_txHash(plain, _call(address(sys.securityGuard), call), plain.nonce()), _pair(pa, pb));
-        vm.expectRevert();
+        vm.expectRevert(SecurityGuard.NotCreatedByFactory.selector);
         _execRaw(plain, a, _call(address(sys.securityGuard), call), sigs);
         assertFalse(sys.securityGuard.isRegistered(address(plain)));
     }
