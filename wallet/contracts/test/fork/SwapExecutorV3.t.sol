@@ -240,9 +240,8 @@ contract SwapExecutorV3Test is ForkTest {
     }
 
     /// P06.TST: montos de 1 a 10.000 tokens en ambos sentidos y slippage hasta 50 bps; la salida coincide con
-    /// QuoterV2 y respeta minOut y el piso on-chain. Cada run ejecuta QuoterV2 y un swap real sobre el fork (~0,7 s):
-    /// el perfil ci usa 500 runs en este test.
-    /// forge-config: ci.fuzz.runs = 500
+    /// QuoterV2 y respeta minOut y el piso on-chain. Cada run ejecuta QuoterV2 y un swap real sobre el fork; con el
+    /// estado del pool ya cacheado, el perfil ci corre los 10.000 runs de §10.
     function testFuzz_swapAmountsAndSlippage(uint256 amount, bool usdcIn, uint16 slippage) public {
         amount = bound(amount, 1e6, 10_000e6);
         uint256 slip = bound(slippage, 0, 50);

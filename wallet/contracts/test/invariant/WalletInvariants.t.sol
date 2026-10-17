@@ -9,14 +9,9 @@ import {ChainConfig} from "../../script/lib/ChainConfig.sol";
 /// @notice P07.T02 — invariantes A1–A17 sobre la Safe real del fork, en el modo de `POLICY_MODE` (P07.T09): el handler
 ///         ejecuta secuencias aleatorias de operaciones asistidas (legítimas y abusivas), soberanas y avances de tiempo;
 ///         cada invariante exige que ningún ataque haya tenido éxito y que el estado coincida con el modelo.
-/// @dev Cada llamada del handler son varias SafeTx reales sobre el fork (~0,1 s de CPU), así que este suite fija sus
-///      runs: profundidad 50 en `ci` (como el perfil) con 32 runs por modo (1.600 secuencias de llamadas), y 16×32 en
-///      `default` para el desarrollo local.
-/// forge-config: default.invariant.runs = 16
-/// forge-config: default.invariant.depth = 32
-/// forge-config: ci.invariant.runs = 32
-/// forge-config: ci.invariant.depth = 50
-contract WalletInvariantsTest is SystemFixture {
+/// @dev Fixture común: fork, sistema, Safe fondeada, handler y selectores objetivo; las aserciones son internas y las
+///      exponen como `invariant_*` las campañas de `WalletInvariantsBase` y las usa `WalletHandlerLivenessTest`.
+abstract contract WalletInvariantsSetup is SystemFixture {
     WalletHandler internal handler;
     IERC20 internal usdc;
     IERC20 internal usdt;
@@ -63,8 +58,157 @@ contract WalletInvariantsTest is SystemFixture {
         selectors[24] = WalletHandler.assistedTransfer.selector;
         targetContract(address(handler));
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
+        // Remitentes fijos: el handler actúa con `vm.prank` y no usa `msg.sender`; con remitentes aleatorios el motor
+        // traería cada cuenta nueva del RPC remoto (una ida y vuelta de red por llamada).
+        targetSender(makeAddr("inv-sender-1"));
+        targetSender(makeAddr("inv-sender-2"));
+        targetSender(makeAddr("inv-sender-3"));
     }
 
+    /// A1, A2, A3: ninguna clave sola ni un remitente distinto de S ejecuta una SafeTx asistida.
+    function _A1_A2_A3_noSingleKeyOrForeignSender() internal view {
+        assertEq(handler.singleKeySucceeded(), 0, "una clave sola ejecuto");
+        assertEq(handler.wrongSenderSucceeded(), 0, "remitente distinto de S ejecuto");
+    }
+
+    /// A4, A9: toda transferencia asistida exitosa fue de U hacia un destino whitelisteado y activo (modelo propio de
+    /// la whitelist con activación a 24 h).
+    function _A4_A9_assistedTransfersOnlyToActiveWhitelist() internal view {
+        assertEq(handler.assistedTransferToUnauthorized(), 0, "salida a destino no autorizado");
+    }
+
+    /// A5: R+S nunca transfiere.
+    function _A5_recoveryNeverTransfers() internal view {
+        assertEq(handler.recoveryTransferSucceeded(), 0, "R+S transfirio");
+    }
+
+    /// A6: toda SafeTx U+R con firmas válidas se ejecuta (el Guard nunca la revierte).
+    function _A6_sovereignNeverBlocked() internal view {
+        assertEq(handler.sovereignFailures(), 0, "camino soberano bloqueado");
+    }
+
+    /// A7: la clasificación usa sólo las firmas del threshold (una firma de R anexada no vuelve soberana a U+S).
+    function _A7_classificationUsesThresholdSigners() internal view {
+        assertEq(handler.appendedSignatureBypass(), 0, "firma anexada cambio la clasificacion");
+    }
+
+    /// A8: ninguna SafeTx asistida exitosa tuvo DELEGATECALL, parámetros de gas, gasToken, refundReceiver o value ≠ 0;
+    ///     ninguna ejecución por módulo; con la configuración alterada el camino asistido no opera.
+    function _A8_structuralRestrictions() internal view {
+        assertEq(handler.delegateCallSucceeded(), 0, "DELEGATECALL asistido");
+        assertEq(handler.gasParamsSucceeded(), 0, "gas params o value en asistido");
+        assertEq(handler.moduleExecutionSucceeded(), 0, "ejecucion por modulo");
+        assertEq(handler.assistedWhileAlteredSucceeded(), 0, "asistido con configuracion alterada");
+    }
+
+    /// A10, A15: ninguna allowance a terceros (Permit2, router, atacante, relayer) y ningún selector de autoridad; tras
+    ///     cada swap la allowance al executor es 0 y una allowance residual no la usa un tercero.
+    function _A10_A15_noThirdPartyAuthority() internal view {
+        address[4] memory spenders = [ext.permit2, router02, handler.attacker(), handler.relayer()];
+        for (uint256 i; i < spenders.length; ++i) {
+            assertEq(usdc.allowance(address(safe), spenders[i]), 0, "allowance USDC a terceros");
+            assertEq(usdt.allowance(address(safe), spenders[i]), 0, "allowance USDT a terceros");
+        }
+        assertEq(handler.thirdPartyApprovalSucceeded(), 0, "approve a terceros");
+        assertEq(handler.authoritySelectorSucceeded(), 0, "selector de autoridad");
+        assertEq(handler.allowanceLeftAfterSwap(), 0, "allowance despues del swap");
+        assertEq(handler.residualAllowanceAbused(), 0, "allowance residual usada por un tercero");
+    }
+
+    /// A11: la Safe sigue verificando contra la factory y los roles del Guard coinciden con los owners.
+    function _A11_configurationIntact() internal view {
+        (bool ok, bytes32 reason) = sys.walletFactory.verifyWallet(address(safe));
+        assertTrue(ok, string(abi.encodePacked(reason)));
+        assertTrue(handler.rolesMatchOwners(), "roles del Guard != owners");
+    }
+
+    /// A12, A13: ninguna firma se reusa y un NoOp invalida la SafeTx pendiente de ese nonce.
+    function _A12_A13_noReplay() internal view {
+        assertEq(handler.replaySucceeded(), 0, "replay");
+        assertEq(handler.pendingAfterNoOpSucceeded(), 0, "pendiente tras NoOp");
+    }
+
+    /// A16: sólo USDC↔USDT y el executor nunca retiene fondos.
+    function _A16_swapScope() internal view {
+        assertEq(handler.unsupportedSwapSucceeded(), 0, "swap de token no soportado");
+        address ex = handler.swapExecutor();
+        assertEq(usdc.balanceOf(ex), 0, "executor con USDC");
+        assertEq(usdt.balanceOf(ex), 0, "executor con USDT");
+    }
+
+    /// A17: ninguna rotación asistida antes de 48 h ni sin propuesta.
+    function _A17_rotationsOnlyAfterDelay() internal view {
+        assertEq(handler.rotationBeforeDelay(), 0, "rotacion antes de 48 h");
+        assertEq(handler.rotationWithoutProposal(), 0, "rotacion sin propuesta");
+    }
+
+    /// Conservación: los saldos de la Safe son exactamente los del modelo y el atacante sólo recibió lo que U+R le
+    /// enviaron por camino soberano.
+    function _fundsAccounted() internal view {
+        assertEq(usdc.balanceOf(address(safe)), handler.expectedUsdc(), "USDC de la Safe");
+        assertEq(usdt.balanceOf(address(safe)), handler.expectedUsdt(), "USDT de la Safe");
+        assertEq(usdc.balanceOf(handler.attacker()), handler.sovereignToAttackerUsdc(), "USDC del atacante");
+    }
+}
+
+/// @notice Invariantes A1–A17 y conservación de fondos.
+abstract contract WalletInvariantsBase is WalletInvariantsSetup {
+    function invariant_A1_A2_A3_noSingleKeyOrForeignSender() public view {
+        _A1_A2_A3_noSingleKeyOrForeignSender();
+    }
+
+    function invariant_A4_A9_assistedTransfersOnlyToActiveWhitelist() public view {
+        _A4_A9_assistedTransfersOnlyToActiveWhitelist();
+    }
+
+    function invariant_A5_recoveryNeverTransfers() public view {
+        _A5_recoveryNeverTransfers();
+    }
+
+    function invariant_A6_sovereignNeverBlocked() public view {
+        _A6_sovereignNeverBlocked();
+    }
+
+    function invariant_A7_classificationUsesThresholdSigners() public view {
+        _A7_classificationUsesThresholdSigners();
+    }
+
+    function invariant_A8_structuralRestrictions() public view {
+        _A8_structuralRestrictions();
+    }
+
+    function invariant_A10_A15_noThirdPartyAuthority() public view {
+        _A10_A15_noThirdPartyAuthority();
+    }
+
+    function invariant_A11_configurationIntact() public view {
+        _A11_configurationIntact();
+    }
+
+    function invariant_A12_A13_noReplay() public view {
+        _A12_A13_noReplay();
+    }
+
+    function invariant_A16_swapScope() public view {
+        _A16_swapScope();
+    }
+
+    function invariant_A17_rotationsOnlyAfterDelay() public view {
+        _A17_rotationsOnlyAfterDelay();
+    }
+
+    function invariant_fundsAccounted() public view {
+        _fundsAccounted();
+    }
+}
+
+/// @notice Campaña de invariantes con los valores del perfil: 500 runs × profundidad 50 en `ci` (§10) y 64 × 32 en
+///         `default`.
+contract WalletInvariantsTest is WalletInvariantsBase {}
+
+/// @notice Las invariantes no son vacuas: una secuencia fija del handler produce operaciones exitosas de cada tipo y los
+///         ataques fallan.
+contract WalletHandlerLivenessTest is WalletInvariantsSetup {
     /// Las invariantes no son vacuas: una secuencia fija del handler produce operaciones exitosas de cada tipo y los
     /// ataques fallan.
     function test_handlerExercisesTheSystem() public {
@@ -99,101 +243,16 @@ contract WalletInvariantsTest is SystemFixture {
         handler.attackUnsupportedSwap(1e18);
         handler.attackModuleExecution();
         handler.attackPendingAfterNoOp(true);
-        invariant_A1_A2_A3_noSingleKeyOrForeignSender();
-        invariant_A4_A9_assistedTransfersOnlyToActiveWhitelist();
-        invariant_A6_sovereignNeverBlocked();
-        invariant_A7_classificationUsesThresholdSigners();
-        invariant_A8_structuralRestrictions();
-        invariant_A10_A15_noThirdPartyAuthority();
-        invariant_A11_configurationIntact();
-        invariant_A12_A13_noReplay();
-        invariant_A16_swapScope();
-        invariant_A17_rotationsOnlyAfterDelay();
-        invariant_fundsAccounted();
-    }
-
-    /// A1, A2, A3: ninguna clave sola ni un remitente distinto de S ejecuta una SafeTx asistida.
-    function invariant_A1_A2_A3_noSingleKeyOrForeignSender() public view {
-        assertEq(handler.singleKeySucceeded(), 0, "una clave sola ejecuto");
-        assertEq(handler.wrongSenderSucceeded(), 0, "remitente distinto de S ejecuto");
-    }
-
-    /// A4, A9: toda transferencia asistida exitosa fue de U hacia un destino whitelisteado y activo (modelo propio de
-    /// la whitelist con activación a 24 h).
-    function invariant_A4_A9_assistedTransfersOnlyToActiveWhitelist() public view {
-        assertEq(handler.assistedTransferToUnauthorized(), 0, "salida a destino no autorizado");
-    }
-
-    /// A5: R+S nunca transfiere.
-    function invariant_A5_recoveryNeverTransfers() public view {
-        assertEq(handler.recoveryTransferSucceeded(), 0, "R+S transfirio");
-    }
-
-    /// A6: toda SafeTx U+R con firmas válidas se ejecuta (el Guard nunca la revierte).
-    function invariant_A6_sovereignNeverBlocked() public view {
-        assertEq(handler.sovereignFailures(), 0, "camino soberano bloqueado");
-    }
-
-    /// A7: la clasificación usa sólo las firmas del threshold (una firma de R anexada no vuelve soberana a U+S).
-    function invariant_A7_classificationUsesThresholdSigners() public view {
-        assertEq(handler.appendedSignatureBypass(), 0, "firma anexada cambio la clasificacion");
-    }
-
-    /// A8: ninguna SafeTx asistida exitosa tuvo DELEGATECALL, parámetros de gas, gasToken, refundReceiver o value ≠ 0;
-    ///     ninguna ejecución por módulo; con la configuración alterada el camino asistido no opera.
-    function invariant_A8_structuralRestrictions() public view {
-        assertEq(handler.delegateCallSucceeded(), 0, "DELEGATECALL asistido");
-        assertEq(handler.gasParamsSucceeded(), 0, "gas params o value en asistido");
-        assertEq(handler.moduleExecutionSucceeded(), 0, "ejecucion por modulo");
-        assertEq(handler.assistedWhileAlteredSucceeded(), 0, "asistido con configuracion alterada");
-    }
-
-    /// A10, A15: ninguna allowance a terceros (Permit2, router, atacante, relayer) y ningún selector de autoridad; tras
-    ///     cada swap la allowance al executor es 0 y una allowance residual no la usa un tercero.
-    function invariant_A10_A15_noThirdPartyAuthority() public view {
-        address[4] memory spenders = [ext.permit2, router02, handler.attacker(), handler.relayer()];
-        for (uint256 i; i < spenders.length; ++i) {
-            assertEq(usdc.allowance(address(safe), spenders[i]), 0, "allowance USDC a terceros");
-            assertEq(usdt.allowance(address(safe), spenders[i]), 0, "allowance USDT a terceros");
-        }
-        assertEq(handler.thirdPartyApprovalSucceeded(), 0, "approve a terceros");
-        assertEq(handler.authoritySelectorSucceeded(), 0, "selector de autoridad");
-        assertEq(handler.allowanceLeftAfterSwap(), 0, "allowance despues del swap");
-        assertEq(handler.residualAllowanceAbused(), 0, "allowance residual usada por un tercero");
-    }
-
-    /// A11: la Safe sigue verificando contra la factory y los roles del Guard coinciden con los owners.
-    function invariant_A11_configurationIntact() public view {
-        (bool ok, bytes32 reason) = sys.walletFactory.verifyWallet(address(safe));
-        assertTrue(ok, string(abi.encodePacked(reason)));
-        assertTrue(handler.rolesMatchOwners(), "roles del Guard != owners");
-    }
-
-    /// A12, A13: ninguna firma se reusa y un NoOp invalida la SafeTx pendiente de ese nonce.
-    function invariant_A12_A13_noReplay() public view {
-        assertEq(handler.replaySucceeded(), 0, "replay");
-        assertEq(handler.pendingAfterNoOpSucceeded(), 0, "pendiente tras NoOp");
-    }
-
-    /// A16: sólo USDC↔USDT y el executor nunca retiene fondos.
-    function invariant_A16_swapScope() public view {
-        assertEq(handler.unsupportedSwapSucceeded(), 0, "swap de token no soportado");
-        address ex = handler.swapExecutor();
-        assertEq(usdc.balanceOf(ex), 0, "executor con USDC");
-        assertEq(usdt.balanceOf(ex), 0, "executor con USDT");
-    }
-
-    /// A17: ninguna rotación asistida antes de 48 h ni sin propuesta.
-    function invariant_A17_rotationsOnlyAfterDelay() public view {
-        assertEq(handler.rotationBeforeDelay(), 0, "rotacion antes de 48 h");
-        assertEq(handler.rotationWithoutProposal(), 0, "rotacion sin propuesta");
-    }
-
-    /// Conservación: los saldos de la Safe son exactamente los del modelo y el atacante sólo recibió lo que U+R le
-    /// enviaron por camino soberano.
-    function invariant_fundsAccounted() public view {
-        assertEq(usdc.balanceOf(address(safe)), handler.expectedUsdc(), "USDC de la Safe");
-        assertEq(usdt.balanceOf(address(safe)), handler.expectedUsdt(), "USDT de la Safe");
-        assertEq(usdc.balanceOf(handler.attacker()), handler.sovereignToAttackerUsdc(), "USDC del atacante");
+        _A1_A2_A3_noSingleKeyOrForeignSender();
+        _A4_A9_assistedTransfersOnlyToActiveWhitelist();
+        _A6_sovereignNeverBlocked();
+        _A7_classificationUsesThresholdSigners();
+        _A8_structuralRestrictions();
+        _A10_A15_noThirdPartyAuthority();
+        _A11_configurationIntact();
+        _A12_A13_noReplay();
+        _A16_swapScope();
+        _A17_rotationsOnlyAfterDelay();
+        _fundsAccounted();
     }
 }

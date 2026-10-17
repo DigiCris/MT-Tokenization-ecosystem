@@ -45,16 +45,16 @@ Además de los contadores de violación, `WalletInvariantsTest` exige después d
   - `verifyWallet` de la factory da OK;
   - los roles del Guard coinciden con los owners, también después de rotaciones asistidas y soberanas.
 
-`test_handlerExercisesTheSystem` demuestra que las invariantes no son vacuas: una secuencia fija del handler produce operaciones exitosas de cada tipo (transferencia a destino activo, swap, rotación madura y operaciones soberanas) y cada ataque falla.
+`WalletHandlerLivenessTest.test_handlerExercisesTheSystem` demuestra que las invariantes no son vacuas: una secuencia fija del handler produce operaciones exitosas de cada tipo (transferencia a destino activo, swap, rotación madura y operaciones soberanas) y cada ataque falla.
 
 ## Parámetros
 
-| Suite | `default` | `ci` |
+| Suite | `default` | `ci` (§10) |
 |---|---|---|
-| Invariantes | 16 runs × profundidad 32 | 32 runs × profundidad 50, por modo de policy |
-| Fuzz de contratos | 256 runs | 10.000 runs; 500 en el fuzz de swaps sobre el fork |
+| Invariantes | 64 runs × profundidad 32 | 500 runs × profundidad 50 por modo de policy (25.000 llamadas, ~100 s) |
+| Fuzz de contratos | 256 runs | 10.000 runs, incluido el fuzz de swaps sobre el fork |
 
-Cada llamada del handler son varias SafeTx reales sobre el fork, alrededor de 0,1 s de CPU, y eso fija los runs de las invariantes.
+El handler fija sus remitentes con `targetSender`, porque actúa con `vm.prank` y no usa `msg.sender`. Con remitentes aleatorios, el motor de invariantes traía del RPC remoto cada cuenta nueva: una ida y vuelta de red por llamada, unos 0,15 s. Así no se hace RPC en el bucle de fuzzing.
 
 ## Cómo correr
 
