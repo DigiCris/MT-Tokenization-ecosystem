@@ -1,10 +1,11 @@
-// Entrypoint del backend: `node main api` (listeners Wallet y Recovery) o `node main worker` (dispatcher del outbox
-// y mantenimiento; el worker S de P13 se suma a este proceso). Cierre ordenado con SIGTERM/SIGINT.
+// Entrypoint del backend: `node main api` (listeners Wallet y Recovery), `node main worker` (dispatcher del outbox
+// y mantenimiento; el worker S de P13 se suma a este proceso) o `node main gas-tank` (recargas de las S por el shard
+// `platform` del signer, [B-SIG-05]). Cierre ordenado con SIGTERM/SIGINT.
 import type { Server } from 'node:http';
 import { sql, type Kysely } from 'kysely';
 import { startApi } from './api/server.ts';
 import { RpcQuorumClient } from './chain/rpc-quorum.ts';
-import { loadConfig, type AppConfig } from './config/env.ts';
+import { loadConfig, loadSignerClientConfig, type AppConfig } from './config/env.ts';
 import { createDatabase } from './db/kysely.ts';
 import { IdempotencyRepository } from './db/repositories/idempotency-repository.ts';
 import { OutboxRepository } from './db/repositories/outbox-repository.ts';
@@ -18,10 +19,13 @@ import { createOutboxWorker } from './queue/outbox-consumer.ts';
 import { OutboxDispatcher } from './queue/outbox-dispatcher.ts';
 import { closeQueues, createQueues, queueCounts, QUEUES } from './queue/queues.ts';
 import { createRedis } from './queue/redis.ts';
+import { GasTankService } from './gas/gas-tank.ts';
+import { loadPolicySnapshot } from './policy/snapshot.ts';
 import { createAccountServices } from './services.ts';
+import { readSignerTls, SignerClient } from './signer-client/client.ts';
 import { serviceVersion } from './version.ts';
 
-type Role = 'api' | 'worker';
+type Role = 'api' | 'worker' | 'gas-tank';
 type Closer = () => Promise<unknown>;
 
 /** Errores de conexión repetidos (Valkey caído reintenta cada segundo): uno por cada 30 s en los logs. */
@@ -101,6 +105,48 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       { walletPort: config.api.walletPort, recoveryPort: config.api.recoveryPort, metricsPort: config.metrics.port },
       'API escuchando',
     );
+  } else if (role === 'gas-tank') {
+    const signer = loadSignerClientConfig();
+    if (signer.platformUrl === undefined) throw new Error('SIGNER_PLATFORM_URL: requerida para el gas tank');
+    const rpc = new RpcQuorumClient({
+      primaryUrl: config.rpc.primaryUrl.reveal(),
+      secondaryUrl: config.rpc.secondaryUrl.reveal(),
+      mode: config.rpc.quorumMode,
+      chainId: config.chainId,
+      timeoutMs: config.rpc.timeoutMs,
+      healthIntervalMs: config.rpc.healthIntervalMs,
+      maxHeadLagBlocks: config.rpc.maxHeadLagBlocks,
+      retries: config.rpc.quorumRetries,
+      backoffMs: config.rpc.quorumBackoffMs,
+      logger,
+      metrics,
+    });
+    rpc.start();
+    closers.unshift(() => rpc.stop());
+    const snapshot = loadPolicySnapshot(signer.policy.snapshotPath, signer.policy.publicKey, config.appEnv);
+    const platform = new SignerClient({
+      shardId: 'platform',
+      url: signer.platformUrl,
+      tls: readSignerTls(signer.mtls),
+      timeoutMs: signer.timeoutMs,
+    });
+    closers.push(() => {
+      platform.close();
+      return Promise.resolve();
+    });
+    const gasTank = new GasTankService({
+      db,
+      rpc,
+      platform,
+      policy: () => snapshot,
+      config: signer.gasTank,
+      logger,
+      metrics,
+    });
+    gasTank.start(signer.gasTank.intervalMs);
+    closers.unshift(() => gasTank.stop());
+    metricsServer = await startMetricsServer(metrics.registry, config.metrics.bindHost, config.metrics.gasTankPort);
+    logger.info({ metricsPort: config.metrics.gasTankPort, policyVersion: snapshot.version }, 'gas tank iniciado');
   } else {
     const producer = createRedis(
       config.redis.url.reveal(),
@@ -181,8 +227,8 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
 
 async function main(): Promise<void> {
   const role = process.argv[2];
-  if (role !== 'api' && role !== 'worker') {
-    process.stderr.write('uso: node main.ts api | worker\n');
+  if (role !== 'api' && role !== 'worker' && role !== 'gas-tank') {
+    process.stderr.write('uso: node main.ts api | worker | gas-tank\n');
     process.exit(2);
   }
   const config = loadConfig();

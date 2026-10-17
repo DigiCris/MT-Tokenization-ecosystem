@@ -24,6 +24,8 @@ contracts/deployments/ci.json
 # JSON de deploys efímeros de los tests de otros proyectos (DEPLOYMENT_TAG).
 contracts/deployments/local-*.json
 contracts/deployments/ci-*.json
+# Snapshot de policy local: sale del deploy local (LOCAL_SEED de cada desarrollador) y se firma con su clave local.
+config/policy/local/
 
 # --- Playwright ---
 e2e/test-results/

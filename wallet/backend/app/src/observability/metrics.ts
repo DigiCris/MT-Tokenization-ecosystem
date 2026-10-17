@@ -22,6 +22,10 @@ export interface Metrics {
   emailsSent: Counter<'template' | 'provider'>;
   emailSendErrors: Counter<'template' | 'provider' | 'retryable'>;
   emailsSkipped: Counter<'template' | 'reason'>;
+  signerRequests: Counter<'shard' | 'route' | 'result'>;
+  gasTankBalanceWei: Gauge;
+  executorsBelowMinimum: Gauge;
+  gasTankTransactions: Counter<'purpose' | 'result'>;
 }
 
 export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metrics {
@@ -129,6 +133,28 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_emails_skipped_total',
       help: 'Emails no enviados a propósito (p. ej. el código ya venció cuando el job se ejecutó)',
       labelNames: ['template', 'reason'],
+      registers,
+    }),
+    signerRequests: new Counter({
+      name: 'mtw_signer_requests_total',
+      help: 'Pedidos al signer por shard, ruta y resultado (ok o código de error del signer)',
+      labelNames: ['shard', 'route', 'result'],
+      registers,
+    }),
+    gasTankBalanceWei: new Gauge({
+      name: 'mtw_gas_tank_balance_wei',
+      help: 'Saldo de ETH de la cuenta gas tank [B-SIG-05]',
+      registers,
+    }),
+    executorsBelowMinimum: new Gauge({
+      name: 'mtw_gas_executors_below_minimum',
+      help: 'Claves S con saldo de ETH por debajo de GAS_TOPUP_MIN_WEI en la última pasada del gas tank',
+      registers,
+    }),
+    gasTankTransactions: new Counter({
+      name: 'mtw_gas_tank_transactions_total',
+      help: 'Transacciones de la cuenta gas tank por propósito (TOPUP, DEPLOY, CANCEL_RELAY) y resultado',
+      labelNames: ['purpose', 'result'],
       registers,
     }),
   };

@@ -17,7 +17,7 @@ Habla sólo por mTLS dentro de la red Docker `signer` y nunca publica puertos.
 | `src/state/`     | DB propia del shard: shards, claves (sin material privado), eventos de ciclo de vida, snapshots aceptados, SafeTx co-firmadas (una activa por `(safe, nonce)`), firmas emitidas, txs del gas tank                                                                            |
 | `src/lifecycle/` | alta de shard, backup/restore con `age`, rotación y custodia de la credencial, migración entre shards, retiro y destrucción de claves                                                                                                                                        |
 | `src/api/`       | servidor HTTPS con mTLS obligatorio (TLS 1.3, cliente `mtw-backend`) y errores tipificados                                                                                                                                                                                   |
-| `scripts/`       | CLIs del ciclo de vida, de la clave pública de atestación y de la spec interna                                                                                                                                                                                               |
+| `scripts/`       | CLIs del ciclo de vida, del snapshot de policy, de la clave pública de atestación y de la spec interna                                                                                                                                                                       |
 | `openapi.json`   | spec OpenAPI 3.1 interna (generada desde los schemas Zod; nunca se publica)                                                                                                                                                                                                  |
 
 ## Orden de una co-firma (`POST /v1/sign-safe-tx`)
@@ -58,6 +58,7 @@ credencial y DB propios).
 cd wallet
 pnpm secrets:local                         # credenciales de los shards dev-1 y platform, certificados mTLS, claves Ed25519
 pnpm deploy-local                          # contratos en el fork local
+pnpm --dir backend/signer policy:build && pnpm --dir backend/signer policy:sign
 pnpm --dir backend/signer db:migrate
 pnpm --dir backend/signer db:migrate -- --shard platform
 pnpm --dir backend/signer shard:create -- --shard platform --gas-tank   # cuenta gas tank (una vez)

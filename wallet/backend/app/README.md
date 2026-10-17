@@ -25,6 +25,7 @@ pnpm install --frozen-lockfile
 pnpm db:migrate          # rol mtw_migrator (DDL); idempotente
 pnpm dev:api             # listeners Wallet :8080 y Recovery :8081, métricas :9464
 pnpm dev:worker          # dispatcher del outbox y worker de email, métricas :9465
+pnpm dev:gas-tank        # recargas de las S por el shard `platform` del signer, métricas :9466
 curl -s localhost:8080/api/v1/health/ready
 ```
 
@@ -46,7 +47,7 @@ Mailpit (`EMAIL_PROVIDER=smtp`, `SMTP_HOST`/`SMTP_PORT` del stack) y se leen en 
 | `pnpm opaque:setup`                                                      | genera `OPAQUE_SERVER_SETUP` en `wallet/.env` (sólo local; nunca reemplaza uno)   |
 | `pnpm dev:session [--method --path --body] [--print]`                    | material de PlatformSession para Swagger (sólo local, ver abajo)                  |
 | `pnpm signer:reassign <archivo>`                                         | aplica una migración entre shards del signer (salida de `shard:migrate`)          |
-| `pnpm start:api` · `pnpm start:worker`                                   | entrypoints de producción sobre `dist/`                                           |
+| `pnpm start:api` · `pnpm start:worker` · `pnpm start:gas-tank`           | entrypoints de producción sobre `dist/`                                           |
 
 ## Estructura
 
@@ -68,12 +69,14 @@ src/
   chain/         rpc-quorum.ts, safe-tx.ts, eip712.ts, signatures.ts, create2.ts, decoders/, abis/ (generados)
   signer-client/ client.ts (mTLS hacia los shards, errores tipificados), sharding.ts (asignación por hash guardada en
                  signer_keys, S de onboarding y de rotación, reasignación tras una migración)
+  gas/           gas-tank.ts (recargas de S, deploy de Safes y relay de cancelaciones por el shard `platform`)
+  policy/        snapshot.ts (snapshot de policy firmado: firma, entorno y versión que se envía al signer)
   observability/ logger.ts, redaction.ts, metrics.ts
   api/           server.ts (dos listeners), errors.ts (RFC 9457), health.ts, routes/ (health, v1/auth, v1/users,
                  v1/sessions), plugins/ (auth y CSRF, rate limit, idempotencia, OpenAPI, seguridad)
   cli/           db.ts, audit-verify.ts, opaque-setup.ts, dev-session.ts, signer-reassign.ts
   services.ts    armado de los servicios de cuenta (proceso `api` y tests)
-  main.ts        entrypoint `api` | `worker`
+  main.ts        entrypoint `api` | `worker` | `gas-tank`
 data/            lista vendorizada de passwords comunes (SecLists, SHA-256 fijado)
 test/            unit, integración (Testcontainers + Anvil), API (inject), seguridad, email; vectors/ (copia de
                  contracts); `*.live.test.ts` contra Mailgun y la Gmail API
@@ -142,13 +145,18 @@ test/            unit, integración (Testcontainers + Anvil), API (inject), segu
   `X-Session-Signature` sobre `MTW-REQ-V1` con timestamp ±60 s y nonce único (Valkey). Las fallas de esta capa son 403
   con código propio (la sesión de cuenta sigue vigente). Formatos con vectores en `contracts/test/vectors/wire`.
 
-## Signer S
+## Signer S y gas tank
 
 El backend habla con los shards del signer (`backend/signer`, proyecto independiente) sólo por mTLS (`MTLS_CA_CERT_PATH`,
 `MTLS_BACKEND_CLIENT_CERT_PATH`, `MTLS_BACKEND_CLIENT_KEY_PATH`; TLS 1.3). Cada wallet nueva va al shard que surge del
 hash estable de su `walletId` sobre los shards activos de `SIGNER_SHARDS`, y esa asignación queda guardada en
 `signer_keys` junto con la S y su `SignerKeyAttestation` (no se recalcula si cambian los shards) [B-SIG-09]. El signer
 responde errores tipificados (`code`, `reason`, `retryable`) que el worker usa para reintentar o fallar ([B-Q-03]).
+
+El proceso `gas-tank` usa la cuenta gas tank del shard `platform` (`SIGNER_PLATFORM_URL`) [B-SIG-05]: lleva cada S
+bajo `GAS_TOPUP_MIN_WEI` a `GAS_TOPUP_TARGET_WEI` sin superar `GAS_TANK_DAILY_CAP_WEI` (el signer aplica además su propio
+tope del snapshot), despliega Safes por la `WalletFactory` (sólo con una S atestada por un signer) y retransmite
+cancelaciones de rotación firmadas por U o R. Cada tx queda en `chain_transactions` (y las recargas en `gas_topups`).
 
 ## PlatformSession en local (`dev:session`)
 
@@ -168,8 +176,8 @@ tests de cadena levantan Anvil sobre el fork de Base (`BASE_RPC_URL` o `FORK_RPC
 `wallet/.env`) y el cliente de quórum se prueba con dos Anvil y un proxy de inyección de fallas. Cobertura: ≥ 90 % de
 líneas en `src/chain/` (§10); `main.ts` y las CLIs se prueban como procesos reales. Los flujos de cuenta usan el
 pipeline de email real (outbox → BullMQ → worker → SMTP de Mailpit) y leen los códigos de Mailpit. Los tests del
-cliente del signer levantan shards reales del signer (procesos de `backend/signer`, que necesita sus dependencias
-instaladas).
+cliente del signer y del gas tank levantan shards reales del signer (procesos de `backend/signer`, que necesita sus
+dependencias instaladas) y despliegan el sistema en el fork con los scripts del repo.
 
 `pnpm test:live` envía por la API real de Mailgun (dominio sandbox) a `EMAIL_TEST_ADDRESS` y lee los códigos con la
 Gmail API (credenciales `EMAIL_PROVIDER_*` y `EMAIL_TEST_*` del entorno o de `wallet/.env`). El sandbox firma DKIM y

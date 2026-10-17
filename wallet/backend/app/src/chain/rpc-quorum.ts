@@ -292,6 +292,29 @@ export class RpcQuorumClient {
     return this.readSensitive('eth_getBalance', (client, blockNumber) => client.getBalance({ address, blockNumber }));
   }
 
+  /** Nonce de cuenta confirmado (`latest`) con quórum: el signer exige firmar con exactamente este nonce. */
+  async getTransactionCount(address: Address): Promise<{ value: bigint; blockNumber: bigint }> {
+    const { value, blockNumber } = await this.readSensitive('eth_getTransactionCount', (client, block) =>
+      client.getTransactionCount({ address, blockNumber: block }),
+    );
+    return { value: BigInt(value), blockNumber };
+  }
+
+  /**
+   * Fees EIP-1559 sugeridos por el primario: priority fee del nodo y `maxFeePerGas = 2·baseFee + priority`. No es una
+   * lectura sensible (el signer aplica sus topes).
+   */
+  async feeData(): Promise<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }> {
+    const provider = this.#providers[0];
+    if (provider === undefined) throw new RpcQuorumError('RPC_UNAVAILABLE', 'sin proveedor primario');
+    const [block, priority] = await Promise.all([
+      this.#call(provider, 'eth_getBlockByNumber', () => provider.client.getBlock({ blockTag: 'latest' })),
+      this.#call(provider, 'eth_maxPriorityFeePerGas', () => provider.client.estimateMaxPriorityFeePerGas()),
+    ]);
+    const baseFee = block.baseFeePerGas ?? 0n;
+    return { maxFeePerGas: baseFee * 2n + priority, maxPriorityFeePerGas: priority };
+  }
+
   async getCode(address: Address): Promise<{ value: Hex | undefined; blockNumber: bigint }> {
     return this.readSensitive('eth_getCode', (client, blockNumber) => client.getCode({ address, blockNumber }));
   }

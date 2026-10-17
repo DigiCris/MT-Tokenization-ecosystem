@@ -290,6 +290,7 @@ const apiFields = {
   METRICS_BIND_HOST: z.string().min(1).default('127.0.0.1'),
   METRICS_PORT: port.default(9464),
   WORKER_METRICS_PORT: port.default(9465),
+  GAS_TANK_METRICS_PORT: port.default(9466),
   RATE_LIMIT_GLOBAL_PER_MINUTE: z.coerce.number({ error: 'debe ser un entero' }).int().min(1).max(100_000).optional(),
   AUTH_FAILURE_SPIKE_PER_MINUTE: positiveInt(60, 100_000),
 };
@@ -491,7 +492,7 @@ export interface AppConfig {
     rateLimitGlobalPerMinute: number;
   };
   auth: { failureSpikePerMinute: number };
-  metrics: { bindHost: string; port: number; workerPort: number };
+  metrics: { bindHost: string; port: number; workerPort: number; gasTankPort: number };
   database: { url: Secret<string>; poolMax: number };
   redis: { url: Secret<string> };
   outbox: { pollIntervalMs: number; batchSize: number };
@@ -544,7 +545,12 @@ export function loadConfig(options: LoadOptions = {}): AppConfig {
       rateLimitGlobalPerMinute: v.RATE_LIMIT_GLOBAL_PER_MINUTE ?? defaultRate,
     },
     auth: { failureSpikePerMinute: v.AUTH_FAILURE_SPIKE_PER_MINUTE },
-    metrics: { bindHost: v.METRICS_BIND_HOST, port: v.METRICS_PORT, workerPort: v.WORKER_METRICS_PORT },
+    metrics: {
+      bindHost: v.METRICS_BIND_HOST,
+      port: v.METRICS_PORT,
+      workerPort: v.WORKER_METRICS_PORT,
+      gasTankPort: v.GAS_TANK_METRICS_PORT,
+    },
     database: { url: v.DATABASE_URL, poolMax: v.DATABASE_POOL_MAX },
     redis: { url: v.REDIS_URL },
     outbox: { pollIntervalMs: v.OUTBOX_POLL_INTERVAL_MS, batchSize: v.OUTBOX_BATCH_SIZE },
@@ -626,13 +632,97 @@ export function loadAuditVerifyConfig(options: LoadOptions = {}): AuditVerifyCon
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Cliente del signer [B-SIG-01], [B-SIG-09]
+// Cliente del signer (worker, gas tank) [B-SIG-01], [B-SIG-05], [B-SIG-09]
 
 export interface SignerShardEndpoint {
   id: string;
   url: string;
   /** Recibe wallets nuevas (la asignación de las existentes está guardada y no cambia). */
   active: boolean;
+}
+
+export interface SignerClientConfig {
+  appEnv: AppEnv;
+  shards: SignerShardEndpoint[];
+  /** Shard `platform` (cuenta gas tank). */
+  platformUrl: string | undefined;
+  mtls: { caPath: string; certPath: string; keyPath: string };
+  timeoutMs: number;
+  policy: { snapshotPath: string; publicKey: KeyObject };
+  gasTank: { topupMinWei: bigint; topupTargetWei: bigint; dailyCapWei: bigint; intervalMs: number };
+}
+
+const SHARD_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const ShardsSchema = z
+  .array(
+    z
+      .object({
+        id: z.string().regex(SHARD_ID),
+        url: z.url({ protocol: /^https$/, error: 'debe ser https (mTLS)' }),
+        active: z.boolean().default(true),
+      })
+      .strict(),
+  )
+  .min(1)
+  .refine((list) => new Set(list.map((s) => s.id)).size === list.length, 'ids de shard repetidos')
+  .refine((list) => list.some((s) => s.active), 'al menos un shard activo');
+
+const wei = z
+  .string({ error: 'falta' })
+  .regex(/^[1-9][0-9]{0,30}$/, { error: 'debe ser un entero positivo en wei' })
+  .transform((v) => BigInt(v));
+
+export function loadSignerClientConfig(options: LoadOptions = {}): SignerClientConfig {
+  const resolved = resolveEnv(options);
+  const v = parseWith(
+    z.object({
+      APP_ENV: baseFields.APP_ENV,
+      SIGNER_SHARDS: z.string({ error: 'falta' }).transform((raw, ctx) => {
+        try {
+          const parsed = ShardsSchema.safeParse(JSON.parse(raw));
+          if (parsed.success) return parsed.data;
+          ctx.addIssue({ code: 'custom', message: parsed.error.issues.map((i) => i.message).join('; ') });
+        } catch {
+          ctx.addIssue({ code: 'custom', message: 'debe ser un JSON [{"id","url","active"?}]' });
+        }
+        return z.NEVER;
+      }),
+      SIGNER_PLATFORM_URL: z.url({ protocol: /^https$/ }).optional(),
+      SIGNER_TIMEOUT_MS: positiveInt(30_000, 300_000),
+      MTLS_CA_CERT_PATH: z.string({ error: 'falta' }),
+      MTLS_BACKEND_CLIENT_CERT_PATH: z.string({ error: 'falta' }),
+      MTLS_BACKEND_CLIENT_KEY_PATH: z.string({ error: 'falta' }),
+      POLICY_SNAPSHOT_PATH: z.string({ error: 'falta' }),
+      POLICY_SIGNING_PUBLIC_KEY: ed25519PublicKey,
+      GAS_TOPUP_MIN_WEI: wei,
+      GAS_TOPUP_TARGET_WEI: wei,
+      GAS_TANK_DAILY_CAP_WEI: wei,
+      GAS_TANK_INTERVAL_MS: positiveInt(30_000, 3_600_000),
+    }),
+    resolved,
+  );
+  const path = (p: string) => (isAbsolute(p) ? p : resolve(WALLET_ROOT, p));
+  if (v.GAS_TOPUP_MIN_WEI >= v.GAS_TOPUP_TARGET_WEI) {
+    throw new ConfigError(['GAS_TOPUP_MIN_WEI: debe ser menor que GAS_TOPUP_TARGET_WEI']);
+  }
+  return {
+    appEnv: v.APP_ENV,
+    shards: v.SIGNER_SHARDS,
+    platformUrl: v.SIGNER_PLATFORM_URL,
+    mtls: {
+      caPath: path(v.MTLS_CA_CERT_PATH),
+      certPath: path(v.MTLS_BACKEND_CLIENT_CERT_PATH),
+      keyPath: path(v.MTLS_BACKEND_CLIENT_KEY_PATH),
+    },
+    timeoutMs: v.SIGNER_TIMEOUT_MS,
+    policy: { snapshotPath: path(v.POLICY_SNAPSHOT_PATH), publicKey: v.POLICY_SIGNING_PUBLIC_KEY },
+    gasTank: {
+      topupMinWei: v.GAS_TOPUP_MIN_WEI,
+      topupTargetWei: v.GAS_TOPUP_TARGET_WEI,
+      dailyCapWei: v.GAS_TANK_DAILY_CAP_WEI,
+      intervalMs: v.GAS_TANK_INTERVAL_MS,
+    },
+  };
 }
 
 export interface DatabaseOnlyConfig {
