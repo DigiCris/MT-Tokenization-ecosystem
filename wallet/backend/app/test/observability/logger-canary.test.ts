@@ -28,6 +28,8 @@ describe('logger directo', () => {
       'error',
     );
     captured.logger.warn(`mensaje libre con redis://:${secrets.otp}@valkey:6379 y Bearer ${secrets.privateKey}`);
+    // Un Error como primer argumento: pino usaría su message crudo como msg.
+    captured.logger.error(new Error(`fallo con redis://:${secrets.mnemonic}@valkey:6379`));
     const output = captured.output();
     for (const value of Object.values(secrets)) expect(output).not.toContain(value.replace('Bearer ', ''));
     expect(output).toContain('[REDACTED]');

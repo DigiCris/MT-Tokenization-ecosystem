@@ -65,6 +65,16 @@ export function loggerOptions(config: Omit<LoggerConfig, 'destination'>): Logger
     },
     hooks: {
       logMethod(args, method) {
+        // Un Error como primer argumento: pino usaría su `message` crudo como msg; se pasa ya redactado.
+        const [first, ...rest] = args as unknown[];
+        if (first instanceof Error) {
+          const message = typeof rest[0] === 'string' ? rest[0] : first.message;
+          const tail = rest.slice(typeof rest[0] === 'string' ? 1 : 0);
+          method.apply(this, [{ err: redact(first, 0, 'err') }, scrubString(message), ...tail] as Parameters<
+            typeof method
+          >);
+          return;
+        }
         const cleaned = args.map((arg: unknown) => (typeof arg === 'string' ? scrubString(arg) : arg));
         method.apply(this, cleaned as Parameters<typeof method>);
       },
