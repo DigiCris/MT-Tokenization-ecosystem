@@ -6,7 +6,7 @@ Pipelines por trust domain (P02). La lógica vive en `wallet/ci/scripts/*.sh` y 
 
 | Workflow | Disparadores | Jobs | Script | Environment (secretos) |
 |---|---|---|---|---|
-| `wallet-contracts` | push/PR con cambios en contratos, `config/chains`, `ci`, toolchain | `contracts`: `forge build --sizes`, `forge test` (perfil `ci`: unit, integración, fork, fuzz, invariants), cobertura (≥ 95 % líneas, ≥ 90 % ramas en `src/`), Slither (`--fail-high --fail-medium`) | `ci-contracts.sh` | `wallet-ci-contracts` (`BASE_RPC_URL`) |
+| `wallet-contracts` | push/PR con cambios en contratos, `config/chains`, `ci`, toolchain | `contracts`: `forge build --sizes`, `forge test` (perfil `ci`: unit, integración, fork, fuzz, invariants), cobertura (≥ 95 % líneas, ≥ 90 % ramas en `src/`), Slither (`--fail-medium`) | `ci-contracts.sh` | `wallet-ci-contracts` (`BASE_RPC_URL`) |
 | `wallet-backend` | push/PR en `backend/app`, `backend/integrity-monitor`, vectores, `config`, `ci`, toolchain | `backend`, `integrity-monitor`: install congelado, lint, typecheck, tests, integración, cobertura, build | `ci-backend.sh`, `ci-integrity-monitor.sh` | `wallet-ci-backend` (`BASE_RPC_URL`, `EMAIL_PROVIDER_*`, `EMAIL_TEST_*`) |
 | `wallet-signer` | push/PR en `backend/signer`, vectores, `config`, `ci`, toolchain | `signer` | `ci-signer.sh` | `wallet-ci-signer` (`BASE_RPC_URL`) |
 | `wallet-frontend-wallet` | push/PR en `frontend/wallet`, `design-tokens`, vectores, `config`, `ci`, toolchain | `frontend-wallet` | `ci-frontend-wallet.sh` | `wallet-ci-frontend-wallet` (`BASE_RPC_URL`, `GOOGLE_DRIVE_TEST_*`) |

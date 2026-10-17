@@ -23,4 +23,4 @@ fi
 section "forge coverage (umbrales: líneas ≥ 95 %, ramas ≥ 90 % en src/)"
 node "$WALLET_ROOT/ci/scripts/coverage-gate.mjs" contracts
 section "slither"
-slither . --config-file slither.config.json --fail-high --fail-medium
+slither . --config-file slither.config.json --fail-medium

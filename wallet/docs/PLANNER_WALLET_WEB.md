@@ -1338,7 +1338,7 @@ Checks del preflight:
 
 - [x] **P02.T01** — Crear `.github/workflows/wallet-contracts.yml`, `wallet-backend.yml`, `wallet-signer.yml`, `wallet-frontend-wallet.yml`, `wallet-frontend-recovery.yml`, `wallet-security.yml`, `wallet-e2e.yml`, `wallet-repro-build.yml` (disparadores finos con `paths: ['wallet/<área>/**']`) y `.github/CODEOWNERS` con un equipo revisor por trust domain (contracts, backend/signer, frontend-wallet, frontend-recovery, infra). **Aprobado por el owner el 2026-10-16: no volver a preguntar.**
       Verificación: archivos presentes y `docker run --rm -v "$PWD:/src" <imagen zizmor fijada> /src/.github/workflows` sin hallazgos High.
-- [x] **P02.T02** — Scripts `wallet/ci/scripts/ci-<área>.sh` que ejecutan, si el proyecto existe (si no, imprimen `SKIP: proyecto no creado aún (fase Pxx)`): instalación con lockfile congelado, lint, typecheck, unit, integración, cobertura y build del área. `ci-contracts.sh`: `forge build --sizes`, `forge test --profile ci` (unit, integración, fork, fuzz, invariants), `forge coverage` con umbrales (≥ 95 % líneas, ≥ 90 % ramas en `src/`; falla si no se cumplen) y **Slither** (`slither . --config-file slither.config.json --fail-high --fail-medium`). `ci-security.sh`: gitleaks (historia completa del branch), OSV-Scanner sobre todos los lockfiles, `pnpm audit --prod` por proyecto, Semgrep (reglas TS + Solidity), zizmor sobre workflows. Herramientas vía imágenes Docker fijadas por digest.
+- [x] **P02.T02** — Scripts `wallet/ci/scripts/ci-<área>.sh` que ejecutan, si el proyecto existe (si no, imprimen `SKIP: proyecto no creado aún (fase Pxx)`): instalación con lockfile congelado, lint, typecheck, unit, integración, cobertura y build del área. `ci-contracts.sh`: `forge build --sizes`, `forge test --profile ci` (unit, integración, fork, fuzz, invariants), `forge coverage` con umbrales (≥ 95 % líneas, ≥ 90 % ramas en `src/`; falla si no se cumplen) y **Slither** (`slither . --config-file slither.config.json --fail-medium`). `ci-security.sh`: gitleaks (historia completa del branch), OSV-Scanner sobre todos los lockfiles, `pnpm audit --prod` por proyecto, Semgrep (reglas TS + Solidity), zizmor sobre workflows. Herramientas vía imágenes Docker fijadas por digest.
       Verificación: `pnpm ci:local` corre todos los scripts y termina en verde.
 - [x] **P02.T03** — Workflows: acciones fijadas por **SHA de commit**, `permissions: contents: read` por defecto, sin `pull_request_target`, `concurrency` por ref, caché de Foundry RPC por `FORK_BLOCK_NUMBER`, secretos por **GitHub Environment** separado por área (el workflow de Recovery no puede leer secretos de Wallet y viceversa), runners efímeros. `wallet-e2e.yml` en PR con label `e2e` y nightly. `wallet-repro-build.yml` compila cada frontend dos veces en jobs distintos y compara manifests. Jobs cubiertos: lint, typecheck, tests, fork tests, fuzz/invariants, Slither, security scans, builds y builds reproducibles. **Ningún workflow despliega** (los artefactos de release se agregan en P26.T02.a, también sin deploy).
       Verificación: un PR de prueba dispara sólo los workflows del área tocada.
@@ -1444,47 +1444,47 @@ Checks del preflight:
 
 **Implementación requerida:**
 
-- [ ] **P04.T01** — Interfaces mínimas tomadas de Safe v1.5.0 (firmas exactas de §3.2: `ITransactionGuard`, `IModuleGuard`, `getStorageAt`, `getOwners`, `getThreshold`, `nonce`, `getTransactionHash`, `getModulesPaginated`, `setGuard`, `setModuleGuard`, `swapOwner`) y de Uniswap v3 (pool `swap`, `token0/token1/fee`, callback). Interfaces propias de §6.
+- [x] **P04.T01** — Interfaces mínimas tomadas de Safe v1.5.0 (firmas exactas de §3.2: `ITransactionGuard`, `IModuleGuard`, `getStorageAt`, `getOwners`, `getThreshold`, `nonce`, `getTransactionHash`, `getModulesPaginated`, `setGuard`, `setModuleGuard`, `swapOwner`) y de Uniswap v3 (pool `swap`, `token0/token1/fee`, callback). Interfaces propias de §6.
       Verificación: test que compara selectores de las interfaces con los de la Safe real del fork (`bytes4(keccak256(...))` vs código desplegado).
-- [ ] **P04.T02** — `SafeSignatureParser` [C-PAR-01] + test diferencial [C-PAR-02] contra la Safe real (fork).
+- [x] **P04.T02** — `SafeSignatureParser` [C-PAR-01] + test diferencial [C-PAR-02] contra la Safe real (fork).
       Verificación: `forge test --match-contract SafeSignatureParser --fork-url $LOCAL_RPC_URL` (incluye el diferencial con ≥ 10.000 runs en perfil `ci`).
-- [ ] **P04.T03** — `CallDecoder` [C-DEC-01..03] con tests de longitud exacta (bytes extra, truncados, selector parcial) y **test parametrizado** que recorre cada selector de autoridad de [C-DEC-03] (`increaseAllowance`, `decreaseAllowance`, `permit` EIP-2612 y DAI, `setApprovalForAll`, `transferFrom`, `authorizeOperator`, `send`, `transferWithAuthorization`, `receiveWithAuthorization`, `transferAndCall`, `approveAndCall`, `safeTransferFrom` ×2, `safeBatchTransferFrom`, cualquier llamada a Permit2) verificando su clasificación como autoridad económica.
+- [x] **P04.T03** — `CallDecoder` [C-DEC-01..03] con tests de longitud exacta (bytes extra, truncados, selector parcial) y **test parametrizado** que recorre cada selector de autoridad de [C-DEC-03] (`increaseAllowance`, `decreaseAllowance`, `permit` EIP-2612 y DAI, `setApprovalForAll`, `transferFrom`, `authorizeOperator`, `send`, `transferWithAuthorization`, `receiveWithAuthorization`, `transferAndCall`, `approveAndCall`, `safeTransferFrom` ×2, `safeBatchTransferFrom`, cualquier llamada a Permit2) verificando su clasificación como autoridad económica.
       Verificación: `forge test --match-contract CallDecoderTest`.
-- [ ] **P04.T04** — `PolicyRegistry` [C-POL-01..06]: modos, registros, timelock 24 h, guardianes, revocación inmediata, sucesores de Guard y module guard ([C-POL-06]), eventos.
+- [x] **P04.T04** — `PolicyRegistry` [C-POL-01..06]: modos, registros, timelock 24 h, guardianes, revocación inmediata, sucesores de Guard y module guard ([C-POL-06]), eventos.
       Verificación: `forge test --match-contract PolicyRegistryTest`.
-- [ ] **P04.T05** — `DestinationWhitelist` [C-WHL-01..03].
+- [x] **P04.T05** — `DestinationWhitelist` [C-WHL-01..03].
       Verificación: `forge test --match-contract DestinationWhitelistTest`.
-- [ ] **P04.T06** — `DenyAllModuleGuard` [C-MGD] + test en fork: `setModuleGuard(DenyAll)` aceptado por Safe 1.5.0 (ERC-165) y cualquier `execTransactionFromModule` revierte.
+- [x] **P04.T06** — `DenyAllModuleGuard` [C-MGD] + test en fork: `setModuleGuard(DenyAll)` aceptado por Safe 1.5.0 (ERC-165) y cualquier `execTransactionFromModule` revierte.
       Verificación: `forge test --match-contract DenyAllModuleGuardTest --fork-url $LOCAL_RPC_URL`.
 
 **Tests a implementar:**
 
-- [ ] **P04.TST** — unit + fuzz de cada contrato; PolicyRegistry: transición BOOTSTRAP→RESTRICTED irreversible, alta antes de 24 h no activa, cancelación por guardián, revocación inmediata, guardián no puede cancelar su propia baja, admin distinto rechazado; Whitelist: activación a las 24 h exactas (`vm.warp`), aislamiento entre Safes, `dest == msg.sender` rechazado.
+- [x] **P04.TST** — unit + fuzz de cada contrato; PolicyRegistry: transición BOOTSTRAP→RESTRICTED irreversible, alta antes de 24 h no activa, cancelación por guardián, revocación inmediata, guardián no puede cancelar su propia baja, admin distinto rechazado; Whitelist: activación a las 24 h exactas (`vm.warp`), aislamiento entre Safes, `dest == msg.sender` rechazado.
       Verificación: `forge test`.
 
 **Checks manuales:**
 
-- [ ] **P04.MAN** — revisión de NatSpec y eventos.
+- [x] **P04.MAN** — revisión de NatSpec y eventos.
       Verificación: resultado registrado en §13 (fecha, responsable y observaciones).
 
 **Acceptance criteria:** `forge test --match-path 'test/unit/*'` verde; cobertura de estos contratos ≥ 95 % líneas.
 
 **Security checks:**
 
-- [ ] **P04.SEC** — `slither src/PolicyRegistry.sol src/DestinationWhitelist.sol src/DenyAllModuleGuard.sol src/libraries` sin High/Medium sin triage.
-      Verificación: `slither . --config-file slither.config.json --fail-high --fail-medium` (en `contracts/`).
+- [x] **P04.SEC** — `slither src/PolicyRegistry.sol src/DestinationWhitelist.sol src/DenyAllModuleGuard.sol src/libraries` sin High/Medium sin triage.
+      Verificación: `slither . --config-file slither.config.json --fail-medium` (en `contracts/`).
 
 **Commits:** `feat(contracts): add policy registry, destination whitelist and deny-all module guard`.
 
 #### CHECKPOINT P04
 
-- [ ] build pasa: `forge build --sizes`.
-- [ ] tests pasan: `forge test`.
-- [ ] security tests pasan: `slither . --config-file slither.config.json --fail-high --fail-medium` (en `contracts/`).
-- [ ] integración anterior sigue funcionando: `pnpm ci:local`.
-- [ ] documentación actualizada: `node scripts/check-docs.mjs`.
-- [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
-- [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
+- [x] build pasa: `forge build --sizes`.
+- [x] tests pasan: `forge test`.
+- [x] security tests pasan: `slither . --config-file slither.config.json --fail-medium` (en `contracts/`).
+- [x] integración anterior sigue funcionando: `pnpm ci:local`.
+- [x] documentación actualizada: `node scripts/check-docs.mjs`.
+- [x] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
+- [x] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
 **Condición para pasar a P05:** test diferencial del parser verde con ≥ 10.000 runs.
 
@@ -1528,7 +1528,7 @@ Checks del preflight:
 **Security checks:**
 
 - [ ] **P05.SEC** — Slither sobre `src/`; revisión manual de cada llamada externa en el Guard.
-      Verificación: `slither . --config-file slither.config.json --fail-high --fail-medium` (en `contracts/`) + `forge test --match-path 'test/integration/*' --fork-url $LOCAL_RPC_URL`.
+      Verificación: `slither . --config-file slither.config.json --fail-medium` (en `contracts/`) + `forge test --match-path 'test/integration/*' --fork-url $LOCAL_RPC_URL`.
 
 **Commits:** `feat(contracts): add security guard, rotation timelock and wallet factory`, `feat(wallet): add deterministic safe deployment`.
 
@@ -1536,7 +1536,7 @@ Checks del preflight:
 
 - [ ] build pasa: `forge build --sizes` (Guard < 24.576 bytes o [C-GRD-16] aplicado).
 - [ ] tests pasan: `forge test --fork-url $LOCAL_RPC_URL`.
-- [ ] security tests pasan: `slither . --config-file slither.config.json --fail-high --fail-medium` (en `contracts/`) + `forge test --match-path 'test/integration/*' --fork-url $LOCAL_RPC_URL`.
+- [ ] security tests pasan: `slither . --config-file slither.config.json --fail-medium` (en `contracts/`) + `forge test --match-path 'test/integration/*' --fork-url $LOCAL_RPC_URL`.
 - [ ] integración anterior sigue funcionando: `pnpm ci:local`.
 - [ ] documentación actualizada: `node scripts/check-docs.mjs`.
 - [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
@@ -1580,7 +1580,7 @@ Checks del preflight:
 **Security checks:**
 
 - [ ] **P06.SEC** — Slither; verificación de que no existe ninguna ruta de `transferFrom` con payer ≠ `msg.sender`.
-      Verificación: `slither . --config-file slither.config.json --fail-high --fail-medium` (en `contracts/`) + `forge test --match-path 'test/fork/Swap*.t.sol' --fork-url $LOCAL_RPC_URL`.
+      Verificación: `slither . --config-file slither.config.json --fail-medium` (en `contracts/`) + `forge test --match-path 'test/fork/Swap*.t.sol' --fork-url $LOCAL_RPC_URL`.
 
 **Commits:** `feat(swap): add restricted usdc usdt swap executor`.
 
@@ -1588,7 +1588,7 @@ Checks del preflight:
 
 - [ ] build pasa: `forge build --sizes`.
 - [ ] tests pasan: `forge test --fork-url $LOCAL_RPC_URL`.
-- [ ] security tests pasan: `slither . --config-file slither.config.json --fail-high --fail-medium` (en `contracts/`) + `forge test --match-path 'test/fork/Swap*.t.sol' --fork-url $LOCAL_RPC_URL`.
+- [ ] security tests pasan: `slither . --config-file slither.config.json --fail-medium` (en `contracts/`) + `forge test --match-path 'test/fork/Swap*.t.sol' --fork-url $LOCAL_RPC_URL`.
 - [ ] integración anterior sigue funcionando: `pnpm ci:local`.
 - [ ] documentación actualizada: `node scripts/check-docs.mjs`.
 - [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
@@ -1633,7 +1633,7 @@ Checks del preflight:
 - [ ] **P07.T03** — Cobertura: `forge coverage --report lcov --report summary` ≥ 95 % líneas y ≥ 90 % ramas en `src/`.
       Verificación: `forge coverage --report summary` cumple ≥ 95 % líneas y ≥ 90 % ramas en `src/` (el script de CI falla si no).
 - [ ] **P07.T04** — Slither 0.11.6 con `slither.config.json` (excluye `lib/` y `test/`); cada hallazgo resuelto o justificado en `docs/security/slither-triage.md` (no `disable` sin justificación).
-      Verificación: `slither . --config-file slither.config.json --fail-high --fail-medium` y `docs/security/slither-triage.md` sin hallazgos abiertos.
+      Verificación: `slither . --config-file slither.config.json --fail-medium` y `docs/security/slither-triage.md` sin hallazgos abiertos.
 - [ ] **P07.T05** — Vectores cruzados `test/vectors/*.json` (SafeTxHash por tipo de operación, calldata, firmas EIP-712 de ejemplo con claves de test, direcciones CREATE2 predichas, typed data de `CancelRotation`) + `pnpm`-agnóstico: script `contracts/script/export-vectors.sh`.
       Verificación: `bash script/export-vectors.sh && git diff --exit-code test/vectors` (regenerar no produce cambios).
 - [ ] **P07.T06** — Export de ABIs (`contracts/script/export-abis.sh`) a `contracts/out-abi/*.json`; cada consumidor (backend, signer, wallet, recovery) los copia a su propio directorio en su fase con check de igualdad en CI.
@@ -1660,7 +1660,7 @@ Checks del preflight:
 **Security checks:**
 
 - [ ] **P07.SEC** — Slither + Semgrep (reglas Solidity) sin hallazgos abiertos.
-      Verificación: `slither . --config-file slither.config.json --fail-high --fail-medium` (en `contracts/`) + `bash ci/scripts/ci-security.sh` (Semgrep Solidity) + suite adversarial.
+      Verificación: `slither . --config-file slither.config.json --fail-medium` (en `contracts/`) + `bash ci/scripts/ci-security.sh` (Semgrep Solidity) + suite adversarial.
 
 **Commits:** `test(security): add wallet invariants and adversarial tests`, `chore(contracts): add deterministic local deploy and seed`.
 
@@ -1668,7 +1668,7 @@ Checks del preflight:
 
 - [ ] build pasa: `forge build --sizes`.
 - [ ] tests pasan: `POLICY_MODE=restricted forge test --profile ci && POLICY_MODE=bootstrap forge test --profile ci`.
-- [ ] security tests pasan: `slither . --config-file slither.config.json --fail-high --fail-medium` (en `contracts/`) + `bash ci/scripts/ci-security.sh` (Semgrep Solidity) + suite adversarial.
+- [ ] security tests pasan: `slither . --config-file slither.config.json --fail-medium` (en `contracts/`) + `bash ci/scripts/ci-security.sh` (Semgrep Solidity) + suite adversarial.
 - [ ] integración anterior sigue funcionando: `pnpm preflight && pnpm ci:local`.
 - [ ] documentación actualizada: `node scripts/check-docs.mjs`.
 - [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
@@ -3290,7 +3290,8 @@ Agregar una fila por sesión de trabajo, por cada CHECKPOINT y ante cualquier bl
 | 2026-10-17 | P01 — Fundaciones del repositorio y toolchain | Completado | `df9f6bf` `docs(wallet): add architecture decision records and threat model`, `f9d4560` `chore(wallet): pin toolchain versions and add wordlist v1` | 32 ADRs, `THREAT_MODEL.md` v1, `docs/VERSIONS.md` (sin rangos; `versions-doc.test.mjs` lo contrasta con `versions.json`), estructura de §5.2 con README por carpeta, `.editorconfig`, `.gitattributes`, `.gitleaks.toml` (reglas por defecto + propias; direcciones EVM públicas en allowlist) y hook pre-commit instalado por `bootstrap hook` (probado: bloquea un secreto de prueba y deja pasar lo limpio), wordlist MTW-WORDLIST-V1 verificada (65.536 palabras, SHA-256 `c2bf4e5b…`, licencia MIT), política de supply chain de pnpm en `pnpm-workspace.yaml` (pnpm 12 ya no lee esos settings de `.npmrc`). P01.MAN y P01.T07 (2026-10-17, agente revisor independiente): primera revisión **no aprobado** (3 altos: GUARD_UPGRADE ausente en ADR-005 y ADR-025, topología de host único en ADR-022; 5 medios; 7 bajos); segunda revisión **aprobado con observaciones** (1 medio, 6 bajos), todas corregidas; CF-01 no bloqueante y CF-06 aprobado confirmados. Push protection de GitHub bloqueó un push por fixtures con formato de credencial: los tests arman esos valores en tiempo de ejecución. |
 | 2026-10-17 | P02 — CI base | Completado | `8efad40` `ci(wallet): add per-domain ci scripts and workflows` | Scripts `wallet/ci/scripts/ci-<área>.sh` (SKIP mientras el proyecto no existe), `ci-security.sh` (gitleaks sobre la historia completa, OSV-Scanner, `pnpm audit --prod`, Semgrep con reglas de registry y propias, zizmor), gate de cobertura de contratos, build reproducible en dos jobs y `pnpm ci:local` en verde (árbol limpio del commit). Nueve workflows: los ocho del planner más `wallet-ci-gate`, único check requerido de `main`, que espera los workflows de las áreas tocadas (un check requerido con filtro `paths` quedaría pendiente para siempre en PRs que no tocan `wallet/`). Acciones fijadas por SHA, `permissions: contents: read`, sin `pull_request_target`, checkout sin credenciales persistidas; zizmor sin hallazgos high/medium (sólo 10 sugerencias low de sintaxis `$/`). Environments por área con sus secrets y `wallet-staging`/`wallet-production` restringidos a tags `wallet-v*`; ruleset que protege los tags `wallet-v*` (bypass sólo admin); protección de `main`: check `wallet-ci-gate`, PR obligatorio, commits firmados, incluye administradores, sin force push ni borrado. Cambio respecto del planner: el repositorio es de un usuario con un único colaborador, así que CODEOWNERS apunta a `@DigiCris` por dominio y la protección no exige la aprobación de un code owner (GitHub no permite aprobar el PR propio y bloquearía todo merge); se activa al sumar un segundo revisor (`docs/CI.md`). P02.MAN (2026-10-17, agente, `bash ci/github/apply-settings.sh verify`): secretos separados por Environment, `wallet-production` y `wallet-staging` sólo con tags `wallet-v*`, secrets de CI presentes. |
 | 2026-10-17 | CHECKPOINT P02 | Completado | `8efad40` | Workflows del push en verde en GitHub (wallet-security con `docs` y `security`, wallet-contracts, wallet-backend, wallet-signer, wallet-frontend-wallet, wallet-frontend-recovery, wallet-repro-build). P02.T03: PR de prueba #1 (rama temporal que sólo tocaba `wallet/frontend/wallet/`, contra el branch de trabajo) disparó únicamente wallet-frontend-wallet, wallet-repro-build y wallet-security (wallet-e2e omitido por no tener label); PR cerrado sin merge y rama borrada. |
-| 2026-10-17 | P03 — Base fork y contratos externos | Completado | commit `feat(contracts): pin external base dependencies and fork verification` | `config/chains/base-mainnet.json` completado (`verifiedAt` y `notes` por contrato, fuentes de Uniswap fijadas por commit de `Uniswap/sdks` porque la página de deployments de v3 ahora redirige a GitHub); proyecto Foundry con solc 0.8.37, EVM `cancun`, optimizer 200 sin `via_ir`, perfiles `default`/`ci`/`fork` y dependencias Soldeer verificadas byte a byte contra las fuentes oficiales (`script/verify-deps.sh`: forge-std 32, OpenZeppelin 226 y v3-core 29 archivos `.sol` idénticos; Safe en `dc437e8`); `test/fork/ExternalContracts.t.sol` (hash del bloque, 16 codehashes, Safe 1.5.0, `proxyCreationCode`, USDC/USDT, pool) en verde; `scripts/verify-external` (cast, en paralelo, sin imprimir la URL del RPC) integrado como PF-15 (un codehash alterado en una copia del JSON → FALLA, exit 1); `docs/EXTERNAL_CONTRACTS.md` con `check-external-docs.mjs`; `docs/runbooks/fork.md` con la advertencia de Denim. P03.MAN (2026-10-17, agente): cada dirección contrastada contra su fuente oficial: Safe (safe-deployments v1.5.0, `canonical` en 8453), USDC (Circle), USDT (Superchain token list), Uniswap v3 factory/QuoterV2/SwapRouter02 (`sdk-core`), UniversalRouter 2.1.2 (`universal-router-sdk`, 8453), Permit2 (`permit2-sdk`), v4 (deployments oficiales y `sdk-core`); el pool se deriva con `getPool` en el fork. Con el Anvil local, los fork tests se corren con `--threads 1`. |
+| 2026-10-17 | P03 — Base fork y contratos externos | Completado | `901d6dd` `feat(contracts): pin external base dependencies and fork verification` | `config/chains/base-mainnet.json` completado (`verifiedAt` y `notes` por contrato, fuentes de Uniswap fijadas por commit de `Uniswap/sdks` porque la página de deployments de v3 ahora redirige a GitHub); proyecto Foundry con solc 0.8.37, EVM `cancun`, optimizer 200 sin `via_ir`, perfiles `default`/`ci`/`fork` y dependencias Soldeer verificadas byte a byte contra las fuentes oficiales (`script/verify-deps.sh`: forge-std 32, OpenZeppelin 226 y v3-core 29 archivos `.sol` idénticos; Safe en `dc437e8`); `test/fork/ExternalContracts.t.sol` (hash del bloque, 16 codehashes, Safe 1.5.0, `proxyCreationCode`, USDC/USDT, pool) en verde; `scripts/verify-external` (cast, en paralelo, sin imprimir la URL del RPC) integrado como PF-15 (un codehash alterado en una copia del JSON → FALLA, exit 1); `docs/EXTERNAL_CONTRACTS.md` con `check-external-docs.mjs`; `docs/runbooks/fork.md` con la advertencia de Denim. P03.MAN (2026-10-17, agente): cada dirección contrastada contra su fuente oficial: Safe (safe-deployments v1.5.0, `canonical` en 8453), USDC (Circle), USDT (Superchain token list), Uniswap v3 factory/QuoterV2/SwapRouter02 (`sdk-core`), UniversalRouter 2.1.2 (`universal-router-sdk`, 8453), Permit2 (`permit2-sdk`), v4 (deployments oficiales y `sdk-core`); el pool se deriva con `getPool` en el fork. Con el Anvil local, los fork tests se corren con `--threads 1`. |
+| 2026-10-17 | P04 — Contratos I | Completado | commit `feat(contracts): add policy registry, destination whitelist and deny-all module guard` | Librerías (`SafeSignatureParser`, `CallDecoder`, `Roles`, `OpTypes`), interfaces, `PolicyRegistry` (modos, timelock de 24 h, guardianes, revocación inmediata, sucesores [C-POL-06]), `DestinationWhitelist` y `DenyAllModuleGuard`. Tests: unitarios y fuzz de cada contrato; P04.T01 compara los selectores con la interfaz oficial de Safe (commit fijado) y con el bytecode desplegado; P04.T02 diferencial del parser contra `checkNSignatures` de una Safe real del fork (10.000 runs en el perfil `ci`, más un diferencial de layout contra `SignatureDecoder`); P04.T03 recorre cada selector de autoridad económica de [C-DEC-03] (con selectores de las interfaces de OpenZeppelin donde existen); P04.T06 en fork: Safe 1.5.0 acepta `setModuleGuard(DenyAll)` y toda ejecución por módulo revierte. Cobertura de `src/`: 100 % de líneas y ramas en PolicyRegistry, CallDecoder, SafeSignatureParser, Roles, DestinationWhitelist y DenyAll (`forge coverage` no atribuye las ramas de modificadores inlineados a todas sus copias: se testea el revert de cada función protegida). Slither: sin High ni Medium (`docs/security/slither-triage.md`). Cambio respecto del planner: Slither 0.11.6 no admite `--fail-high` junto con `--fail-medium`; se usa `--fail-medium`, que ya falla con High (planner, `ci-contracts.sh` y `CI.md` actualizados). P04.MAN (2026-10-17, agente): NatSpec revisada; se documentaron las 22 funciones externas de `PolicyRegistry` que no la tenían; cada cambio de estado emite su evento (altas, activaciones, cancelaciones, revocaciones, modo). |
 
 ### 13.1 Fuera del planner: despliegue final y servicios
 
