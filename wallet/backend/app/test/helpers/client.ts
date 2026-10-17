@@ -31,9 +31,18 @@ export function setCookies(response: LightMyRequestResponse): ParsedCookie[] {
   return list.map(parseSetCookie);
 }
 
+export interface SentRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: string | undefined;
+}
+
 export class TestClient {
   readonly jar = new Map<string, string>();
   csrf: string | null = null;
+  /** Todo lo que este cliente mandó al servidor (inspección de payloads en los tests de seguridad). */
+  readonly sent: SentRequest[] = [];
   readonly #app: ApiInstance;
   readonly origin: string;
   readonly remoteAddress: string;
@@ -54,8 +63,13 @@ export class TestClient {
       const maxAge = cookie.attributes['max-age'];
       const expires = cookie.attributes.expires;
       const expired = maxAge === '0' || (typeof expires === 'string' && new Date(expires).getTime() < Date.now());
-      if (expired || cookie.value === '') this.jar.delete(cookie.name);
-      else this.jar.set(cookie.name, cookie.value);
+      if (expired || cookie.value === '') {
+        this.jar.delete(cookie.name);
+        // Sin sesión, el token CSRF atado a ella ya no sirve: el próximo request no-GET pide uno nuevo.
+        if (cookie.name.endsWith('_sid')) this.csrf = null;
+      } else {
+        this.jar.set(cookie.name, cookie.value);
+      }
     }
   }
 
@@ -84,12 +98,14 @@ export class TestClient {
     if (body !== undefined) headers['content-type'] = 'application/json';
     // Los headers explícitos del test reemplazan a los del navegador (p. ej. un Origin ajeno o un CSRF adulterado).
     Object.assign(headers, extraHeaders);
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    this.sent.push({ method, url, headers: { ...headers }, body: payload });
     const response = await this.#app.inject({
       method,
       url,
       headers,
       remoteAddress: this.remoteAddress,
-      ...(body === undefined ? {} : { payload: JSON.stringify(body) }),
+      ...(payload === undefined ? {} : { payload }),
     });
     this.absorb(response);
     if (response.statusCode < 300) {

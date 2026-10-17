@@ -5,7 +5,9 @@ planner). P08 deja las fundaciones: configuración validada, modelo de datos com
 transaccional, cliente RPC de quórum, logs con redacción, métricas, health, API con dos listeners, OpenAPI 3.1,
 errores RFC 9457, idempotencia, rate limiting y audit log append-only con cadena HMAC. P09 agrega la cuenta
 centralizada [B-AUTH] (registro y verificación de email, login, sesiones, CSRF, olvido y reset de contraseña, fuerza
-bruta y señales de riesgo, TOTP) y el email transaccional [B-MAIL] (Mailgun o SMTP/Mailpit por el outbox).
+bruta y señales de riesgo, TOTP) y el email transaccional [B-MAIL] (Mailgun o SMTP/Mailpit por el outbox). P10, la
+PlatformSession [B-PSES]: desbloqueo de la Wallet por OPAQUE con AuthSecret_U, step-up con email OTP (+ TOTP), tokens
+JWS EdDSA de 15 min atados a una session key P-256 y requests críticos firmados.
 
 ## Requisitos
 
@@ -41,6 +43,8 @@ Mailpit (`EMAIL_PROVIDER=smtp`, `SMTP_HOST`/`SMTP_PORT` del stack) y se leen en 
 | `pnpm db:migrate` · `pnpm db:status [--check]`                           | migraciones (sin "down", expand/contract)                                         |
 | `pnpm db:backup [--out f]` · `pnpm db:restore --file f --confirm <base>` | backup lógico local (staging/producción: pgBackRest, ADR-031)                     |
 | `pnpm audit:verify`                                                      | recalcula la cadena HMAC de `audit_events`                                        |
+| `pnpm opaque:setup`                                                      | genera `OPAQUE_SERVER_SETUP` en `wallet/.env` (sólo local; nunca reemplaza uno)   |
+| `pnpm dev:session [--method --path --body] [--print]`                    | material de PlatformSession para Swagger (sólo local, ver abajo)                  |
 | `pnpm start:api` · `pnpm start:worker`                                   | entrypoints de producción sobre `dist/`                                           |
 
 ## Estructura
@@ -55,12 +59,15 @@ src/
   auth/          account-service.ts (reglas de cuenta), password.ts, common-passwords.ts, otp.ts, challenges.ts,
                  sessions.ts, csrf.ts, risk.ts (fuerza bruta y señales), totp.ts
   email/         provider.ts, mailgun.ts, smtp.ts, templates.ts (19 plantillas), format.ts, email-outbox.ts
+  platform-session/ opaque.ts (registro y login OPAQUE), unlock.ts (desbloqueo → OPERATIONS), step-up.ts, token.ts
+                 (JWS EdDSA), sessions.ts (filas y revocación), request-signature.ts (requests críticos y envelope de
+                 envío), plugin.ts (Fastify), keys.ts (session keys P-256), auth-secret.ts (derivación del cliente)
   queue/         queues.ts, outbox-dispatcher.ts, outbox-consumer.ts, redis.ts
   chain/         rpc-quorum.ts, safe-tx.ts, eip712.ts, signatures.ts, create2.ts, decoders/, abis/ (generados)
   observability/ logger.ts, redaction.ts, metrics.ts
   api/           server.ts (dos listeners), errors.ts (RFC 9457), health.ts, routes/ (health, v1/auth, v1/users,
                  v1/sessions), plugins/ (auth y CSRF, rate limit, idempotencia, OpenAPI, seguridad)
-  cli/           db.ts, audit-verify.ts
+  cli/           db.ts, audit-verify.ts, opaque-setup.ts, dev-session.ts
   services.ts    armado de los servicios de cuenta (proceso `api` y tests)
   main.ts        entrypoint `api` | `worker`
 data/            lista vendorizada de passwords comunes (SecLists, SHA-256 fijado)
@@ -121,6 +128,25 @@ test/            unit, integración (Testcontainers + Anvil), API (inject), segu
   `APP_FIELD_ENCRYPTION_KEY` (AAD = referencia); el worker descifra, renderiza y envía. `Message-ID =
 <referencia@dominio>` (rastreo en el proveedor y en la casilla). La cola `email` reintenta 8 veces desde 5 s
   (≈ 10,5 min); un rechazo definitivo (SMTP 5xx, Mailgun 4xx) no se reintenta; un código ya vencido no se envía.
+- **PlatformSession [B-PSES]**: segunda capa, sobre la sesión de cuenta. El desbloqueo de la Wallet es OPAQUE (RFC 9807)
+  con la entrada hex(AuthSecret_U) que el navegador deriva de la Password U: el servidor nunca la ve. El estado del
+  login vive 60 s en Valkey (un solo uso) y el cliente ata su session key P-256 con
+  `HMAC(clave de sesión OPAQUE, thumbprint ‖ loginAttemptId)`. El step-up (email OTP + TOTP) da los scopes restringidos,
+  cada uno en su listener, y rota la sesión de cuenta. El token es un JWS EdDSA (header y payload JCS, `kid` =
+  thumbprint de la clave del emisor) con su fila en `platform_sessions`: revocar, cerrar sesión o restablecer la
+  contraseña lo invalidan. Las rutas declaran `config.platformSession` (scopes y si son críticas); las críticas exigen
+  `X-Session-Signature` sobre `MTW-REQ-V1` con timestamp ±60 s y nonce único (Valkey). Las fallas de esta capa son 403
+  con código propio (la sesión de cuenta sigue vigente). Formatos con vectores en `contracts/test/vectors/wire`.
+
+## PlatformSession en local (`dev:session`)
+
+Sin frontend, `pnpm dev:session` hace lo mismo que el navegador contra la API local: la primera vez crea el usuario de
+desarrollo atado a la Safe del seed local (`pnpm deploy-local && pnpm seed-local`), y en cada corrida inicia sesión,
+desbloquea por OPAQUE si hace falta y firma un request (por defecto `POST /api/v1/platform-sessions/check` con `{}`).
+Contraseñas, session key y headers quedan en `wallet/.secrets/` (0600, fuera de git); los headers se leen de
+`wallet/.secrets/dev-session-headers.json` (con `--print` también se muestran). En Swagger: "Authorize" con
+`platformSession`, `sessionSignature` y `csrfToken`, y los campos `X-Session-Timestamp` y `X-Session-Nonce` de la
+operación; la firma vale 60 s y una sola vez. Con `APP_ENV` distinto de `local`, el comando se niega.
 
 ## Tests
 

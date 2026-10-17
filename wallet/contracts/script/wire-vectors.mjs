@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Vectores de los formatos de intercambio [W-02]..[W-07] (§7.15 del planner, P07.T05) en test/vectors/wire/*.json,
+// Vectores de los formatos de intercambio [W-02]..[W-07] y [B-PSES-02/05/06] (§7.15 del planner, P07.T05; envelope de
+// envío y binding OPAQUE agregados en P10) en test/vectors/wire/*.json,
 // sólo con node:crypto (Node 26: Argon2id, HKDF, AES-GCM, Ed25519, P-256, Keccak-256 y secp256k1 de OpenSSL).
 // [W-01] (EIP-712 con secp256k1 y id de recuperación) lo genera test/fork/Vectors.t.sol.
 //
@@ -113,6 +114,9 @@ for (const [k, role] of [[U, 'user'], [R, 'recovery'], [S, 'executor']]) {
 const platformId = 'mtw';
 const userId = '4f1c2d9e-6b7a-4c3d-9e8f-0a1b2c3d4e5f';
 const walletId = '7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5';
+// Ids de PlatformSession y de la sesión de cuenta padre (UUID, como en platform_sessions/sessions).
+const sessionId = '5c1f0e2d-3b4a-4c5d-9e6f-7a8b9c0d1e2f';
+const accountSessionId = '8e7d6c5b-4a39-4b28-8c17-06f5e4d3c2b1';
 const sessionKey = p256FromScalar(sha256(utf8('mtw-vector-session-key')));
 const enrollmentKey = p256FromScalar(sha256(utf8('mtw-vector-enrollment-key')));
 const issuer = ed25519FromSeed(sha256(utf8('mtw-vector-session-issuer')));
@@ -142,7 +146,7 @@ function p256Vectors() {
     sha256(utf8(body)).toString('hex'),
     '1792189400',
     'b3f1c9a2d4e5f60718293a4b5c6d7e8f',
-    'sess_5c1f0e2d3b4a',
+    sessionId,
   ].join('\n');
   return {
     format: '[W-02] ECDSA P-256 (WebCrypto, SHA-256, IEEE P1363 r‖s de 64 bytes en base64url) sobre los bytes UTF-8 del mensaje',
@@ -162,6 +166,46 @@ function p256Vectors() {
       jwkThumbprint: thumbprint(sessionKey.publicJwk),
       signature: p256Sign(sessionKey, utf8(request), prev?.criticalRequest?.signature),
     },
+    // [B-PSES-06]: envelope de envío de una firma U/R, firmado por la session key (submittedAt en segundos Unix, como
+    // issuedAt/expiresAt del token).
+    submissionEnvelope: {
+      object: submissionEnvelope,
+      canonical: submissionCanonical,
+      sha256: hex(sha256(utf8(submissionCanonical))),
+      publicJwk: sessionKey.publicJwk,
+      jwkThumbprint: thumbprint(sessionKey.publicJwk),
+      signature: p256Sign(sessionKey, utf8(submissionCanonical), prev?.submissionEnvelope?.signature),
+    },
+  };
+}
+
+const submissionEnvelope = {
+  operationId: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d',
+  safeTxHash: safeTx.operations[1].safeTxHash,
+  sessionId,
+  submittedAt: 1792189500,
+};
+const submissionCanonical = `MTW-SUBMIT-V1\n${jcs(submissionEnvelope)}`;
+
+// ---------------------------------------------------------------------------------------------
+// [B-PSES-02] Binding de la session key al login OPAQUE
+
+function sessionBindingVectors() {
+  // Clave de sesión OPAQUE (64 bytes) fija para el vector; el cliente la obtiene de finishLogin en base64url.
+  const opaqueSessionKey = sha256(utf8('mtw-vector-opaque-session-key-1'));
+  const opaqueSessionKey64 = Buffer.concat([opaqueSessionKey, sha256(utf8('mtw-vector-opaque-session-key-2'))]);
+  const loginAttemptId = '0f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b';
+  const jwkThumbprint = thumbprint(sessionKey.publicJwk);
+  const message = `${jwkThumbprint}${loginAttemptId}`;
+  return {
+    format:
+      '[B-PSES-02] binding = base64url(HMAC-SHA256(clave = bytes de opaqueSessionKey, mensaje = UTF-8 de jwkThumbprint ‖ loginAttemptId)); jwkThumbprint RFC 7638 de la session key P-256',
+    opaqueSessionKey: b64url(opaqueSessionKey64),
+    sessionPublicJwk: sessionKey.publicJwk,
+    jwkThumbprint,
+    loginAttemptId,
+    message,
+    binding: b64url(crypto.createHmac('sha256', opaqueSessionKey64).update(utf8(message)).digest()),
   };
 }
 
@@ -171,15 +215,16 @@ function p256Vectors() {
 function jwsVectors() {
   const platformSession = {
     userId,
+    walletId,
     safe: system.safe,
     platformId,
     sessionPublicKey: sessionKey.publicJwk,
-    sessionId: 'sess_5c1f0e2d3b4a',
+    sessionId,
     issuedAt: 1792189347,
     expiresAt: 1792190247,
     scope: 'OPERATIONS',
     authMethod: 'OPAQUE_U',
-    accountSessionId: 'acct_8e7d6c5b4a39',
+    accountSessionId,
     aud: ['mtw-api', 'mtw-signer'],
   };
   const challenge = {
@@ -406,7 +451,7 @@ function assert(cond, msg) {
 
 function selfTest(o) {
   const p256Key = (jwk) => crypto.createPublicKey({ key: jwk, format: 'jwk' });
-  for (const name of ['enrollment', 'criticalRequest']) {
+  for (const name of ['enrollment', 'criticalRequest', 'submissionEnvelope']) {
     const v = o['p256.json'][name];
     const ok = crypto.verify('sha256', utf8(v.canonical), { key: p256Key(v.publicJwk), dsaEncoding: 'ieee-p1363' }, Buffer.from(v.signature, 'base64url'));
     assert(ok, `firma P-256 de ${name}`);
@@ -416,6 +461,12 @@ function selfTest(o) {
     assert(crypto.verify(null, utf8(`${h}.${p}`), crypto.createPublicKey({ key: t.publicJwk, format: 'jwk' }), Buffer.from(sig, 'base64url')), `JWS ${t.name}`);
     assert(jcs(JSON.parse(Buffer.from(p, 'base64url').toString('utf8'))) === jcs(t.claims), `payload JWS ${t.name}`);
   }
+  const sb = o['session-binding.json'];
+  const expectedBinding = crypto
+    .createHmac('sha256', Buffer.from(sb.opaqueSessionKey, 'base64url'))
+    .update(utf8(`${thumbprint(sb.sessionPublicJwk)}${sb.loginAttemptId}`))
+    .digest('base64url');
+  assert(sb.binding === expectedBinding && sb.message === `${sb.jwkThumbprint}${sb.loginAttemptId}`, 'binding OPAQUE');
   const m = o['release-manifest.json'];
   assert(crypto.verify(null, utf8(m.manifestJson), crypto.createPublicKey({ key: m.publicJwk, format: 'jwk' }), Buffer.from(m.signatureBase64, 'base64')), 'firma del manifest');
   const sv = o['sovereign.json'];
@@ -453,6 +504,7 @@ const outputs = {
   'envelope.json': envelopeVectors(),
   'backup-words.json': backupWordsVectors(),
   'scopes.json': scopesVectors(),
+  'session-binding.json': sessionBindingVectors(),
 };
 
 selfTest(outputs);

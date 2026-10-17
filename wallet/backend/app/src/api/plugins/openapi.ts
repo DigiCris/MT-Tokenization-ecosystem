@@ -96,6 +96,21 @@ export async function registerOpenApi(app: AppInstance, options: OpenApiOptions)
             name: 'X-CSRF-Token',
             description: 'Token de GET /api/v1/auth/csrf; obligatorio en todo método no-GET.',
           },
+          platformSession: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-Platform-Session',
+            description: 'PlatformSession (JWS EdDSA de 15 min) del desbloqueo OPAQUE o del step-up.',
+          },
+          sessionSignature: {
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-Session-Signature',
+            description:
+              'Firma P-256 (IEEE P1363, base64url) de MTW-REQ-V1\\n{método}\\n{ruta}\\n{sha256 del body}\\n{timestamp}\\n{nonce}\\n{sessionId}, ' +
+              'con X-Session-Timestamp (segundos Unix, ±60 s) y X-Session-Nonce (16 bytes hex, un solo uso). En local, ' +
+              '`pnpm dev:session` emite los headers de un request.',
+          },
         },
       },
     },

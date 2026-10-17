@@ -13,7 +13,7 @@ import {
   loadMigrationConfig,
   SECRET_VARS,
 } from '../../src/config/env.ts';
-import { localEnv, randomKey32 } from '../helpers/config.ts';
+import { localEnv, randomKey32, testOpaqueServerSetup } from '../helpers/config.ts';
 
 function configError(fn: () => unknown): ConfigError {
   try {
@@ -55,6 +55,7 @@ function productionEnv(overrides: Record<string, string | undefined> = {}): Reco
     PASSWORD_PEPPER_V1: randomKey32(),
     SESSION_ISSUER_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64'),
     EMAIL_PROVIDER_API_KEY: randomBytes(24).toString('hex'),
+    OPAQUE_SERVER_SETUP: testOpaqueServerSetup(),
   };
   const env: Record<string, string | undefined> = {
     APP_ENV: 'production',
@@ -93,6 +94,15 @@ describe('configuración local', () => {
       const value = env[name];
       if (value) expect(serialized).not.toContain(value);
     }
+  });
+
+  it('OPAQUE_SERVER_SETUP: obligatorio y con el formato de un ServerSetup', () => {
+    const missing = configError(() => loadConfig({ env: localEnv({ OPAQUE_SERVER_SETUP: undefined }), envFile: null }));
+    expect(missing.problems.some((p) => p.startsWith('OPAQUE_SERVER_SETUP: falta'))).toBe(true);
+    const short = configError(() => loadConfig({ env: localEnv({ OPAQUE_SERVER_SETUP: 'abc' }), envFile: null }));
+    expect(short.problems).toContain(
+      'OPAQUE_SERVER_SETUP: debe ser un ServerSetup de OPAQUE (128 bytes en base64url, pnpm opaque:setup)',
+    );
   });
 
   it('falla si falta una variable obligatoria', () => {

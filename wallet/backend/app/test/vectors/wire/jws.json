@@ -11,6 +11,7 @@
       },
       "claims": {
         "userId": "4f1c2d9e-6b7a-4c3d-9e8f-0a1b2c3d4e5f",
+        "walletId": "7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5",
         "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
         "platformId": "mtw",
         "sessionPublicKey": {
@@ -19,18 +20,18 @@
           "x": "r7c_mT9ccw9bwvO39H2siBRdwp5MGdfam9GqBplvmhQ",
           "y": "8hxYIz89m7X_OLOKUosW6_7NhKspXUySAYIIEP-lyBU"
         },
-        "sessionId": "sess_5c1f0e2d3b4a",
+        "sessionId": "5c1f0e2d-3b4a-4c5d-9e6f-7a8b9c0d1e2f",
         "issuedAt": 1792189347,
         "expiresAt": 1792190247,
         "scope": "OPERATIONS",
         "authMethod": "OPAQUE_U",
-        "accountSessionId": "acct_8e7d6c5b4a39",
+        "accountSessionId": "8e7d6c5b-4a39-4b28-8c17-06f5e4d3c2b1",
         "aud": [
           "mtw-api",
           "mtw-signer"
         ]
       },
-      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6Im10dy1zZXNzaW9uLWlzc3Vlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJhY2NvdW50U2Vzc2lvbklkIjoiYWNjdF84ZTdkNmM1YjRhMzkiLCJhdWQiOlsibXR3LWFwaSIsIm10dy1zaWduZXIiXSwiYXV0aE1ldGhvZCI6Ik9QQVFVRV9VIiwiZXhwaXJlc0F0IjoxNzkyMTkwMjQ3LCJpc3N1ZWRBdCI6MTc5MjE4OTM0NywicGxhdGZvcm1JZCI6Im10dyIsInNhZmUiOiIweDJGZmE4NTNBOTIxM0M5MkExNjI5NUM1NUZBNkE1YjI3QTY0OTg2ODgiLCJzY29wZSI6Ik9QRVJBVElPTlMiLCJzZXNzaW9uSWQiOiJzZXNzXzVjMWYwZTJkM2I0YSIsInNlc3Npb25QdWJsaWNLZXkiOnsiY3J2IjoiUC0yNTYiLCJrdHkiOiJFQyIsIngiOiJyN2NfbVQ5Y2N3OWJ3dk8zOUgyc2lCUmR3cDVNR2RmYW05R3FCcGx2bWhRIiwieSI6IjhoeFlJejg5bTdYX09MT0tVb3NXNl83TmhLc3BYVXlTQVlJSUVQLWx5QlUifSwidXNlcklkIjoiNGYxYzJkOWUtNmI3YS00YzNkLTllOGYtMGExYjJjM2Q0ZTVmIn0.qZKMf_yOcUQ5ARTPBm2QYm6ULs4xL9L_okiVSmabPqjqX-7nVDvWQ0hsXKwLxPrBdiRgilnGYqDm-nAaTP3-BA"
+      "jws": "eyJhbGciOiJFZERTQSIsImtpZCI6Im10dy1zZXNzaW9uLWlzc3Vlci10ZXN0LTEiLCJ0eXAiOiJKV1QifQ.eyJhY2NvdW50U2Vzc2lvbklkIjoiOGU3ZDZjNWItNGEzOS00YjI4LThjMTctMDZmNWU0ZDNjMmIxIiwiYXVkIjpbIm10dy1hcGkiLCJtdHctc2lnbmVyIl0sImF1dGhNZXRob2QiOiJPUEFRVUVfVSIsImV4cGlyZXNBdCI6MTc5MjE5MDI0NywiaXNzdWVkQXQiOjE3OTIxODkzNDcsInBsYXRmb3JtSWQiOiJtdHciLCJzYWZlIjoiMHgyRmZhODUzQTkyMTNDOTJBMTYyOTVDNTVGQTZBNWIyN0E2NDk4Njg4Iiwic2NvcGUiOiJPUEVSQVRJT05TIiwic2Vzc2lvbklkIjoiNWMxZjBlMmQtM2I0YS00YzVkLTllNmYtN2E4YjljMGQxZTJmIiwic2Vzc2lvblB1YmxpY0tleSI6eyJjcnYiOiJQLTI1NiIsImt0eSI6IkVDIiwieCI6InI3Y19tVDljY3c5Ynd2TzM5SDJzaUJSZHdwNU1HZGZhbTlHcUJwbHZtaFEiLCJ5IjoiOGh4WUl6ODltN1hfT0xPS1Vvc1c2XzdOaEtzcFhVeVNBWUlJRVAtbHlCVSJ9LCJ1c2VySWQiOiI0ZjFjMmQ5ZS02YjdhLTRjM2QtOWU4Zi0wYTFiMmMzZDRlNWYiLCJ3YWxsZXRJZCI6IjdkMmUzZjQwLTFhMmItNGM1ZC04ZTlmLWEwYjFjMmQzZTRmNSJ9.9B3CH1TI9-XBtNznI6VW3GYRXqvx263AW5m1XY8LzGEF7k_1dgHHYjWa1lPr-2TdToef4FO-aLlD0ta6-cpZCw"
     },
     {
       "name": "ChallengeCompletion",

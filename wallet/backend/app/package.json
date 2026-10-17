@@ -26,7 +26,9 @@
     "db:status": "node src/cli/db.ts status",
     "db:backup": "node src/cli/db.ts backup",
     "db:restore": "node src/cli/db.ts restore",
-    "audit:verify": "node src/cli/audit-verify.ts"
+    "audit:verify": "node src/cli/audit-verify.ts",
+    "opaque:setup": "node src/cli/opaque-setup.ts",
+    "dev:session": "node src/cli/dev-session.ts"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.3",

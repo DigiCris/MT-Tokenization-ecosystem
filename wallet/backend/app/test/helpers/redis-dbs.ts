@@ -20,4 +20,10 @@ export const REDIS_DBS = {
   realDeliveryLive: 20,
   riskSignals: 21,
   riskUnit: 22,
+  opaqueRegistration: 23,
+  opaqueLogin: 24,
+  stepUp: 25,
+  tokenScopes: 26,
+  requestSignature: 27,
+  platformSecurity: 28,
 } as const;

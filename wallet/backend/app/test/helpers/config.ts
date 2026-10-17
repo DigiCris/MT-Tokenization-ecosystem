@@ -1,7 +1,15 @@
 // Configuración de prueba construida con el loader real (loadConfig) a partir de variables generadas: secretos
 // aleatorios, base y Valkey de Testcontainers, RPC del fork.
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import * as opaque from '@serenity-kit/opaque';
 import { loadConfig, type AppConfig } from '../../src/config/env.ts';
+
+await opaque.ready;
+
+/** ServerSetup de OPAQUE nuevo (lo mismo que `pnpm opaque:setup`). */
+export function testOpaqueServerSetup(): string {
+  return opaque.server.createSetup();
+}
 
 export function randomKey32(): string {
   return randomBytes(32).toString('base64');
@@ -44,6 +52,7 @@ export function localEnv(overrides: Record<string, string | undefined> = {}): Re
     APP_FIELD_ENCRYPTION_KEY: randomKey32(),
     OTP_HMAC_KEY: randomKey32(),
     PASSWORD_PEPPER_V1: randomKey32(),
+    OPAQUE_SERVER_SETUP: testOpaqueServerSetup(),
     ...testIssuerKeys(),
     ...overrides,
   };

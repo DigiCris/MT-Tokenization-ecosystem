@@ -17,13 +17,13 @@ import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
 import type { ChallengeService } from './challenges.ts';
 import { passwordPolicyProblem, type PasswordHasher, type PasswordProblem } from './password.ts';
+import { verifySecondFactor } from './second-factor.ts';
 import { THROTTLE, type LoginRisk, type RiskSignal } from './risk.ts';
 import type { RevokeReason, SessionService } from './sessions.ts';
 import {
   base32Secret,
   generateRecoveryCodes,
   hashRecoveryCode,
-  matchRecoveryCode,
   newTotpSecret,
   openTotpSecret,
   sealTotpSecret,
@@ -363,7 +363,7 @@ export class AccountService {
     email: string,
     meta: RequestMeta,
     reason: string,
-    eventType: 'AUTH_LOGIN_FAILED' | 'TOTP_DISABLE_FAILED' = 'AUTH_LOGIN_FAILED',
+    eventType: 'AUTH_LOGIN_FAILED' | 'TOTP_DISABLE_FAILED' | 'STEP_UP_FAILED' = 'AUTH_LOGIN_FAILED',
   ): Promise<void> {
     const outcome = await this.#d.risk.recordFailure(this.#d.platformId, email, meta.ipKey);
     const failures = outcome.accountFailures;
@@ -415,47 +415,6 @@ export class AccountService {
     );
   }
 
-  async #checkSecondFactor(
-    trx: Transaction<Database>,
-    userId: string,
-    input: { totp?: string | undefined; recoveryCode?: string | undefined },
-  ): Promise<boolean> {
-    const factor = await trx
-      .selectFrom('totp_factors')
-      .select(['secret_ciphertext', 'last_used_step', 'recovery_code_hashes', 'enabled_at'])
-      .where('user_id', '=', userId)
-      .forUpdate()
-      .executeTakeFirst();
-    if (!factor || factor.enabled_at === null) return false;
-    if (input.totp !== undefined) {
-      const secret = openTotpSecret(this.#d.fieldKey, userId, factor.secret_ciphertext);
-      const check = verifyTotp(
-        secret,
-        input.totp,
-        factor.last_used_step === null ? null : BigInt(factor.last_used_step),
-      );
-      if (!check.ok) return false;
-      await trx
-        .updateTable('totp_factors')
-        .set({ last_used_step: check.step.toString() })
-        .where('user_id', '=', userId)
-        .execute();
-      return true;
-    }
-    if (input.recoveryCode !== undefined) {
-      const index = await matchRecoveryCode(input.recoveryCode, factor.recovery_code_hashes);
-      if (index < 0) return false;
-      const remaining = factor.recovery_code_hashes.filter((_, i) => i !== index);
-      await trx
-        .updateTable('totp_factors')
-        .set({ recovery_code_hashes: sql`${remaining}::text[]` })
-        .where('user_id', '=', userId)
-        .execute();
-      return true;
-    }
-    return false;
-  }
-
   async login(input: {
     email: string;
     password: string;
@@ -492,7 +451,7 @@ export class AccountService {
     const rehash = this.#d.hasher.needsRehash(user.pepper_version) ? await this.#d.hasher.hash(input.password) : null;
 
     const outcome = await this.#tx(async (trx) => {
-      if (user.totp_enabled && !(await this.#checkSecondFactor(trx, user.id, input))) {
+      if (user.totp_enabled && !(await verifySecondFactor(trx, this.#d.fieldKey, user.id, input))) {
         return { error: 'INVALID_TOTP' as const };
       }
       const updated = await trx
@@ -763,7 +722,8 @@ export class AccountService {
       throw new ApiError('REAUTH_FAILED');
     }
     const outcome = await this.#tx(async (trx) => {
-      if (!(await this.#checkSecondFactor(trx, user.id, input))) return { error: 'REAUTH_FAILED' as const };
+      if (!(await verifySecondFactor(trx, this.#d.fieldKey, user.id, input)))
+        return { error: 'REAUTH_FAILED' as const };
       await trx.deleteFrom('totp_factors').where('user_id', '=', user.id).execute();
       const updated = await trx
         .updateTable('users')
@@ -789,6 +749,48 @@ export class AccountService {
       throw new ApiError('REAUTH_FAILED');
     }
     return outcome.session;
+  }
+
+  // --- Re-autenticación (step-up de PlatformSession) ------------------------------------------------------------
+
+  /** Segundos de espera de fuerza bruta de la cuenta para esa IP (0 si puede intentar). */
+  async reauthRetryAfter(userId: string, meta: RequestMeta): Promise<number> {
+    const user = await this.#d.db
+      .selectFrom('users')
+      .select('email')
+      .where('id', '=', userId)
+      .executeTakeFirstOrThrow();
+    return this.#d.risk.retryAfter(this.#d.platformId, user.email, meta.ipKey);
+  }
+
+  /** Un segundo factor incorrecto fuera del login cuenta en el mismo presupuesto de fuerza bruta de la cuenta. */
+  async recordReauthFailure(userId: string, meta: RequestMeta, reason: string): Promise<void> {
+    const user = await this.#d.db
+      .selectFrom('users')
+      .select(USER_COLUMNS)
+      .where('id', '=', userId)
+      .executeTakeFirstOrThrow();
+    await this.#recordFailure(user, user.email, meta, reason, 'STEP_UP_FAILED');
+  }
+
+  /** Verifica el segundo factor del usuario dentro de la transacción del llamador (consume el código). */
+  verifySecondFactor(
+    trx: Transaction<Database>,
+    userId: string,
+    input: { totp?: string | undefined; recoveryCode?: string | undefined },
+  ): Promise<boolean> {
+    return verifySecondFactor(trx, this.#d.fieldKey, userId, input);
+  }
+
+  /** Rota la sesión de cuenta del request ([B-AUTH-04]: login, step-up, cambios de privilegio). */
+  async rotateSession(
+    trx: Transaction<Database>,
+    userId: string,
+    meta: RequestMeta,
+    reason: RevokeReason,
+  ): Promise<NewSession> {
+    const user = await trx.selectFrom('users').select(USER_COLUMNS).where('id', '=', userId).executeTakeFirstOrThrow();
+    return this.#startSession(trx, user, meta, reason);
   }
 
   // --- Sesiones y perfil -----------------------------------------------------------------------------------

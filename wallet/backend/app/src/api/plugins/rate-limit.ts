@@ -56,6 +56,11 @@ export const RATE_LIMIT_POLICIES = {
     { name: 'user', max: 10, windowMs: DAY, keys: ['user'] },
     { name: 'ip', max: 30, windowMs: DAY, keys: ['ip'] },
   ],
+  // Desbloqueo OPAQUE de la Wallet: cada inicio es un intento de Password U (con una incorrecta el cliente ni termina).
+  'opaque-login': [
+    { name: 'session', max: 5, windowMs: MINUTE, keys: ['session'] },
+    { name: 'user', max: 20, windowMs: HOUR, keys: ['user'] },
+  ],
   'recovery-sensitive': [
     { name: 'user', max: 3, windowMs: DAY, keys: ['user'] },
     { name: 'ip', max: 10, windowMs: DAY, keys: ['ip'] },

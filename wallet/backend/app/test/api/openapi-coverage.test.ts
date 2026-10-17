@@ -50,7 +50,7 @@ const walletOnly: RouteRegistrar = (app, client) => {
   );
 };
 
-/** Rutas de ambos listeners hasta P09: health, auth, users y sessions. */
+/** Rutas de ambos listeners hasta P10: health, auth, users, sessions y platform-sessions. */
 const ACCOUNT_PATHS = [
   '/api/v1/health',
   '/api/v1/health/live',
@@ -71,7 +71,13 @@ const ACCOUNT_PATHS = [
   '/api/v1/users/me',
   '/api/v1/sessions',
   '/api/v1/sessions/{id}',
+  '/api/v1/platform-sessions/step-up/start',
+  '/api/v1/platform-sessions/step-up/finish',
+  '/api/v1/platform-sessions/check',
+  '/api/v1/platform-sessions/{id}',
 ];
+/** El desbloqueo con U (OPAQUE) existe sólo en el listener de Wallet ([B-API]). */
+const WALLET_ONLY_PATHS = ['/api/v1/platform-sessions/opaque/start', '/api/v1/platform-sessions/opaque/finish'];
 /** Operaciones (método + ruta): GET y PATCH /users/me, GET y DELETE /sessions. */
 const ACCOUNT_OPERATIONS = ACCOUNT_PATHS.length + 2;
 
@@ -106,7 +112,9 @@ describe('spec OpenAPI por listener', () => {
     expect(doc.info.title).toBe(client === 'WALLET' ? 'MTW API — Wallet' : 'MTW API — Recovery');
     const paths = Object.keys(doc.paths).sort();
     const expected = [...ACCOUNT_PATHS].sort();
-    expect(paths).toEqual(client === 'WALLET' ? [...expected, '/api/v1/test/wallet-only'].sort() : expected);
+    expect(paths).toEqual(
+      client === 'WALLET' ? [...expected, ...WALLET_ONLY_PATHS, '/api/v1/test/wallet-only'].sort() : expected,
+    );
   });
 
   it.each(['WALLET', 'RECOVERY'] as const)(
@@ -144,7 +152,9 @@ describe('spec OpenAPI por listener', () => {
     const api = listeners[client]!.app.apiRoutes.map(
       (route) => `${route.method} ${route.url.replace(/:([A-Za-z0-9_]+)/g, '{$1}')}`,
     );
-    expect(api.length).toBe(client === 'WALLET' ? ACCOUNT_OPERATIONS + 1 : ACCOUNT_OPERATIONS);
+    expect(api.length).toBe(
+      client === 'WALLET' ? ACCOUNT_OPERATIONS + WALLET_ONLY_PATHS.length + 1 : ACCOUNT_OPERATIONS,
+    );
     for (const entry of api) expect(documented.has(entry), entry).toBe(true);
   });
 });

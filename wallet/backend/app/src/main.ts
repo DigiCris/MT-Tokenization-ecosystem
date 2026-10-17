@@ -83,7 +83,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       outboxLagSeconds: () => outbox.oldestUndispatchedAgeSeconds(),
       operationsByStatus: () => operationsByStatus(db),
     });
-    const { sessions, account } = createAccountServices({ config, db, redis, outbox, metrics, logger });
+    const services = await createAccountServices({ config, db, redis, outbox, metrics, logger });
     const api = await startApi({
       config,
       logger,
@@ -92,8 +92,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       redis,
       rpc,
       idempotency,
-      sessions,
-      account,
+      services,
       version: serviceVersion(),
     });
     closers.unshift(() => api.close());

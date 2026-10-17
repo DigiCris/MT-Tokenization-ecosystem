@@ -75,7 +75,7 @@ export async function buildTestListener(options: TestListenerOptions): Promise<T
   const ownRedis = options.redis === undefined;
   const redis = options.redis ?? testRedis();
   const rpc = options.rpc ?? unreachableRpc(logger, metrics);
-  const services = createAccountServices({
+  const services = await createAccountServices({
     config,
     db: options.db.app,
     redis,
@@ -95,8 +95,7 @@ export async function buildTestListener(options: TestListenerOptions): Promise<T
       redis,
       rpc,
       idempotency: new IdempotencyRepository(options.db.app),
-      sessions: services.sessions,
-      account: services.account,
+      services,
       version: '0.0.0-test',
     },
     options.extraRoutes,

@@ -44,6 +44,7 @@ export const SECRET_VARS = [
   'OTP_HMAC_KEY',
   'SESSION_ISSUER_PRIVATE_KEY',
   'EMAIL_PROVIDER_API_KEY',
+  'OPAQUE_SERVER_SETUP',
 ] as const;
 const PEPPER_VAR = /^PASSWORD_PEPPER_V([1-9][0-9]{0,2})$/;
 
@@ -182,6 +183,21 @@ const key32 = z.string({ error: 'falta' }).transform((v, ctx) => {
     return z.NEVER;
   }
   return new Secret(parsed.key);
+});
+
+/**
+ * OPAQUE_SERVER_SETUP [B-PSES-02]: ServerSetup de @serenity-kit/opaque (128 bytes en base64url, `pnpm opaque:setup`).
+ * El servicio OPAQUE además lo deserializa al arrancar (clave pública del servidor).
+ */
+const opaqueServerSetup = z.string({ error: 'falta (pnpm --dir backend/app opaque:setup)' }).transform((v, ctx) => {
+  if (isExampleValue(v) || !/^[A-Za-z0-9_-]+$/.test(v) || Buffer.from(v, 'base64url').length !== 128) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'debe ser un ServerSetup de OPAQUE (128 bytes en base64url, pnpm opaque:setup)',
+    });
+    return z.NEVER;
+  }
+  return new Secret(v);
 });
 
 const postgresUrl = z.string({ error: 'falta' }).transform((v, ctx) => {
@@ -342,6 +358,7 @@ const secretFields = {
   OTP_HMAC_KEY: key32,
   SESSION_ISSUER_PRIVATE_KEY: ed25519PrivateKey,
   SESSION_ISSUER_PUBLIC_KEY: ed25519PublicKey,
+  OPAQUE_SERVER_SETUP: opaqueServerSetup,
 };
 
 function formatIssues(issues: readonly z.core.$ZodIssue[]): string[] {
@@ -499,6 +516,7 @@ export interface AppConfig {
     passwordPeppers: ReadonlyMap<number, Secret<Buffer>>;
     sessionIssuerPrivateKey: Secret<KeyObject>;
     sessionIssuerPublicKey: KeyObject;
+    opaqueServerSetup: Secret<string>;
   };
 }
 
@@ -571,6 +589,7 @@ export function loadConfig(options: LoadOptions = {}): AppConfig {
       passwordPeppers: peppers,
       sessionIssuerPrivateKey: v.SESSION_ISSUER_PRIVATE_KEY,
       sessionIssuerPublicKey: v.SESSION_ISSUER_PUBLIC_KEY,
+      opaqueServerSetup: v.OPAQUE_SERVER_SETUP,
     },
   };
 }

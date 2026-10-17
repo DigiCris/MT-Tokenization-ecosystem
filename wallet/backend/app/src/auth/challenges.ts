@@ -1,5 +1,5 @@
-// Challenges de seguridad (`security_challenges`): verificación de email, reset de password y desbloqueo de cuenta en
-// P09; step-up, whitelist, rotaciones y operaciones de alto valor en las fases siguientes.
+// Challenges de seguridad (`security_challenges`): verificación de email, reset de password y desbloqueo de cuenta
+// (P09), step-up de PlatformSession (P10); whitelist, rotaciones y operaciones de alto valor en las fases siguientes.
 //
 // - Un challenge nuevo del mismo usuario y tipo invalida los anteriores abiertos (un solo código vigente).
 // - Verificación con la fila bloqueada (FOR UPDATE): el contador de intentos sube aunque el código sea incorrecto y
@@ -19,11 +19,13 @@ interface ChallengePolicy {
   kind: 'otp' | 'token';
 }
 
-/** TTL e intentos por tipo ([B-AUTH-02], [B-AUTH-07], [B-AUTH-08]). */
+/** TTL e intentos por tipo ([B-AUTH-02], [B-AUTH-07], [B-AUTH-08], [B-PSES-03]). */
 export const CHALLENGE_POLICIES: Readonly<Partial<Record<ChallengeType, ChallengePolicy>>> = {
   EMAIL_VERIFY: { ttlMinutes: 15, maxAttempts: 5, kind: 'otp' },
   LOGIN_UNLOCK: { ttlMinutes: 15, maxAttempts: 5, kind: 'otp' },
   PASSWORD_RESET: { ttlMinutes: 30, maxAttempts: 5, kind: 'token' },
+  // Step-up de PlatformSession [B-PSES-03]: más corto (abre una sesión sensible).
+  STEP_UP: { ttlMinutes: 10, maxAttempts: 5, kind: 'otp' },
 };
 
 export type ChallengeResult = 'OK' | 'INVALID' | 'EXPIRED' | 'EXHAUSTED' | 'NOT_FOUND';
@@ -96,7 +98,7 @@ export class ChallengeService {
     input: { type: ChallengeType; secret: string } & (
       { userId: string; challengeId?: undefined } | { challengeId: string; userId?: string }
     ),
-  ): Promise<{ result: ChallengeResult; userId?: string; challengeId?: string }> {
+  ): Promise<{ result: ChallengeResult; userId?: string; challengeId?: string; binding?: unknown }> {
     let query = trx
       .selectFrom('security_challenges')
       .selectAll()
@@ -118,7 +120,8 @@ export class ChallengeService {
       .set({ attempts: sql`attempts + 1`, ...(ok ? { consumed_at: sql`now()` } : {}) })
       .where('id', '=', row.id)
       .execute();
-    if (ok) return { result: 'OK', userId: row.user_id, challengeId: row.id };
+    // El binding (a qué quedó atado el challenge) sólo se entrega con el código correcto.
+    if (ok) return { result: 'OK', userId: row.user_id, challengeId: row.id, binding: row.binding };
     return {
       result: row.attempts + 1 >= row.max_attempts ? 'EXHAUSTED' : 'INVALID',
       userId: row.user_id,

@@ -22,8 +22,8 @@
   },
   "criticalRequest": {
     "body": "{\"amount\":\"1000000\",\"destination\":\"0x0000000000000000000000000000000000000001\",\"token\":\"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\"}",
-    "canonical": "MTW-REQ-V1\nPOST\n/api/v1/wallets/7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5/send/prepare\nd69b274736b0c469e5a4d1cceb7d4cdf4dfad8a0ac4389ba20e7d8545a1e40fa\n1792189400\nb3f1c9a2d4e5f60718293a4b5c6d7e8f\nsess_5c1f0e2d3b4a",
-    "sha256": "0x554e10a4de28c713e8125d3405b6c969857477a87c0f39352c45b7a0495dc041",
+    "canonical": "MTW-REQ-V1\nPOST\n/api/v1/wallets/7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5/send/prepare\nd69b274736b0c469e5a4d1cceb7d4cdf4dfad8a0ac4389ba20e7d8545a1e40fa\n1792189400\nb3f1c9a2d4e5f60718293a4b5c6d7e8f\n5c1f0e2d-3b4a-4c5d-9e6f-7a8b9c0d1e2f",
+    "sha256": "0x5aec440ae0ce550b82b2708c7852fad6a94baa3d83bbdbe2cca15b7899db32d0",
     "publicJwk": {
       "kty": "EC",
       "crv": "P-256",
@@ -31,6 +31,24 @@
       "y": "8hxYIz89m7X_OLOKUosW6_7NhKspXUySAYIIEP-lyBU"
     },
     "jwkThumbprint": "xf_ggcbiUwCvnVyoYRLDVeHiiGJJnPvvFsd1en1fGew",
-    "signature": "v9TL2OLV8dYk15DR8WHc1YyPjhaublr5gwKJ7WZDNgCB6OhMSJQBdmgf5qW97W9SkLiKTkbJVwwmMqPk8qu0gA"
+    "signature": "9FFEKPB5V0AYal6O3IfUWwh3ZJPi2bjbLEfz07R32b7VZqmEqZrKsMUP-4OIMxVWZGWACWgYAM7eqyrd5rax2g"
+  },
+  "submissionEnvelope": {
+    "object": {
+      "operationId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+      "safeTxHash": "0x33e18c560afca8a47c873db1e5d28cba8df5a84873f8d3e2057d637f444ea706",
+      "sessionId": "5c1f0e2d-3b4a-4c5d-9e6f-7a8b9c0d1e2f",
+      "submittedAt": 1792189500
+    },
+    "canonical": "MTW-SUBMIT-V1\n{\"operationId\":\"9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d\",\"safeTxHash\":\"0x33e18c560afca8a47c873db1e5d28cba8df5a84873f8d3e2057d637f444ea706\",\"sessionId\":\"5c1f0e2d-3b4a-4c5d-9e6f-7a8b9c0d1e2f\",\"submittedAt\":1792189500}",
+    "sha256": "0xb7873d05903e77acc58740a38608c9ce3605505e6471b5582920d6a48dec279e",
+    "publicJwk": {
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "r7c_mT9ccw9bwvO39H2siBRdwp5MGdfam9GqBplvmhQ",
+      "y": "8hxYIz89m7X_OLOKUosW6_7NhKspXUySAYIIEP-lyBU"
+    },
+    "jwkThumbprint": "xf_ggcbiUwCvnVyoYRLDVeHiiGJJnPvvFsd1en1fGew",
+    "signature": "qhnaO8kDEuorf-FyxdD44Ns9lNEdL9g9eXXeLQdKT1suSh5NKFeDp5uwXfvrU86mTLMl4yRUS0ZmCRokkrXCnw"
   }
 }

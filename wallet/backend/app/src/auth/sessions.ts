@@ -17,7 +17,7 @@ export const SESSION_COOKIE: Readonly<Record<Client, string>> = {
 };
 
 export type RevokeReason =
-  'LOGOUT' | 'ROTATED' | 'USER_REVOKED' | 'ALL_OTHERS_REVOKED' | 'PASSWORD_RESET' | 'TOTP_CHANGED';
+  'LOGOUT' | 'ROTATED' | 'USER_REVOKED' | 'ALL_OTHERS_REVOKED' | 'PASSWORD_RESET' | 'TOTP_CHANGED' | 'STEP_UP';
 
 export interface SessionContext {
   ipPrefix: string | null;

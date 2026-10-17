@@ -178,8 +178,7 @@ describe('startApi', () => {
       redis: wallet.redis,
       rpc: wallet.rpc,
       idempotency: new IdempotencyRepository(db.app),
-      sessions: wallet.services.sessions,
-      account: wallet.services.account,
+      services: wallet.services,
       version: '0.0.0-test',
     });
     try {
