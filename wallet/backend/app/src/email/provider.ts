@@ -39,11 +39,14 @@ export class EmailSendError extends Error {
   override name = 'EmailSendError';
   readonly status: number | undefined;
   readonly retryable: boolean;
+  /** Desde cuándo el proveedor vuelve a aceptar envíos, si lo informó (429 por límite de ritmo o cuota diaria). */
+  readonly retryAfter: Date | undefined;
 
-  constructor(message: string, options: { status?: number; retryable: boolean; cause?: unknown }) {
+  constructor(message: string, options: { status?: number; retryable: boolean; retryAfter?: Date; cause?: unknown }) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.status = options.status;
     this.retryable = options.retryable;
+    this.retryAfter = options.retryAfter;
   }
 }
 

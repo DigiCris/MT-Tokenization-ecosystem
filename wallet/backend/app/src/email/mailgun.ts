@@ -63,9 +63,11 @@ export class MailgunProvider implements EmailProvider {
         signal: AbortSignal.timeout(this.#options.timeoutMs ?? 20_000),
       });
       if (!response.ok) {
+        const retryAfter = response.status === 429 ? await retryAfterOf(response) : undefined;
         throw new EmailSendError(`Mailgun rechazó ${what} (${String(response.status)})`, {
           status: response.status,
           retryable: response.status === 429 || response.status >= 500,
+          ...(retryAfter === undefined ? {} : { retryAfter }),
         });
       }
       return (await response.json()) as T;
@@ -134,4 +136,29 @@ export class MailgunProvider implements EmailProvider {
   close(): Promise<void> {
     return Promise.resolve();
   }
+}
+
+/**
+ * Hasta cuándo Mailgun no acepta envíos tras un 429: header `Retry-After` (segundos o fecha HTTP) o la fecha de "try
+ * again after <fecha>" del mensaje de error (cuota diaria del dominio). Del mensaje sólo se toma la fecha.
+ */
+export function parseRetryAfter(header: string | null, message: unknown, now = Date.now()): Date | undefined {
+  if (header !== null && header.trim() !== '') {
+    const seconds = Number(header);
+    const date = Number.isFinite(seconds) ? new Date(now + seconds * 1000) : new Date(header);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  const match = typeof message === 'string' ? /try again after ([^"]+?UTC)/i.exec(message) : null;
+  const date = match?.[1] === undefined ? undefined : new Date(match[1]);
+  return date === undefined || Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+async function retryAfterOf(response: Response): Promise<Date | undefined> {
+  let message: unknown;
+  try {
+    message = ((await response.json()) as { message?: unknown }).message;
+  } catch {
+    message = undefined;
+  }
+  return parseRetryAfter(response.headers.get('retry-after'), message);
 }

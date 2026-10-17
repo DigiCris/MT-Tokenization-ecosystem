@@ -20,14 +20,23 @@ Mientras un proyecto no existe, su script imprime `SKIP: proyecto no creado aún
 
 ### Tests contra servicios con cuota (backend)
 
-`pnpm test:live` (`*.live.test.ts`) envía por la API real de Mailgun con el dominio sandbox (cuota diaria limitada) y
-lee los códigos con la Gmail API (P09.TST.g–h). `ci-backend.sh` los corre:
+`pnpm test:live` (`*.live.test.ts`) envía por la API real de Mailgun con el dominio sandbox y lee los códigos con la
+Gmail API (P09.TST.g–h). El dominio sandbox admite **100 pedidos por día** (ventana móvil de 24 h; al agotarse,
+Mailgun responde 429 `daily request limit (100) exceeded, try again after <fecha>`) y una corrida completa usa ~40
+envíos (19 plantillas más los reenvíos por el rechazo DMARC del sandbox y los 3 flujos de entrega real), así que
+`ci-backend.sh` los corre:
 
 - en la corrida diaria programada y en `workflow_dispatch`;
-- cuando el cambio toca email o autenticación (`src/email/`, `src/auth/`, rutas y plugin de auth, `src/config/env.ts`,
-  `test/email/`, sus helpers, dependencias del backend, el propio `ci-backend.sh` o el workflow), comparando contra la
-  base del PR o contra `github.event.before` en un push (checkout con `fetch-depth: 0`); sin base conocida, corren;
+- cuando el cambio toca el envío de email o los propios tests live (`src/email/`, `test/email/*.live.test.ts`, sus
+  helpers, el propio `ci-backend.sh` o el workflow), comparando contra la base del PR o contra `github.event.before`
+  en un push (checkout con `fetch-depth: 0`); sin base conocida, corren. Los flujos de autenticación que recorren
+  (registro, verificación, reset, desbloqueo) se prueban además con Mailpit en la suite normal;
 - en local (`pnpm ci:local`) con el mismo criterio, contando también los cambios sin commitear.
+
+Los archivos live corren uno detrás del otro y esperan con la misma política de reintentos que el worker de email
+(8 intentos, backoff exponencial desde 5 s). Si Mailgun informa que no acepta envíos hasta después de esa ventana
+(cuota agotada), el test falla en el acto con la fecha (`MailgunQuotaExhaustedError`) y se vuelve a correr cuando se
+libera la cuota.
 
 `MTW_LIVE_TESTS=1` los fuerza y `MTW_LIVE_TESTS=0` los omite. Cuando no corren, el log dice por qué. El `schedule`
 de GitHub sólo dispara en la rama por defecto: la corrida diaria empieza cuando el workflow llega a `main`.

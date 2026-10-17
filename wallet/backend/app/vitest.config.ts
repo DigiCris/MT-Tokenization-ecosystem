@@ -36,7 +36,8 @@ export default defineConfig({
         },
       },
       { test: { ...shared, name: 'security', include: SECURITY_TESTS, exclude: LIVE_TESTS } },
-      { test: { ...shared, name: 'live', include: LIVE_TESTS, testTimeout: 420_000 } },
+      // Los archivos live comparten la cuenta de Mailgun (y su límite de ritmo): corren uno detrás del otro.
+      { test: { ...shared, name: 'live', include: LIVE_TESTS, testTimeout: 420_000, fileParallelism: false } },
     ],
     coverage: {
       provider: 'v8',

@@ -119,8 +119,9 @@ export function emailJobHandler(deps: EmailWorkerDeps) {
         provider: deps.provider.name,
         retryable: String(retryable),
       });
+      const retryAfter = error instanceof EmailSendError ? error.retryAfter?.toISOString() : undefined;
       logger.warn(
-        { reference: data.aggregateId, template: payload.template, err: error, attempt: job.attemptsMade },
+        { reference: data.aggregateId, template: payload.template, err: error, attempt: job.attemptsMade, retryAfter },
         'email no enviado',
       );
       // UnrecoverableError: BullMQ no reintenta (p. ej. destinatario rechazado por el proveedor).

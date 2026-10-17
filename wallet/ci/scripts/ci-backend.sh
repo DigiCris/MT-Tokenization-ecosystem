@@ -2,16 +2,18 @@
 # CI del backend (API, worker, watcher, indexer, gas tank) — P08 en adelante. Los tests de integración usan Docker
 # (Testcontainers: PostgreSQL 18, Valkey 9 y Mailpit fijados por digest) y Anvil sobre el fork de Base (BASE_RPC_URL).
 #
-# Tests contra servicios externos con cuota (`pnpm test:live`: Mailgun sandbox ~300 envíos/día y Gmail API): corren
-# cuando el cambio toca email/autenticación, en la corrida diaria programada y a pedido (workflow_dispatch o
-# MTW_LIVE_TESTS=1); MTW_LIVE_TESTS=0 los omite. Sin una base de comparación conocida, corren (fail-safe).
+# Tests contra servicios externos con cuota (`pnpm test:live`: Mailgun sandbox —100 pedidos por día por dominio,
+# ventana móvil de 24 h— y Gmail API). Una corrida completa usa ~40 envíos, así que corren cuando el cambio toca el
+# envío de email o los propios tests live, en la corrida diaria programada y a pedido (workflow_dispatch o
+# MTW_LIVE_TESTS=1); MTW_LIVE_TESTS=0 los omite. Sin una base de comparación conocida, corren (fail-safe). Los flujos
+# de autenticación que esos tests recorren también se prueban con Mailpit en la suite normal.
 source "$(dirname "$0")/lib.sh"
 skip_if_missing backend/app/package.json P08
 section "backend/app: vectores y ABIs iguales a los de contracts/ (§10, regla 2)"
 node "$WALLET_ROOT/backend/app/scripts/sync-contract-artifacts.mjs" --check
 ci_node_project backend/app P08
 
-LIVE_PATHS='^wallet/backend/app/(src/email/|src/auth/|src/api/routes/v1/auth\.ts|src/api/plugins/auth\.ts|src/config/env\.ts|test/email/|test/helpers/(gmail|live-env|mailgun-live|email-fixtures|email-pipeline|account-env)\.ts|package\.json|pnpm-lock\.yaml)|^wallet/ci/scripts/ci-backend\.sh$|^\.github/workflows/wallet-backend\.yml$'
+LIVE_PATHS='^wallet/backend/app/(src/email/|test/email/[^/]+\.live\.test\.ts|test/helpers/(gmail|live-env|mailgun-live|email-fixtures|email-pipeline)\.ts)|^wallet/ci/scripts/ci-backend\.sh$|^\.github/workflows/wallet-backend\.yml$'
 
 # Base contra la que se compara el cambio (vacío si no se puede determinar).
 live_diff_base() {
@@ -45,8 +47,8 @@ live_tests_needed() {
   local base
   base="$(live_diff_base)"
   if [ -z "$base" ]; then echo "sin base de comparación"; return 0; fi
-  if live_changed_paths "$base" | grep -qE "$LIVE_PATHS"; then echo "el cambio toca email/autenticación"; return 0; fi
-  echo "el cambio no toca email/autenticación"
+  if live_changed_paths "$base" | grep -qE "$LIVE_PATHS"; then echo "el cambio toca el envío de email o los tests live"; return 0; fi
+  echo "el cambio no toca el envío de email ni los tests live"
   return 1
 }
 

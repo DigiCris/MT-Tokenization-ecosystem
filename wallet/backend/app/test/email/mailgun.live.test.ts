@@ -8,27 +8,21 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { describe, expect, it } from 'vitest';
 import { Secret } from '../../src/config/secret.ts';
 import { MailgunProvider } from '../../src/email/mailgun.ts';
-import { EmailSendError, type EmailMessage } from '../../src/email/provider.ts';
+import { EmailSendError } from '../../src/email/provider.ts';
 import { renderTemplate, TEMPLATE_NAMES, type TemplateName } from '../../src/email/templates.ts';
 import { TEMPLATE_FIXTURES } from '../helpers/email-fixtures.ts';
 import { gmailLiveEnv, mailgunLiveEnv } from '../helpers/live-env.ts';
-import { describeFailure, eventsOrRetry, isSandboxDmarcRejection, SANDBOX_MAX_SENDS } from '../helpers/mailgun-live.ts';
+import {
+  describeFailure,
+  eventsOrRetry,
+  isSandboxDmarcRejection,
+  SANDBOX_MAX_SENDS,
+  sendLikeWorker,
+} from '../helpers/mailgun-live.ts';
 
 const mailgun = mailgunLiveEnv();
 const to = gmailLiveEnv().address;
 const provider = new MailgunProvider(mailgun);
-
-/** Como el worker (BullMQ): un error reintentable (red, 429, 5xx) se reintenta con espera; el mismo Message-ID. */
-async function sendWithRetry(message: EmailMessage, attempts = 4): Promise<{ id: string }> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await provider.send(message);
-    } catch (error) {
-      if (!(error instanceof EmailSendError) || !error.retryable || attempt >= attempts) throw error;
-      await sleep(2_000 * attempt);
-    }
-  }
-}
 
 async function rejection(promise: Promise<unknown>): Promise<EmailSendError> {
   try {
@@ -54,6 +48,7 @@ describe('Mailgun real (sandbox)', () => {
     /** Message-ID → plantilla, y envíos por plantilla (reenvíos ante el rechazo DMARC del sandbox). */
     const pending = new Map<string, TemplateName>();
     const sends = new Map<TemplateName, number>();
+    let lastSentAt = Date.now();
     const send = async (name: TemplateName) => {
       const reference = randomUUID();
       const rendered = renderTemplate(name, TEMPLATE_FIXTURES[name] as never, context);
@@ -65,7 +60,8 @@ describe('Mailgun real (sandbox)', () => {
         reference,
         tags: ['mtw', 'live-test', name],
       };
-      const result = await sendWithRetry(message);
+      const result = await sendLikeWorker(provider, message);
+      lastSentAt = Date.now();
       // Mailgun respeta el Message-ID determinístico del envío.
       expect(result.id).toBe(`${reference}@${mailgun.domain}`);
       pending.set(result.id, name);
@@ -74,7 +70,6 @@ describe('Mailgun real (sandbox)', () => {
     for (const name of TEMPLATE_NAMES) await send(name);
 
     const delivered = new Map<TemplateName, string>();
-    const deadline = Date.now() + 360_000;
     while (delivered.size < TEMPLATE_NAMES.length) {
       const round = [
         ...(await eventsOrRetry(provider, { event: 'delivered', recipient: to, begin })),
@@ -95,7 +90,8 @@ describe('Mailgun real (sandbox)', () => {
         }
       }
       if (delivered.size === TEMPLATE_NAMES.length) break;
-      if (Date.now() > deadline) {
+      // Plazo de entrega contado desde el último envío aceptado (los reintentos por 429 pueden demorar el envío).
+      if (Date.now() > lastSentAt + 360_000) {
         const missing = TEMPLATE_NAMES.filter((n) => !delivered.has(n));
         throw new Error(`sin evento delivered para: ${missing.join(', ')}`);
       }
@@ -107,7 +103,7 @@ describe('Mailgun real (sandbox)', () => {
     const [firstId = ''] = [...delivered.values()];
     const events = await provider.events({ messageId: firstId, event: 'delivered' });
     expect(events[0]?.reference).toBe(firstId.split('@')[0]);
-  }, 420_000);
+  }, 1_800_000);
 
   it('una API key inválida es un rechazo 401 no reintentable', async () => {
     const invalid = new MailgunProvider({ ...mailgun, apiKey: new Secret(`key-${randomBytes(16).toString('hex')}`) });

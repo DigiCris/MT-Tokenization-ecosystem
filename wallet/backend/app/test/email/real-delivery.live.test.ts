@@ -17,7 +17,14 @@ import type { TestClient } from '../helpers/client.ts';
 import { GmailReader, type GmailMessage } from '../helpers/gmail.ts';
 import { gmailLiveEnv, mailgunLiveEnv } from '../helpers/live-env.ts';
 import { captureLogger, type CapturedLogger } from '../helpers/logs.ts';
-import { describeFailure, eventsOrRetry, isSandboxDmarcRejection, SANDBOX_MAX_SENDS } from '../helpers/mailgun-live.ts';
+import {
+  assertQuotaWindow,
+  describeFailure,
+  EMAIL_RETRY_WINDOW_MS,
+  eventsOrRetry,
+  isSandboxDmarcRejection,
+  SANDBOX_MAX_SENDS,
+} from '../helpers/mailgun-live.ts';
 import { REDIS_DBS } from '../helpers/redis-dbs.ts';
 
 const mailgun = mailgunLiveEnv();
@@ -97,7 +104,10 @@ async function receive(
     }
     if (reference === undefined) throw new Error(`la API no encoló el email ${template}`);
     const messageId = `${reference}@${mailgun.domain}`;
-    const deadline = Date.now() + 300_000;
+    // El worker reintenta los rechazos momentáneos de Mailgun (429/5xx) durante EMAIL_RETRY_WINDOW_MS: hasta que
+    // Mailgun acepta el envío, el plazo es esa ventana; desde la aceptación, 5 min para que Gmail lo reciba.
+    const enqueuedAt = Date.now();
+    let acceptedAt: number | undefined;
     for (;;) {
       const [id] = await gmail.list(`rfc822msgid:${messageId}`);
       if (id) {
@@ -105,15 +115,27 @@ async function receive(
         expect(message.headers['x-mtw-ref']).toBe(reference);
         return message;
       }
-      const failed = (await eventsOrRetry(provider, { messageId, event: 'failed' })).find(
-        (e) => e.severity === 'permanent',
-      );
+      const events = await eventsOrRetry(provider, { messageId });
+      if (acceptedAt === undefined && events.some((e) => e.event === 'accepted')) acceptedAt = Date.now();
+      const failed = events.find((e) => e.event === 'failed' && e.severity === 'permanent');
       if (failed) {
         if (!isSandboxDmarcRejection(failed))
           throw new Error(`${template}: falla permanente ${describeFailure(failed)}`);
         break;
       }
-      if (Date.now() > deadline) throw new Error(`${template}: no llegó a Gmail (${messageId})`);
+      if (acceptedAt === undefined) {
+        // Si el worker ya recibió un 429 con fecha posterior a su ventana de reintentos (cuota diaria), falla ya.
+        const throttled = logs
+          .lines()
+          .find((l) => l.msg === 'email no enviado' && l.reference === reference && typeof l.retryAfter === 'string');
+        if (typeof throttled?.retryAfter === 'string') {
+          assertQuotaWindow(new Date(throttled.retryAfter), enqueuedAt + EMAIL_RETRY_WINDOW_MS - Date.now());
+        }
+        if (Date.now() > enqueuedAt + EMAIL_RETRY_WINDOW_MS + 60_000)
+          throw new Error(`${template}: Mailgun no aceptó el envío en toda la ventana de reintentos (${messageId})`);
+      }
+      if (acceptedAt !== undefined && Date.now() > acceptedAt + 300_000)
+        throw new Error(`${template}: no llegó a Gmail (${messageId})`);
       await sleep(5_000);
     }
   }
@@ -132,7 +154,7 @@ describe('entrega real por Mailgun leída con la Gmail API', () => {
   const newPassword = randomPassword();
   let browser: TestClient;
 
-  it('registro → código de verificación leído en Gmail → verificación con sesión', { timeout: 1_200_000 }, async () => {
+  it('registro → código de verificación leído en Gmail → verificación con sesión', { timeout: 2_400_000 }, async () => {
     secrets.add(password).add(newPassword);
     browser = env.wallet.newClient();
     const message = await receive('email-verification', 'otp-challenge', (attempt) =>
@@ -151,7 +173,7 @@ describe('entrega real por Mailgun leída con la Gmail API', () => {
 
   it(
     'olvido → link de reset leído en Gmail → contraseña nueva, sesiones cerradas y login',
-    { timeout: 1_200_000 },
+    { timeout: 2_400_000 },
     async () => {
       const message = await receive('password-reset', 'forgot-password', () =>
         env.wallet.newClient().post('/api/v1/auth/forgot-password', { email: address }),
@@ -172,7 +194,7 @@ describe('entrega real por Mailgun leída con la Gmail API', () => {
 
   it(
     'cuenta bloqueada → código de desbloqueo leído en Gmail → desbloqueo y login',
-    { timeout: 1_500_000 },
+    { timeout: 2_700_000 },
     async () => {
       await env.db.app.updateTable('users').set({ status: 'LOCKED' }).where('email', '=', address).execute();
       let lastRequest = 0;
