@@ -99,6 +99,35 @@ Versiones adicionales fijadas en esta verificación (no estaban en la tabla §3.
 - `@reown/walletkit` 1.6.0 — wallet headless para el test del relay real de WalletConnect (P19.MAN) (dist-tag `latest` del registry al 2026-10-17).
 - `@walletconnect/core` 2.26.0 — dependencia de @reown/walletkit (misma línea que @walletconnect/ethereum-provider) (dist-tag `latest` del registry al 2026-10-17).
 
+### Versiones efectivas de `backend/app` (edad mínima de publicación)
+
+La política de [supply chain](#supply-chain) (`minimumReleaseAge: 10080`, 7 días) no instala versiones publicadas hace menos de una semana. Al crear `backend/app` (P08, 2026-10-17) estas versiones de la tabla todavía no tenían 7 días: se fijó la última versión de la misma línea que sí los cumplía. La versión de la tabla se adopta en el primer cambio de dependencias del proyecto posterior a su fecha de elegibilidad, con el mismo control de edad.
+
+| Paquete | Tabla (publicada) | Elegible desde | Fijada en `backend/app` (publicada) | Integridad (lockfile) |
+|---|---|---|---|---|
+| `fastify` | 5.12.7 (2026-10-13) | 2026-10-20 | 5.12.5 (2026-09-16) | `sha512-OB2k1dlxs5/NAABqeKV2FUHkSD2BbENsCak8yULVcymn3fHIPDVa9TI3SDnJSWYSllZmSYuZXy2gTnsT+Sut1A==` |
+| `@fastify/helmet` | 13.2.0 (2026-10-13) | 2026-10-20 | 13.1.2 (2026-10-08) | `sha512-fXTultrEFW9bczr3jcffZD7NLlsTYa8eCCzVFsJvLIVO7SUiY/VWp18qCJbf2N9AXIEzIC11NYlNB3BlzBEZeg==` |
+| `zod` | 4.6.7 (2026-10-12) | 2026-10-19 | 4.6.5 (2026-09-13) | `sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==` |
+| `bullmq` | 6.3.15 (2026-10-14) | 2026-10-21 | 6.3.12 (2026-10-09) | `sha512-zuPU+RbyiTzRtxVeokO0EotJ+PkHyAEXugEAYYyP+pm7bbJAbrvQR1SHW6MCUgA0e4C23/07dcOCymEe+GNGHw==` |
+| `nodemailer` | 10.1.2 (2026-10-16) | 2026-10-23 | 10.0.16 (2026-10-07) | `sha512-VL9xKErxN+el77o8eBOuYKUPMyEx7F9hfnDCuiUKJRp9v3wnWMOudYgP/SWbwSHy8rUL4cylobuXtki1LpQS7A==` |
+| `viem` | 2.57.7 (2026-10-14) | 2026-10-21 | 2.57.4 (2026-10-08) | `sha512-ro+8AKrcGU6tPfou0gBRYv6bxnU3tPxxJGY4qpJwjiR40eHCWzeGhrAgYMlIncFtlnry2/yGjz57WOC67oshCQ==` |
+| `vitest` | 5.0.5 (2026-10-15) | 2026-10-22 | 5.0.3 (2026-09-30) | `sha512-xMw97S3rjdtj5dkVat7jCsqWBpvchs3RlpQctUqwJD0KkERk40vz2fJ77lDwW/Vzh/pk18eItYAzkodhSes3jQ==` |
+| `testcontainers` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.0 (2026-09-28) | `sha512-Pd0c2eU0DdIuK+Pb3c+vmBUdKjDLgxZmPecQGESFAKyn5LTqSaSw8l7htfMlLwabb/QsUILe6XkxMJw8Ly/ThA==` |
+| `@testcontainers/postgresql` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.0 (2026-09-28) | `sha512-14oNBbKdqIkWTiw8XwP6YqWnuBebiij8m4fF03WTSHvNt5FfvQpGTLwIV3p07UpDnqWRFvY50YFzbiYdB+SWuA==` |
+| `@testcontainers/redis` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.0 (2026-09-28) | `sha512-ZwD+aUL5LDHT4BIVzzbpPJitXqUibKt8UyFgWGzQbw9YoIaQdRrBbdY7Y+L4th7nYwmV+1UI1iO9XtJzadXnAw==` |
+| `eslint` | 10.13.0 (2026-10-16) | 2026-10-23 | 10.12.0 (2026-10-02) | `sha512-npHjrHb2o4ehH3mE+YuxABR+0gyb0aVWCIolgJDArwCiHEIsonBm3ZKjel5b0U5+a+MbEvIyRCGCzD3eKKK2NA==` |
+| `typescript-eslint` | 8.71.2 (2026-10-12) | 2026-10-19 | 8.71.1 (2026-10-05) | `sha512-oiNVPC3/NbV1FpaHU07l8O6ynqG9v4PAiW2WvTrAmZdR0f2HI/gE668ElMLCK7Xbsu5k2fK5C4fXNiq05j7/nQ==` |
+
+El resto de las dependencias de `backend/app` usa exactamente la versión de la tabla. Dependencias de desarrollo que no figuran en la tabla (fijadas el 2026-10-17, todas con más de 7 días):
+
+- `@vitest/coverage-v8` 5.0.3 (2026-09-30) — cobertura V8 de la misma línea que `vitest` — `sha512-+klsyz7BvT1vCU28Zkfzms1Ia78XD0V41U3FUtRaa3S+vOr/EXvK1O6BvVD7l1RzEjm6SONR2aybOvDDf9u0mQ==`.
+- `@eslint/js` 10.0.1 (2026-02-06) — reglas base de ESLint 10 — `sha512-zeR9k5pd4gxjZ0abRoIaxdc7I3nDktoXZk2qOv9gCNWx3mVwEn32VRhyLaRsDiJjTs0xq/T8mfPtyuXu7GWBcA==`.
+- `@types/node` 26.6.5 (2026-10-09) — tipos de Node 26 — `sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==`.
+- `@types/pg` 8.23.1 (2026-08-17) — tipos de `pg` — `sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==`.
+- `@types/nodemailer` 8.0.2 (2026-09-15) — tipos de `nodemailer` — `sha512-c7M5ox8p0nEOfbJ2E9Qcmt8/QCu/VzsiAhzBiZbvky2PhKZDHpKB3sQHBM5MEZNkCfBOaS6S9//AGPRTNB7IaA==`.
+
+Scripts de instalación denegados en `backend/app/pnpm-workspace.yaml` (`allowBuilds: false`, cada uno con su motivo): `cpu-features` y `ssh2` (addons nativos opcionales de Testcontainers), `msgpackr-extract` (aceleración opcional de BullMQ) y `protobufjs` (postinstall de compatibilidad).
+
 ## Herramientas de seguridad y de infraestructura
 
 | Componente | Versión | Tag / commit | Verificado |

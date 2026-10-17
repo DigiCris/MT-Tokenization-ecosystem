@@ -1,0 +1,36 @@
+{
+  "format": "[W-02] ECDSA P-256 (WebCrypto, SHA-256, IEEE P1363 r‖s de 64 bytes en base64url) sobre los bytes UTF-8 del mensaje",
+  "enrollment": {
+    "object": {
+      "userId": "4f1c2d9e-6b7a-4c3d-9e8f-0a1b2c3d4e5f",
+      "platformId": "mtw",
+      "R": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+      "nonce": "0xf52df41222748caa810259ddf3579c24ea2b5990ea5a188af2419aebe24629fa",
+      "issuedAt": "2026-10-17T12:00:00Z",
+      "expiresAt": "2026-10-17T12:30:00Z"
+    },
+    "canonical": "{\"R\":\"0x7184D30100a188c9F869ccB6883392534ecD6C9d\",\"expiresAt\":\"2026-10-17T12:30:00Z\",\"issuedAt\":\"2026-10-17T12:00:00Z\",\"nonce\":\"0xf52df41222748caa810259ddf3579c24ea2b5990ea5a188af2419aebe24629fa\",\"platformId\":\"mtw\",\"userId\":\"4f1c2d9e-6b7a-4c3d-9e8f-0a1b2c3d4e5f\"}",
+    "sha256": "0x0dd3db77f5e350dbdf82b70610b63eaecf1fa0b47dc896e0eada65c91afaa2ef",
+    "publicJwk": {
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "JaMb2NyRHqmiJMl_YR9edAprsnuNNiZfgqMRfdJDAxw",
+      "y": "UPJwQ5zzp3Pg56oamcLFy-PgGkBM5IaFuXjTgH7DOhw"
+    },
+    "jwkThumbprint": "qN9TZNRNAfK4xqOQnEEmIrWiNy7wis92puCQAYUWy_I",
+    "signature": "9TeOVn2r6tOlX14e3nWj3eNmuAIool-hhd5L3_deYnQPLhA9WJjj75-XRN1wKaRwHh2QtsBNjWFgsby8sb0_Fg"
+  },
+  "criticalRequest": {
+    "body": "{\"amount\":\"1000000\",\"destination\":\"0x0000000000000000000000000000000000000001\",\"token\":\"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\"}",
+    "canonical": "MTW-REQ-V1\nPOST\n/api/v1/wallets/7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5/send/prepare\nd69b274736b0c469e5a4d1cceb7d4cdf4dfad8a0ac4389ba20e7d8545a1e40fa\n1792189400\nb3f1c9a2d4e5f60718293a4b5c6d7e8f\nsess_5c1f0e2d3b4a",
+    "sha256": "0x554e10a4de28c713e8125d3405b6c969857477a87c0f39352c45b7a0495dc041",
+    "publicJwk": {
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "r7c_mT9ccw9bwvO39H2siBRdwp5MGdfam9GqBplvmhQ",
+      "y": "8hxYIz89m7X_OLOKUosW6_7NhKspXUySAYIIEP-lyBU"
+    },
+    "jwkThumbprint": "xf_ggcbiUwCvnVyoYRLDVeHiiGJJnPvvFsd1en1fGew",
+    "signature": "v9TL2OLV8dYk15DR8WHc1YyPjhaublr5gwKJ7WZDNgCB6OhMSJQBdmgf5qW97W9SkLiKTkbJVwwmMqPk8qu0gA"
+  }
+}

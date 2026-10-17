@@ -1,0 +1,68 @@
+{
+  "format": "[F-KEY-03]/[F-KEY-04] Root = Argon2id(password, salt, m, t, p, 32); K = HKDF-SHA256(Root, \"mtw-hkdf-v1\", \"<rol>-encryption-v1\"); AuthSecret_U con info \"U-auth-v1\"; AES-256-GCM (ciphertext ‖ tag de 16 bytes, base64url) con el AAD indicado; el texto plano es la clave de 32 bytes de la label (keccak256(label))",
+  "envelopes": [
+    {
+      "keyLabel": "mtw-user-key",
+      "password": "meshier boom riming rejection dingily",
+      "rootHex": "0x86f3b409b4f3df446bf37fe6208d08af519586d559c8af33f742eac12cb6c3bf",
+      "encryptionKeyHex": "0x28eaab4d9c33ef8339a6ea118c608ac77c22116958209e0d238a76526d46379c",
+      "aad": "mtw-key-envelope|1|mtw|8453|7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5|U|0x79406eb1d6abda075a9789dbd7d31626fefe2904|1",
+      "envelope": {
+        "format": "mtw-key-envelope",
+        "formatVersion": 1,
+        "platformId": "mtw",
+        "chainId": 8453,
+        "walletId": "7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5",
+        "role": "U",
+        "keyAddress": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+        "keyVersion": 1,
+        "kdf": {
+          "alg": "argon2id",
+          "version": 19,
+          "memoryKiB": 65536,
+          "iterations": 3,
+          "parallelism": 4,
+          "salt": "xfJ-fQLz5ME95d3FFzXkfg"
+        },
+        "cipher": {
+          "alg": "AES-256-GCM",
+          "nonce": "th7sKDIrnCIN-IWY"
+        },
+        "ciphertext": "GM4xXmVh7AM1IGagmPrPNKv5_HOjWMzyB6Cvo_SHrWZiFQqQGPjlrJIR6wsJqwl7",
+        "createdAt": "2026-10-17T12:00:00Z"
+      },
+      "authSecretHex": "0x0466b98021dcfa2434f346249729e99421f95d59aa4956b41d8132491c781ca3"
+    },
+    {
+      "keyLabel": "mtw-recovery-key",
+      "password": "unguiltily chevy peacockier salvaging excerpted",
+      "rootHex": "0x39f61d09a0d4cdbaa4d83f02846d0e52e01f598d45fbe6b1b0c5c5dddeb234d7",
+      "encryptionKeyHex": "0x1a594b3b9c6e4a65985a4e4ec6d8d9800ef159f33b574143b68dd292afff51a4",
+      "aad": "mtw-key-envelope|1|mtw|8453|7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5|R|0x7184d30100a188c9f869ccb6883392534ecd6c9d|1",
+      "envelope": {
+        "format": "mtw-key-envelope",
+        "formatVersion": 1,
+        "platformId": "mtw",
+        "chainId": 8453,
+        "walletId": "7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5",
+        "role": "R",
+        "keyAddress": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+        "keyVersion": 1,
+        "kdf": {
+          "alg": "argon2id",
+          "version": 19,
+          "memoryKiB": 65536,
+          "iterations": 3,
+          "parallelism": 4,
+          "salt": "nFUSJdZQ3dGK_EDi8xq5Rw"
+        },
+        "cipher": {
+          "alg": "AES-256-GCM",
+          "nonce": "LsBKugcagtnDkOWq"
+        },
+        "ciphertext": "-B0kVFvESjbWQiZ-mVKevpZTVVc0xRNFvIU_heE-FMaP603xR0iHPlO8DwQsXHeP",
+        "createdAt": "2026-10-17T12:00:00Z"
+      }
+    }
+  ]
+}

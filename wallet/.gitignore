@@ -9,6 +9,7 @@
 .tools/
 
 # --- Dependencias, builds y reportes ---
+.backups/
 node_modules/
 dist/
 coverage/
