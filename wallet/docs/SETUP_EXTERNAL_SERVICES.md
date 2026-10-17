@@ -13,7 +13,7 @@ Este documento lista **cada** dato, credencial y secreto que necesita el sistema
 
 ## Estado al 2026-10-17
 
-Credenciales de local provistas por el owner y validadas sin mostrar valores: `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY` y `ETHERSCAN_API_KEY`, más Mailgun (`EMAIL_PROVIDER_*`, dominio sandbox, región US). CI usa la misma `BASE_RPC_URL` como secret del repo. Para ejecutar el planner completo sólo faltan las credenciales de los tests contra servicios reales (`GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`). Todo lo de staging/producción es parte del despliegue final.
+Credenciales de local provistas por el owner y validadas sin mostrar valores: `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY` y `ETHERSCAN_API_KEY`, más Mailgun (`EMAIL_PROVIDER_*`, dominio sandbox, región US). CI usa la misma `BASE_RPC_URL` como secret del repo. Para ejecutar el planner no falta nada: las credenciales de los tests contra servicios reales (`GOOGLE_DRIVE_TEST_*` y `EMAIL_TEST_*`) también están provistas y validadas (envío real por Mailgun leído con la Gmail API). Todo lo de staging/producción es parte del despliegue final.
 
 ---
 
@@ -72,12 +72,12 @@ Secretos y claves que se generan criptográficamente: **no son acciones del usua
 
 ### Para ejecutar el planner
 
-Lo de local ya está provisto. Falta sólo esto, para que los tests usen servicios reales (R-14 del planner):
+Todo provisto y validado el 2026-10-17 (R-14 del planner):
 
 | Ítem | Proveedor | Estado 2026-10-17 |
 |---|---|---|
-| [`GOOGLE_DRIVE_TEST_*`](#google_drive_test_client_id--google_drive_test_client_secret--google_drive_test_refresh_token) | Google Cloud | pendiente |
-| [`EMAIL_TEST_*`](#email_test_address--email_test_google_refresh_token) | Gmail API (cuenta de prueba) + Mailgun | pendiente |
+| [`GOOGLE_DRIVE_TEST_*`](#google_drive_test_client_id--google_drive_test_client_secret--google_drive_test_refresh_token) | Google Cloud | provistas |
+| [`EMAIL_TEST_*`](#email_test_address--email_test_google_refresh_token) | Gmail API (cuenta de prueba) + Mailgun | provistas |
 | `BASE_RPC_URL`, `BASE_RPC_URL_SECONDARY`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_CLIENT_ID_WALLET`, `GOOGLE_CLIENT_ID_RECOVERY`, `ETHERSCAN_API_KEY`, `EMAIL_PROVIDER_*` (Mailgun, dominio sandbox) | Alchemy, QuickNode, Reown, Google Cloud, Etherscan, Mailgun | provistas |
 
 Resueltos sin acción: Docker está instalado (modo rootless; el preflight levanta el daemon si está detenido) y `gh` tiene permisos de administrador (la branch protection y los secrets de CI los configura el agente).
@@ -101,7 +101,7 @@ Resueltos sin acción: Docker está instalado (modo rootless; el preflight levan
 | Para qué sirve | Probar la **entrega real** de los emails del producto (verificación, OTP, reset): el backend los envía por Mailgun (dominio sandbox) a esta casilla y el test lee los códigos con la **Gmail API** (OAuth 2.0, scope `gmail.readonly`) (P09.TST.g–h, P22.T06). Variables: `EMAIL_TEST_ADDRESS`, `EMAIL_TEST_GOOGLE_CLIENT_ID`, `EMAIL_TEST_GOOGLE_CLIENT_SECRET` y `EMAIL_TEST_GOOGLE_REFRESH_TOKEN`. |
 | Proveedor | Google Cloud (Gmail API) + Mailgun |
 | URL | https://console.cloud.google.com · https://developers.google.com/oauthplayground · https://app.mailgun.com |
-| Pasos | 1) En el proyecto `mtw-wallet-local`: *APIs & Services → Library* → habilitar **Gmail API**. 2) Con el cliente `drive-tests` en OAuth Playground (*Use your own OAuth credentials*): scope `https://www.googleapis.com/auth/gmail.readonly` → *Authorize APIs* con la cuenta de prueba → *Exchange authorization code for tokens* → copiar el refresh token. 3) Cargar en `wallet/.env` `EMAIL_TEST_ADDRESS` (la cuenta de prueba), `EMAIL_TEST_GOOGLE_CLIENT_ID` y `EMAIL_TEST_GOOGLE_CLIENT_SECRET` (los de `drive-tests`) y `EMAIL_TEST_GOOGLE_REFRESH_TOKEN`. 4) En Mailgun, la dirección tiene que ser destinataria autorizada del sandbox (aceptar la invitación). PF-31 valida el token y que corresponda a `EMAIL_TEST_ADDRESS`, sin mostrar valores. |
+| Pasos | 1) En el proyecto `mtw-wallet-local`: *APIs & Services → Library* → habilitar **Gmail API**. 2) Con el cliente `drive-tests` en OAuth Playground (*Use your own OAuth credentials*): scope `https://www.googleapis.com/auth/gmail.readonly` → *Authorize APIs* con la cuenta de prueba → *Exchange authorization code for tokens* → copiar el refresh token. 3) Cargar en `wallet/.env` `EMAIL_TEST_ADDRESS` (la cuenta de prueba), `EMAIL_TEST_GOOGLE_CLIENT_ID` y `EMAIL_TEST_GOOGLE_CLIENT_SECRET` (los de `drive-tests`) y `EMAIL_TEST_GOOGLE_REFRESH_TOKEN`. 4) En Mailgun, la dirección tiene que ser destinataria autorizada del sandbox (aceptar la invitación). PF-31 valida el token y que corresponda a `EMAIL_TEST_ADDRESS`, sin mostrar valores. Los emails del sandbox suelen caer en spam: el test busca también ahí. |
 | Permisos mínimos | Sólo `gmail.readonly`, con una cuenta dedicada a pruebas. Es un scope restringido: con el proyecto publicado y sin verificar, Google muestra la advertencia de app no verificada y limita a 100 usuarios (alcanza para la cuenta de prueba); en modo *Testing* el refresh token vence a los 7 días. |
 | Entorno | local y CI (secrets del repo) |
 | Obligatoria | Sí |
@@ -206,7 +206,7 @@ Nota: `GOOGLE_CLIENT_SECRET_WALLET` y `GOOGLE_CLIENT_SECRET_RECOVERY` **no se us
 | Para qué sirve | Envío de los emails transaccionales (verificación, OTP, reset, whitelist, rotaciones, recovery) por **Mailgun**. Variables: `EMAIL_PROVIDER=mailgun`, `EMAIL_PROVIDER_API_KEY`, `EMAIL_PROVIDER_DOMAIN`, `EMAIL_PROVIDER_BASE_URL` y `EMAIL_FROM`. |
 | Proveedor | Mailgun (cuenta del owner) |
 | URL | https://app.mailgun.com |
-| Pasos | Tests: dominio sandbox ya provisto. Despliegue final: 1) *Sending → Domains → Add new domain* con un subdominio de envío del dominio real (p. ej. `mg.<WALLET_DOMAIN>`), en la misma región que `EMAIL_PROVIDER_BASE_URL`. 2) Cargar en el DNS los registros SPF y DKIM que muestra Mailgun (MX y CNAME de tracking no hacen falta: el producto no recibe correo ni usa tracking) y esperar el estado `active`. 3) Crear una API key por entorno (*API Security*) y, para Alertmanager, credenciales SMTP del dominio. 4) `EMAIL_FROM` = `no-reply@<ese dominio>`. 5) PF-21 valida el dominio sin mostrar la clave. |
+| Pasos | Tests: dominio sandbox ya provisto. Despliegue final: 1) *Sending → Domains → Add new domain* con un subdominio de envío del dominio real (p. ej. `mg.<WALLET_DOMAIN>`), en la misma región que `EMAIL_PROVIDER_BASE_URL`. 2) Cargar en el DNS los registros SPF y DKIM que muestra Mailgun y un registro DMARC (`_dmarc.<dominio>` TXT, p. ej. `v=DMARC1; p=quarantine; rua=mailto:<ALERT_EMAIL>`) (MX y CNAME de tracking no hacen falta: el producto no recibe correo ni usa tracking) y esperar el estado `active`. 3) Crear una API key por entorno (*API Security*) y, para Alertmanager, credenciales SMTP del dominio. 4) `EMAIL_FROM` = `no-reply@<ese dominio>`. 5) PF-21 valida el dominio sin mostrar la clave. |
 | Permisos mínimos | Una API key por entorno; dominio de envío propio por entorno. |
 | Entorno | tests reales (sandbox) y staging/production (dominio propio); en local los flujos deterministas usan Mailpit |
 | Obligatoria | Sí |
