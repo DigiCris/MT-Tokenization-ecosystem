@@ -24,6 +24,7 @@ import { registerSecurity } from './plugins/security.ts';
 import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/v1/auth.ts';
 import { balanceRoutes } from './routes/v1/balances.ts';
+import { transferRoutes } from './routes/v1/transfers.ts';
 import { emergencyRoutes } from './routes/v1/emergency.ts';
 import { migrationRoutes } from './routes/v1/migration.ts';
 import { notificationRoutes } from './routes/v1/notifications.ts';
@@ -181,6 +182,7 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
       await app.register(sendRoutes, { prefix: API_PREFIX, send: deps.wallets.send });
       await app.register(swapRoutes, { prefix: API_PREFIX, swaps: deps.wallets.swaps });
       await app.register(balanceRoutes, { prefix: API_PREFIX, balances: deps.wallets.balances });
+      await app.register(transferRoutes, { prefix: API_PREFIX, transfers: deps.wallets.transfers });
     } else {
       await app.register(emergencyRoutes, {
         prefix: API_PREFIX,

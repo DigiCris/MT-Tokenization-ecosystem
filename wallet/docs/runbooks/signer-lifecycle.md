@@ -109,7 +109,11 @@ la Safe sigue con la misma S. Con la salida, el backend actualiza la asignación
 ## Rotación de S y destrucción de la clave vieja
 
 La rotación de S por Safe es on-chain (P15): clave nueva con `POST /v1/keys` (`reason: ROTATION`), propuesta con
-timelock de 48 h y ejecución co-firmada por la S saliente. Ejecutada la rotación, el backend llama a
+timelock de 48 h y ejecución co-firmada por la S saliente. La pide un operador con
+`pnpm --dir backend/app operators executor:rotation-request --wallet <id> --reason
+SHARD_MIGRATION|HSM_MIGRATION|KEY_COMPROMISE|MAINTENANCE --operator <email> [--to-shard <id>]` (TOTP por stdin): deja
+el borrador con el motivo y la atestación de la S nueva, y el usuario firma la propuesta desde su app (U en Wallet o R
+en Recovery). Ejecutada la rotación, el backend llama a
 `POST /v1/keys/retire` (`{walletId, address, safe}`): el shard verifica on-chain que la clave ya no es la S de esa Safe
 y la deja `RETIRED` (no firma más). A los 30 días, sin SafeTx activas firmadas por ella:
 

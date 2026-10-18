@@ -52,6 +52,13 @@ export const TEMPLATE_FIXTURES: { [K in TemplateName]: TemplateParams[K] } = {
   },
   'rotation-cancelled': { role: 'U', safe: SAFE, cancelledBy: 'R', occurredAt: AT },
   'rotation-executed': { role: 'S', oldKey: OLD_KEY, newKey: NEW_KEY, safe: SAFE, occurredAt: AT },
+  'executor-rotation-requested': {
+    reason: 'SHARD_MIGRATION',
+    oldKey: OLD_KEY,
+    newKey: NEW_KEY,
+    safe: SAFE,
+    occurredAt: AT,
+  },
   'migration-approved': { safe: SAFE, healthy: 'tu clave de recuperación (R)', occurredAt: AT },
   'migration-completed': { oldSafe: SAFE, newSafe: NEW_KEY, occurredAt: AT },
   'recovery-started': {

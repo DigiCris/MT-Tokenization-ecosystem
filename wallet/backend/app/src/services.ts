@@ -35,6 +35,7 @@ import { SendService } from './send/service.ts';
 import { SwapService } from './swap/prepare.ts';
 import { QuoteService } from './swap/quote.ts';
 import { BalanceService } from './wallets/balances.ts';
+import { TransferService } from './wallets/transfers.ts';
 import { WhitelistService } from './whitelist/service.ts';
 import { KeyRestoreService } from './wallets/key-restore.ts';
 import { SovereignModification } from './wallets/sovereign.ts';
@@ -158,6 +159,8 @@ export interface WalletServices {
   send: SendService;
   swaps: SwapService;
   balances: BalanceService;
+  /** P18.T08: transfers indexados de la Safe (actividad). */
+  transfers: TransferService;
   /** P15: rotaciones asistidas (propuesta, ejecución y relay de cancelación) y registro de U' (perdí U). */
   rotations: RotationService;
   uReplacement: UReplacementService;
@@ -238,6 +241,7 @@ export function createWalletServices(input: {
     send: new SendService({ db, operations, snapshot: onchain.snapshot }),
     swaps: new SwapService({ db, operations, quotes, snapshot: onchain.snapshot }),
     balances: new BalanceService({ db, rpc: onchain.rpc, snapshot: onchain.snapshot }),
+    transfers: new TransferService({ db, snapshot: onchain.snapshot }),
     rotations: new RotationService({
       db,
       operations,

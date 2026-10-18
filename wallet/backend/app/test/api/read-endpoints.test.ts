@@ -10,6 +10,7 @@ import {
   requestWhitelist,
   sessionOf,
   startOperationsEnv,
+  syncChain,
   USDC_HOLDER,
   USDT_HOLDER,
   walletPost,
@@ -71,6 +72,44 @@ describe('saldos', () => {
     // Sin sesión de cuenta: 401. En el listener de Recovery no existe.
     expect((await env.base.wallet.newClient().get(`/api/v1/wallets/${alice.walletId}/balances`)).statusCode).toBe(401);
     expect((await alice.onboarded.user.recovery.get(`/api/v1/wallets/${alice.walletId}/balances`)).statusCode).toBe(
+      404,
+    );
+  });
+});
+
+describe('transfers (P18.T08)', () => {
+  it('los transfers entrantes indexados de la Safe, por cursor; ajena → 404; sin sesión → 401; no existe en Recovery', async () => {
+    await syncChain(env);
+    const first = await alice.onboarded.user.wallet.get(`/api/v1/wallets/${alice.walletId}/transfers?limit=1`);
+    expect(first.statusCode, first.body).toBe(200);
+    const page1 = first.json<{
+      items: { id: string; token: string; direction: string; counterparty: string; amount: string; status: string }[];
+      nextCursor: string | null;
+    }>();
+    expect(page1.items).toHaveLength(1);
+    expect(page1.nextCursor).toBe(page1.items[0]?.id);
+    const second = await alice.onboarded.user.wallet.get(
+      `/api/v1/wallets/${alice.walletId}/transfers?limit=10&before=${page1.nextCursor ?? ''}`,
+    );
+    expect(second.statusCode, second.body).toBe(200);
+    const items = [...page1.items, ...second.json<{ items: typeof page1.items }>().items];
+    // Más recientes primero: el fondeo de USDT fue después del de USDC.
+    expect(items.map((t) => [t.token, t.direction, t.counterparty, t.amount])).toEqual([
+      ['USDT', 'IN', getAddress(USDT_HOLDER), '3000000'],
+      ['USDC', 'IN', getAddress(USDC_HOLDER), '7000000'],
+    ]);
+    expect(items.every((t) => ['MINED', 'CONFIRMED', 'FINALIZED'].includes(t.status))).toBe(true);
+    expect((await bob.onboarded.user.wallet.get(`/api/v1/wallets/${alice.walletId}/transfers`)).statusCode).toBe(404);
+    expect((await bob.onboarded.user.wallet.get(`/api/v1/wallets/${bob.walletId}/transfers`)).json()).toEqual({
+      items: [],
+      nextCursor: null,
+    });
+    expect(
+      (await alice.onboarded.user.wallet.get(`/api/v1/wallets/${alice.walletId}/transfers?before=no-es-uuid`))
+        .statusCode,
+    ).toBe(400);
+    expect((await env.base.wallet.newClient().get(`/api/v1/wallets/${alice.walletId}/transfers`)).statusCode).toBe(401);
+    expect((await alice.onboarded.user.recovery.get(`/api/v1/wallets/${alice.walletId}/transfers`)).statusCode).toBe(
       404,
     );
   });

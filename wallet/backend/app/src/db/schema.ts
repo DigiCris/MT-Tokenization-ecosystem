@@ -458,6 +458,8 @@ export interface RotationRequestsTable {
   propose_tx_hash: Bytes | null;
   execute_tx_hash: Bytes | null;
   failure_reason: string | null;
+  /** P18: motivo de una rotación de S pedida por la plataforma (borrador DRAFT del operador). */
+  request_reason: Generated<'SHARD_MIGRATION' | 'HSM_MIGRATION' | 'KEY_COMPROMISE' | 'MAINTENANCE' | null>;
   /** P15: RotationTimelock de la propuesta (null en filas anteriores: el del sistema). */
   timelock: Bytes | null;
 }

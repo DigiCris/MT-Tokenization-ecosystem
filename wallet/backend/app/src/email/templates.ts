@@ -59,6 +59,13 @@ export interface TemplateParams {
   };
   'rotation-cancelled': { role: Role; safe: string; cancelledBy: 'U' | 'R' | 'SAFE'; occurredAt: string };
   'rotation-executed': { role: Role; oldKey: string; newKey: string; safe: string; occurredAt: string };
+  'executor-rotation-requested': {
+    reason: 'SHARD_MIGRATION' | 'HSM_MIGRATION' | 'KEY_COMPROMISE' | 'MAINTENANCE';
+    oldKey: string;
+    newKey: string;
+    safe: string;
+    occurredAt: string;
+  };
   'recovery-started': { safe: string; action: string; occurredAt: string; origin: RequestOrigin };
   'high-value-challenge': {
     code: string;
@@ -102,6 +109,7 @@ export const TEMPLATE_NAMES = [
   'rotation-proposed',
   'rotation-cancelled',
   'rotation-executed',
+  'executor-rotation-requested',
   'recovery-started',
   'high-value-challenge',
   'high-value-executed',
@@ -126,6 +134,13 @@ interface Content {
   details: [string, string][];
   ifNotYou: string;
 }
+
+const EXECUTOR_ROTATION_REASON_TEXT: Record<TemplateParams['executor-rotation-requested']['reason'], string> = {
+  SHARD_MIGRATION: 'migración de la clave a otro servidor de firma de la plataforma',
+  HSM_MIGRATION: 'migración de la clave a un módulo de hardware (HSM)',
+  KEY_COMPROMISE: 'posible compromiso del servidor que guarda la clave',
+  MAINTENANCE: 'mantenimiento preventivo de la clave',
+};
 
 const ROLE_NAMES: Record<Role, string> = {
   U: 'clave de usuario (U)',
@@ -386,6 +401,21 @@ const RENDERERS: Renderers = {
       ...timeRows(ctx, 'Fecha', p.occurredAt),
     ],
     ifNotYou: 'usá tu otra clave para proponer la rotación de vuelta y contactá a soporte de inmediato.',
+  }),
+  'executor-rotation-requested': (p, ctx) => ({
+    subject: 'La plataforma pidió rotar su clave de tu Safe',
+    heading: 'Hay que rotar la clave de la plataforma (S)',
+    intro: `Motivo: ${EXECUTOR_ROTATION_REASON_TEXT[p.reason]}. Entrá a la app Wallet, revisá la clave nueva y firmá la propuesta: se puede ejecutar después de 48 h y hasta entonces la podés cancelar. Mientras tanto tu wallet sigue operando con la clave actual.`,
+    details: [
+      ['Acción', `Pedido de rotación de ${ROLE_NAMES.S}`],
+      ['Motivo', EXECUTOR_ROTATION_REASON_TEXT[p.reason]],
+      ['Clave actual', groupedAddress(p.oldKey)],
+      ['Clave nueva', groupedAddress(p.newKey)],
+      ['Red', ctx.networkLabel],
+      ['Safe', groupedAddress(p.safe)],
+      ...timeRows(ctx, 'Fecha', p.occurredAt),
+    ],
+    ifNotYou: 'este pedido lo inicia la plataforma; si no lo esperabas, no firmes nada y contactá a soporte.',
   }),
   'recovery-started': (p, ctx) => ({
     subject: 'Se inició un proceso de recuperación',

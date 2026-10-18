@@ -24,11 +24,21 @@ por el `RotationTimelock` y con la firma del usuario, igual que cualquier rotaci
 
 ## Procedimiento por Safe
 
-1. **Crear la S nueva en el HSM:** el backend pide `POST /v1/keys` con `{walletId, reason: "ROTATION"}` al shard
-   `hsm-1`. La respuesta trae la `SignerKeyAttestation` de la clave nueva.
-2. **Proponer la rotación:** el backend prepara la `ROTATION_PROPOSE` (tipo S, `old` = S vigente, `new` = S del HSM)
-   y U la firma en la Wallet. El shard de la S vigente la co-firma sólo si la atestación es válida para esa wallet y
-   esa clave (rotación de S únicamente hacia claves creadas por un signer).
+1. **Pedir la rotación (operador, con su TOTP por stdin):**
+
+   ```bash
+   pnpm --dir backend/app operators executor:rotation-request --wallet <walletId> --reason HSM_MIGRATION \
+     --operator <email> --to-shard hsm-1
+   ```
+
+   El backend pide `POST /v1/keys` con `{walletId, reason: "ROTATION"}` al shard `hsm-1` y deja un borrador `DRAFT`
+   de la rotación de S con el motivo y la `SignerKeyAttestation` de la clave nueva. El usuario recibe el email y la
+   notificación `EXECUTOR_ROTATION_REQUESTED`; la salida (una línea JSON sin secretos) trae `rotationId` y
+   `newExecutor`.
+2. **Proponer la rotación:** en la Wallet (`/security/rotations`) el usuario ve el motivo y la S nueva con su
+   atestación verificada con la clave fijada en el build; la app arma la `ROTATION_PROPOSE` (tipo S, `old` = S
+   vigente, `new` = S del HSM) y U la firma (o R desde Recovery). El shard de la S vigente la co-firma sólo si la
+   atestación es válida para esa wallet y esa clave (rotación de S únicamente hacia claves creadas por un signer).
 3. **Esperar el timelock de 48 h.** El usuario recibe el email y la notificación; U o R pueden cancelar con su firma
    individual (`POST /rotations/{id}/cancel`). Si se cancela, la clave del HSM queda sin uso y se retira.
 4. **Ejecutar:** `ROTATION_EXECUTE` (`swapOwner(prev, S vieja, S nueva)`) firmada por U (o R) y co-firmada por la S

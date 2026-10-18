@@ -9,6 +9,8 @@
 //   migration:status --case <id>
 //   executor:prepare --wallet <id> --operator <email> --out <directorio>
 //   executor:activate --wallet <id> --operator <email>
+//   executor:rotation-request --wallet <id> --reason SHARD_MIGRATION|HSM_MIGRATION|KEY_COMPROMISE|MAINTENANCE
+//                             --operator <email> [--to-shard <id>]
 //
 // Las acciones con `--operator` leen el código TOTP del operador por stdin (nunca como argumento). La URI otpauth del
 // alta se escribe en un archivo nuevo con permisos 0600 (nunca en la salida). La salida es una línea JSON sin secretos.
@@ -25,6 +27,11 @@ import { createLogger } from '../observability/logger.ts';
 import { createMetrics } from '../observability/metrics.ts';
 import { loadPolicySnapshot } from '../policy/snapshot.ts';
 import { ExecutorReplacementService } from '../recovery/executor-replacement.ts';
+import {
+  EXECUTOR_ROTATION_REASONS,
+  ExecutorRotationRequests,
+  type ExecutorRotationReason,
+} from '../rotations/executor-request.ts';
 import { MigrationCases } from '../recovery/migration.ts';
 import { readSignerTls, SignerClient } from '../signer-client/client.ts';
 import { SignerKeyService } from '../signer-client/sharding.ts';
@@ -39,6 +46,7 @@ const COMMANDS = [
   'migration:status',
   'executor:prepare',
   'executor:activate',
+  'executor:rotation-request',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -153,10 +161,38 @@ async function main(): Promise<void> {
     closers.push(() => {
       for (const client of clients.values()) client.close();
     });
+    const signerKeys = new SignerKeyService({ db, shards: signer.shards, clients });
+    if (command === 'executor:rotation-request') {
+      // P18.T09.b: borrador de rotación de S con el motivo; la propuesta la firma el usuario desde su app.
+      const reason = flag(flags, 'reason');
+      if (!(EXECUTOR_ROTATION_REASONS as readonly string[]).includes(reason)) {
+        throw new UsageError(`--reason tiene que ser uno de: ${EXECUTOR_ROTATION_REASONS.join(', ')}`);
+      }
+      const requests = new ExecutorRotationRequests({
+        db,
+        operators,
+        signerKeys,
+        rpc,
+        snapshot: () => snapshot,
+        audit,
+        emails,
+        metrics,
+      });
+      const toShard = flags.get('to-shard')?.trim();
+      out(
+        await requests.request({
+          walletId: flag(flags, 'wallet'),
+          reason: reason as ExecutorRotationReason,
+          ...(toShard === undefined || toShard === '' ? {} : { toShard }),
+          operator: await credentials(flags),
+        }),
+      );
+      return;
+    }
     const service = new ExecutorReplacementService({
       db,
       operators,
-      signerKeys: new SignerKeyService({ db, shards: signer.shards, clients }),
+      signerKeys,
       rpc,
       snapshot: () => snapshot,
       audit,

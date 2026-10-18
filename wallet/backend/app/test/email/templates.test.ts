@@ -26,6 +26,7 @@ const SAFE_TEMPLATES: TemplateName[] = [
   'rotation-proposed',
   'rotation-cancelled',
   'rotation-executed',
+  'executor-rotation-requested',
   'recovery-started',
   'high-value-challenge',
   'high-value-executed',

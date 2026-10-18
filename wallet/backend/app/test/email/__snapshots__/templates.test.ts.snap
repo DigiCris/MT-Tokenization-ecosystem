@@ -42,6 +42,30 @@ Si no fuiste vos: ignorá este email; sin el código no se verifica ninguna cuen
 }
 `;
 
+exports[`snapshots > executor-rotation-requested 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>La plataforma pidió rotar su clave de tu Safe</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Hay que rotar la clave de la plataforma (S)</h1><p>Motivo: migración de la clave a otro servidor de firma de la plataforma. Entrá a la app Wallet, revisá la clave nueva y firmá la propuesta: se puede ejecutar después de 48 h y hasta entonces la podés cancelar. Mientras tanto tu wallet sigue operando con la clave actual.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Pedido de rotación de clave de la plataforma (S)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Motivo</td><td style="padding:4px 0;font-family:monospace">migración de la clave a otro servidor de firma de la plataforma</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Clave actual</td><td style="padding:4px 0;font-family:monospace">0x1111 1111 1111 1111 1111 1111 1111 1111 1111 1111</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Clave nueva</td><td style="padding:4px 0;font-family:monospace">0xAb58 01a7 D398 351b 8bE1 1C43 9e05 C5B3 259a eC9B</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Fecha (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr></table><p><strong>Si no fuiste vos:</strong> este pedido lo inicia la plataforma; si no lo esperabas, no firmes nada y contactá a soporte.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "La plataforma pidió rotar su clave de tu Safe",
+  "text": "Hay que rotar la clave de la plataforma (S)
+
+Motivo: migración de la clave a otro servidor de firma de la plataforma. Entrá a la app Wallet, revisá la clave nueva y firmá la propuesta: se puede ejecutar después de 48 h y hasta entonces la podés cancelar. Mientras tanto tu wallet sigue operando con la clave actual.
+
+Acción: Pedido de rotación de clave de la plataforma (S)
+Motivo: migración de la clave a otro servidor de firma de la plataforma
+Clave actual: 0x1111 1111 1111 1111 1111 1111 1111 1111 1111 1111
+Clave nueva: 0xAb58 01a7 D398 351b 8bE1 1C43 9e05 C5B3 259a eC9B
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Fecha: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Fecha (UTC): 17/10/2026, 15:04 UTC
+
+Si no fuiste vos: este pedido lo inicia la plataforma; si no lo esperabas, no firmes nada y contactá a soporte.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
 exports[`snapshots > high-value-challenge 1`] = `
 {
   "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Confirmá una operación de alto valor</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Confirmá el envío</h1><p>Ingresá este código en la app para autorizar esta operación. El código sólo sirve para esta operación exacta.</p><p style="font-size:28px;font-family:monospace;letter-spacing:4px;margin:24px 0"><strong>27182818</strong></p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Envío de 12.500,00 USDC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Destino</td><td style="padding:4px 0;font-family:monospace">0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Nonce de la Safe</td><td style="padding:4px 0;font-family:monospace">42</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:19 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:19 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> no ingreses el código y cancelá la operación desde la app. Cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.</p></body></html>",

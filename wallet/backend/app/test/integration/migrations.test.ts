@@ -22,6 +22,7 @@ const ALL_MIGRATIONS = [
   '0005_operation_pipeline',
   '0006_whitelist_send_swap',
   '0007_rotations_recovery_migration',
+  '0008_executor_rotation_requests',
 ];
 const hash = () => randomBytes(32);
 const sig = () => randomBytes(65);

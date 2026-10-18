@@ -74,4 +74,6 @@ export const REDIS_DBS = {
   executorKeyLoss: 71,
   migration: 72,
   notificationsApi: 73,
+  // P18: rotación de S pedida por la plataforma.
+  executorRotationRequest: 74,
 } as const;

@@ -65,7 +65,7 @@ const PROPOSABLE: Readonly<Record<'U' | 'R', readonly RotationRole[]>> = {
 };
 
 /** Estados en los que la rotación está en curso (una sola por rol, índice único parcial). */
-const LIVE_STATUSES: readonly RotationRow['status'][] = [
+export const LIVE_STATUSES: readonly RotationRow['status'][] = [
   'PROPOSING',
   'PENDING_TIMELOCK',
   'READY_TO_EXECUTE',
@@ -92,6 +92,10 @@ export interface RotationView {
   createdAt: string;
   /** EIP-712 `CancelRotation` a firmar con U o R mientras la propuesta esté pendiente ([C-RTL-03]). */
   cancelTypedData: ReturnType<typeof cancelTypedData> | null;
+  /** P18.T09.b: motivo de una rotación de S pedida por la plataforma (borrador del operador). */
+  requestReason: RotationRow['request_reason'];
+  /** SignerKeyAttestation de S′ (JWS EdDSA) para que la app la verifique con la clave fijada ([F-SEC-08]). */
+  newKeyAttestation: string | null;
 }
 
 export interface RotationDeps {
@@ -171,6 +175,8 @@ export class RotationService {
         pending && proposalId !== null && safe !== null
           ? cancelTypedData(snapshot.chainId, this.#timelockOf(row), proposalId, safe)
           : null,
+      requestReason: row.request_reason,
+      newKeyAttestation: row.role === 'S' ? row.new_key_attestation : null,
     };
   }
 
@@ -402,6 +408,22 @@ export class RotationService {
       return { ...none, newKey, keyAcceptance: enrollment.key_acceptance, enrollmentId: enrollment.id };
     }
     if (role === 'S') {
+      // Pedido de la plataforma (P18.T09.b): la S′ del borrador del operador, ya creada por el signer.
+      const draft = await this.#d.db
+        .selectFrom('rotation_requests')
+        .select(['id', 'new_key', 'new_key_attestation'])
+        .where('wallet_id', '=', wallet.id)
+        .where('role', '=', 'S')
+        .where('status', '=', 'DRAFT')
+        .executeTakeFirst();
+      if (draft?.new_key_attestation) {
+        return {
+          ...none,
+          newKey: bufferToAddress(draft.new_key),
+          attestation: draft.new_key_attestation,
+          draftId: draft.id,
+        };
+      }
       // Una S' creada para un intento anterior que nunca se ejecutó se reutiliza (no se acumulan claves).
       const pending = await this.#d.db
         .selectFrom('signer_keys')

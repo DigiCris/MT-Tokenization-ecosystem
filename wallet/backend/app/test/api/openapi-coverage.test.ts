@@ -142,6 +142,8 @@ const WALLET_ONLY_PATHS = [
   '/api/v1/operation-groups/{id}/requote',
   '/api/v1/operation-groups/{id}/revoke-approval',
   '/api/v1/wallets/{id}/balances',
+  // P18.T08: transfers indexados de la Safe (actividad de la app).
+  '/api/v1/wallets/{id}/transfers',
 ];
 /** Sólo en el listener de Recovery: Enrollment Key y envío de R, y el grupo de emergencia (R) de P14. */
 const RECOVERY_ONLY_PATHS = [

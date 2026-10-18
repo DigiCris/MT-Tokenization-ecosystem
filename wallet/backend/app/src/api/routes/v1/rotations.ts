@@ -39,6 +39,14 @@ export const RotationViewSchema = z
       .record(z.string(), z.unknown())
       .nullable()
       .describe('EIP-712 CancelRotation (eth_signTypedData_v4) mientras la propuesta esté pendiente'),
+    requestReason: z
+      .enum(['SHARD_MIGRATION', 'HSM_MIGRATION', 'KEY_COMPROMISE', 'MAINTENANCE'])
+      .nullable()
+      .describe('Rotación de S pedida por la plataforma: motivo del borrador del operador'),
+    newKeyAttestation: z
+      .string()
+      .nullable()
+      .describe('Rotación de S: SignerKeyAttestation de la S nueva (JWS EdDSA, verificable con la clave fijada)'),
   })
   .meta({ id: 'Rotation' });
 
