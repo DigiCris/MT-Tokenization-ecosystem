@@ -1,6 +1,6 @@
-// Construcción del snapshot de policy [B-POL-01] desde las direcciones de un deploy (contracts/deployments/<red>.json)
-// y config/chains/base-mainnet.json, con los valores por defecto de V1 ([B-POL-02], ADR-025). La firma la agrega
-// `pnpm policy:sign` (Ed25519 sobre los bytes exactos del archivo).
+// Construcción del snapshot de policy [B-POL-01] desde las direcciones y los codehashes de un deploy
+// (contracts/deployments/<red>.json) y config/chains/base-mainnet.json, con los valores por defecto de V1 ([B-POL-02],
+// ADR-025). La firma la agrega `pnpm policy:sign` (Ed25519 sobre los bytes exactos del archivo).
 import { sign, type KeyObject } from 'node:crypto';
 import { checksumAddress } from '../crypto/keccak.ts';
 import { PolicySnapshotSchema, type PolicySnapshot } from './snapshot.ts';
@@ -45,10 +45,22 @@ export interface BuildSnapshotInput {
   issuedAt?: Date;
   /** Direcciones del deploy (claves de contracts/deployments/<red>.json → contracts). */
   deployment: Record<string, string>;
-  /** config/chains/base-mainnet.json → contracts. */
-  chain: { safeL2Singleton: string; safeProxyFactory: string; usdc: string; usdt: string };
+  /** Runtime codehash de cada contrato del deploy (mismas claves). */
+  deploymentCodehashes: Record<string, string>;
+  /** config/chains/base-mainnet.json → contracts (direcciones y codehashes fijados de Safe). */
+  chain: ChainContracts;
   gas?: { maxFeePerGasWei: string; maxPriorityFeePerGasWei: string; maxGasLimit: number };
   gasTank: { topupMaxWei: string; dailyCapWei: string; maxGasLimit?: number };
+}
+
+export interface ChainContracts {
+  safeL2Singleton: string;
+  safeProxyFactory: string;
+  usdc: string;
+  usdt: string;
+  safeL2SingletonCodehash: string;
+  safeProxyFactoryCodehash: string;
+  safeProxyRuntimeCodehash: string;
 }
 
 function pick(deployment: Record<string, string>, name: string): string {
@@ -57,8 +69,15 @@ function pick(deployment: Record<string, string>, name: string): string {
   return checksumAddress(value);
 }
 
+function codehash(codehashes: Record<string, string>, name: string): string {
+  const value = codehashes[name];
+  if (value === undefined) throw new Error(`el deploy no tiene el codehash de ${name}`);
+  return value.toLowerCase();
+}
+
 export function buildSnapshot(input: BuildSnapshotInput): Record<string, unknown> {
   const d = input.deployment;
+  const h = input.deploymentCodehashes;
   const snapshot = {
     format: 'mtw-policy-snapshot',
     formatVersion: 1,
@@ -78,6 +97,19 @@ export function buildSnapshot(input: BuildSnapshotInput): Record<string, unknown
       swapExecutor: pick(d, 'SwapExecutorV3'),
       safeL2Singleton: checksumAddress(input.chain.safeL2Singleton),
       safeProxyFactory: checksumAddress(input.chain.safeProxyFactory),
+    },
+    codehashes: {
+      securityGuard: codehash(h, 'SecurityGuard'),
+      rotationTimelock: codehash(h, 'RotationTimelock'),
+      walletFactory: codehash(h, 'WalletFactory'),
+      safeBootstrap: codehash(h, 'SafeBootstrap'),
+      policyRegistry: codehash(h, 'PolicyRegistry'),
+      destinationWhitelist: codehash(h, 'DestinationWhitelist'),
+      denyAllModuleGuard: codehash(h, 'DenyAllModuleGuard'),
+      swapExecutor: codehash(h, 'SwapExecutorV3'),
+      safeL2Singleton: input.chain.safeL2SingletonCodehash.toLowerCase(),
+      safeProxyFactory: input.chain.safeProxyFactoryCodehash.toLowerCase(),
+      safeProxyRuntime: input.chain.safeProxyRuntimeCodehash.toLowerCase(),
     },
     tokens: [
       { symbol: 'USDC', address: checksumAddress(input.chain.usdc), decimals: 6 },

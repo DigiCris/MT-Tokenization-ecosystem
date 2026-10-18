@@ -61,6 +61,8 @@ const snapshot = {
     safeL2Singleton: chain.contracts.safeL2Singleton.address,
     safeProxyFactory: chain.contracts.safeProxyFactory.address,
   },
+  // Runtime codehash de cada contrato del sistema y de las piezas de Safe (verificación V9 §16), del deploy de vectores.
+  codehashes: system.codehashes,
   tokens: [
     { symbol: 'USDC', address: C.usdc, decimals: 6 },
     { symbol: 'USDT', address: C.usdt, decimals: 6 },

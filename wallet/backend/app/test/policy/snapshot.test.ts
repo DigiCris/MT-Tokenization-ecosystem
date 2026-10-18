@@ -3,25 +3,13 @@
 import { createHash, sign } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { getAddress } from 'viem';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadPolicySnapshot, PolicySnapshotError } from '../../src/policy/snapshot.ts';
-import { edKey, writePolicySnapshot } from '../helpers/signer-shard.ts';
+import { edKey, vectorSystem, writePolicySnapshot } from '../helpers/signer-shard.ts';
 
-const system = JSON.parse(readFileSync(resolve(import.meta.dirname, '../vectors/system.json'), 'utf8')) as {
-  contracts: Record<string, string>;
-};
-const deployment = {
-  SecurityGuard: system.contracts.securityGuard,
-  RotationTimelock: system.contracts.rotationTimelock,
-  WalletFactory: system.contracts.walletFactory,
-  SafeBootstrap: system.contracts.safeBootstrap,
-  PolicyRegistry: system.contracts.policyRegistry,
-  DestinationWhitelist: system.contracts.destinationWhitelist,
-  DenyAllModuleGuard: system.contracts.denyAllModuleGuard,
-  SwapExecutorV3: system.contracts.swapExecutor,
-} as Record<string, string>;
+const system = vectorSystem();
 
 const dirs: string[] = [];
 const key = edKey();
@@ -29,7 +17,7 @@ const key = edKey();
 function written(version = 1): string {
   const dir = mkdtempSync(join(tmpdir(), 'mtw-policy-'));
   dirs.push(dir);
-  return writePolicySnapshot(dir, key, deployment, version);
+  return writePolicySnapshot(dir, key, system, version);
 }
 
 /** Firma bytes arbitrarios con la clave de policy (formato inválido pero firma válida). */
@@ -59,7 +47,9 @@ describe('snapshot de policy del backend', () => {
     expect(snapshot.version).toBe(7);
     expect(snapshot.environment).toBe('local');
     expect(snapshot.chainId).toBe(8453);
-    expect(snapshot.contracts.walletFactory).toBe(getAddress(system.contracts.walletFactory ?? ''));
+    expect(snapshot.contracts.walletFactory).toBe(getAddress(system.contracts.WalletFactory ?? ''));
+    expect(snapshot.codehashes.walletFactory).toBe(system.codehashes.WalletFactory);
+    expect(snapshot.codehashes.safeProxyRuntime).toMatch(/^0x[0-9a-f]{64}$/);
     expect(snapshot.sha256).toBe(`0x${createHash('sha256').update(readFileSync(path)).digest('hex')}`);
   });
 

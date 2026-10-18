@@ -17,12 +17,12 @@ import {
   createPki,
   edKey,
   startSignerShard,
+  vectorSystem,
   writePolicySnapshot,
   type Pki,
   type SignerShard,
 } from '../helpers/signer-shard.ts';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 
 const shards3 = [
   { id: 'dev-1', url: 'https://a', active: true },
@@ -68,20 +68,7 @@ beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'mtw-sharding-'));
   [anvil, db] = await Promise.all([startAnvil(), createTestDatabase()]);
   pki = createPki();
-  const system = JSON.parse(readFileSync(resolve(import.meta.dirname, '../vectors/system.json'), 'utf8')) as {
-    contracts: Record<string, string>;
-  };
-  const c = system.contracts;
-  const snapshotPath = writePolicySnapshot(dir, keys.policy, {
-    SecurityGuard: c.securityGuard!,
-    RotationTimelock: c.rotationTimelock!,
-    WalletFactory: c.walletFactory!,
-    SafeBootstrap: c.safeBootstrap!,
-    PolicyRegistry: c.policyRegistry!,
-    DestinationWhitelist: c.destinationWhitelist!,
-    DenyAllModuleGuard: c.denyAllModuleGuard!,
-    SwapExecutorV3: c.swapExecutor!,
-  });
+  const snapshotPath = writePolicySnapshot(dir, keys.policy, vectorSystem());
   const started = await Promise.all(
     ['dev-1', 'dev-2'].map((shardId) => startSignerShard({ shardId, anvilUrl: anvil.url, pki, keys, snapshotPath })),
   );

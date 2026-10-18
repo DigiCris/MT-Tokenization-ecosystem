@@ -129,15 +129,41 @@ export function createPki(): Pki {
 }
 
 /** Snapshot de policy local firmado (mismo formato que config/policy/<env>/policy-snapshot.json). */
-export function writePolicySnapshot(
-  dir: string,
-  key: EdKeyPair,
-  contracts: Record<string, string>,
-  version = 1,
-): string {
-  const chain = JSON.parse(readFileSync(resolve(WALLET_ROOT, 'config/chains/base-mainnet.json'), 'utf8')) as {
-    contracts: Record<string, { address: string }>;
+/** Direcciones y runtime codehashes de un deploy del sistema, con los nombres de contracts/deployments/<red>.json. */
+export interface SnapshotSystem {
+  contracts: Record<string, string>;
+  codehashes: Record<string, string>;
+}
+
+const VECTOR_NAMES: Readonly<Record<string, string>> = {
+  securityGuard: 'SecurityGuard',
+  rotationTimelock: 'RotationTimelock',
+  walletFactory: 'WalletFactory',
+  safeBootstrap: 'SafeBootstrap',
+  policyRegistry: 'PolicyRegistry',
+  destinationWhitelist: 'DestinationWhitelist',
+  denyAllModuleGuard: 'DenyAllModuleGuard',
+  swapExecutor: 'SwapExecutorV3',
+};
+
+/** El deploy de los vectores (test/vectors/system.json), para los tests que no despliegan el sistema. */
+export function vectorSystem(): SnapshotSystem {
+  const system = JSON.parse(readFileSync(resolve(import.meta.dirname, '../vectors/system.json'), 'utf8')) as {
+    contracts: Record<string, string>;
+    codehashes: Record<string, string>;
   };
+  const rename = (values: Record<string, string>) =>
+    Object.fromEntries(
+      Object.entries(VECTOR_NAMES).map(([vectorName, deploymentName]) => [deploymentName, values[vectorName] ?? '']),
+    );
+  return { contracts: rename(system.contracts), codehashes: rename(system.codehashes) };
+}
+
+export function writePolicySnapshot(dir: string, key: EdKeyPair, system: SnapshotSystem, version = 1): string {
+  const chain = JSON.parse(readFileSync(resolve(WALLET_ROOT, 'config/chains/base-mainnet.json'), 'utf8')) as {
+    contracts: Record<string, { address: string; codehash?: string; proxyRuntimeCodehash?: string }>;
+  };
+  const { contracts, codehashes } = system;
   const snapshot = {
     format: 'mtw-policy-snapshot',
     formatVersion: 1,
@@ -157,6 +183,19 @@ export function writePolicySnapshot(
       swapExecutor: contracts.SwapExecutorV3,
       safeL2Singleton: chain.contracts.safeL2Singleton?.address,
       safeProxyFactory: chain.contracts.safeProxyFactory?.address,
+    },
+    codehashes: {
+      securityGuard: codehashes.SecurityGuard,
+      rotationTimelock: codehashes.RotationTimelock,
+      walletFactory: codehashes.WalletFactory,
+      safeBootstrap: codehashes.SafeBootstrap,
+      policyRegistry: codehashes.PolicyRegistry,
+      destinationWhitelist: codehashes.DestinationWhitelist,
+      denyAllModuleGuard: codehashes.DenyAllModuleGuard,
+      swapExecutor: codehashes.SwapExecutorV3,
+      safeL2Singleton: chain.contracts.safeL2Singleton?.codehash,
+      safeProxyFactory: chain.contracts.safeProxyFactory?.codehash,
+      safeProxyRuntime: chain.contracts.safeProxyFactory?.proxyRuntimeCodehash,
     },
     tokens: [
       { symbol: 'USDC', address: chain.contracts.usdc?.address, decimals: 6 },
@@ -269,6 +308,9 @@ export async function startSignerShard(options: ShardOptions): Promise<SignerSha
     SIGNER_RPC_PRIMARY_URL: options.anvilUrl,
     SIGNER_RPC_SECONDARY_URL: options.anvilUrl,
     SIGNER_RPC_QUORUM_MODE: 'local-single',
+    // Anvil trae el estado del fork bajo demanda desde un RPC remoto con límite de ritmo (en CI, varios forks a la
+    // vez): una lectura en frío puede tardar más que el timeout por defecto (5 s) de un nodo real.
+    RPC_TIMEOUT_MS: '30000',
     MTLS_CA_CERT_PATH: options.pki.ca,
     MTLS_SIGNER_SERVER_CERT_PATH: options.pki.server.cert,
     MTLS_SIGNER_SERVER_KEY_PATH: options.pki.server.key,

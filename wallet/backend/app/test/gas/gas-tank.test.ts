@@ -75,7 +75,7 @@ beforeAll(async () => {
   system = chain.system;
   [anvil, db] = await Promise.all([startAnvil({ loadState: chain.statePath }), createTestDatabase()]);
   pki = createPki();
-  const snapshotPath = writePolicySnapshot(dir, keys.policy, system.contracts);
+  const snapshotPath = writePolicySnapshot(dir, keys.policy, system);
   snapshot = loadPolicySnapshot(snapshotPath, keys.policy.publicKey, 'local');
   const started = await Promise.all([
     startSignerShard({ shardId: 'platform', anvilUrl: anvil.url, pki, keys, snapshotPath }),

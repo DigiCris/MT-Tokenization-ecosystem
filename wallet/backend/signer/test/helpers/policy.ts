@@ -2,13 +2,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { inject } from 'vitest';
-import { buildSnapshot, serializeSnapshot, signSnapshotBytes } from '../../src/policy/build.ts';
+import { buildSnapshot, serializeSnapshot, signSnapshotBytes, type ChainContracts } from '../../src/policy/build.ts';
 import type { TestEdKey } from './keys.ts';
 import { WALLET_ROOT } from './paths.ts';
 
-export function chainContracts(): { safeL2Singleton: string; safeProxyFactory: string; usdc: string; usdt: string } {
+export function chainContracts(): ChainContracts {
   const chain = JSON.parse(readFileSync(resolve(WALLET_ROOT, 'config/chains/base-mainnet.json'), 'utf8')) as {
-    contracts: Record<string, { address: string }>;
+    contracts: Record<string, { address: string; codehash: string; proxyRuntimeCodehash?: string }>;
   };
   const c = chain.contracts;
   return {
@@ -16,6 +16,9 @@ export function chainContracts(): { safeL2Singleton: string; safeProxyFactory: s
     safeProxyFactory: c.safeProxyFactory!.address,
     usdc: c.usdc!.address,
     usdt: c.usdt!.address,
+    safeL2SingletonCodehash: c.safeL2Singleton!.codehash,
+    safeProxyFactoryCodehash: c.safeProxyFactory!.codehash,
+    safeProxyRuntimeCodehash: c.safeProxyFactory!.proxyRuntimeCodehash!,
   };
 }
 
@@ -25,6 +28,7 @@ export function testSnapshot(version = 1, overrides: Partial<Parameters<typeof b
     version,
     platformId: 'mtw',
     deployment: inject('chain').system.contracts,
+    deploymentCodehashes: inject('chain').system.codehashes,
     chain: chainContracts(),
     gasTank: { topupMaxWei: '1000000000000000', dailyCapWei: '3000000000000000' },
     ...overrides,

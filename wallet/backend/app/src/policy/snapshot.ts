@@ -3,13 +3,18 @@
 // fijada, formato y entorno. El backend envía `version` al signer en cada pedido (deben coincidir).
 import { createHash, verify, type KeyObject } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { getAddress, isAddress, type Address } from 'viem';
+import { getAddress, isAddress, type Address, type Hex } from 'viem';
 import { z } from 'zod';
 
 const address = z
   .string()
   .refine((v) => isAddress(v, { strict: false }))
   .transform((v) => getAddress(v));
+
+const hash32 = z
+  .string()
+  .regex(/^0x[0-9a-fA-F]{64}$/)
+  .transform((v) => v.toLowerCase() as Hex);
 
 const SnapshotSchema = z.object({
   format: z.literal('mtw-policy-snapshot'),
@@ -30,6 +35,20 @@ const SnapshotSchema = z.object({
     safeL2Singleton: address,
     safeProxyFactory: address,
   }),
+  /** Runtime codehash esperado de cada contrato del sistema y de las piezas de Safe (verificación V9 §16). */
+  codehashes: z.object({
+    securityGuard: hash32,
+    rotationTimelock: hash32,
+    walletFactory: hash32,
+    safeBootstrap: hash32,
+    policyRegistry: hash32,
+    destinationWhitelist: hash32,
+    denyAllModuleGuard: hash32,
+    swapExecutor: hash32,
+    safeL2Singleton: hash32,
+    safeProxyFactory: hash32,
+    safeProxyRuntime: hash32,
+  }),
   tokens: z.array(z.object({ symbol: z.string(), address, decimals: z.number().int() })),
 });
 
@@ -39,6 +58,7 @@ export interface BackendPolicySnapshot {
   platformId: string;
   chainId: 8453;
   contracts: Record<keyof z.infer<typeof SnapshotSchema>['contracts'], Address>;
+  codehashes: Record<keyof z.infer<typeof SnapshotSchema>['codehashes'], Hex>;
   sha256: `0x${string}`;
 }
 
@@ -74,6 +94,7 @@ export function loadPolicySnapshot(path: string, publicKey: KeyObject, environme
     platformId: parsed.data.platformId,
     chainId: parsed.data.chainId,
     contracts: parsed.data.contracts,
+    codehashes: parsed.data.codehashes,
     sha256: `0x${createHash('sha256').update(bytes).digest('hex')}`,
   };
 }

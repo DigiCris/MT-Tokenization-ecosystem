@@ -1,5 +1,6 @@
 // pnpm policy:build [--env local] [--out <ruta>]
-// Arma el snapshot de policy [B-POL-01] desde las direcciones del deploy (local: contracts/deployments/local.json;
+// Arma el snapshot de policy [B-POL-01] desde las direcciones y codehashes del deploy (local:
+// contracts/deployments/local.json;
 // ensayos: contracts/deployments/fork/<entorno>.json, P25.T07) y config/chains/base-mainnet.json, con los valores V1
 // (ADR-025) y los topes del gas tank del entorno (GAS_TOPUP_TARGET_WEI, GAS_TANK_DAILY_CAP_WEI). Si el contenido no
 // cambió conserva el archivo (y su firma); si cambió, versión + 1 y hay que volver a firmar (`pnpm policy:sign`).
@@ -29,10 +30,10 @@ await run(() => {
   );
   if (!existsSync(deploymentFile)) fail(`falta ${deploymentFile} (local: pnpm deploy-local)`);
   const deployment = JSON.parse(readFileSync(deploymentFile, 'utf8')) as {
-    contracts: Record<string, { address: string }>;
+    contracts: Record<string, { address: string; codehash: string }>;
   };
   const chain = JSON.parse(readFileSync(resolve(WALLET_ROOT, 'config/chains/base-mainnet.json'), 'utf8')) as {
-    contracts: Record<string, { address: string }>;
+    contracts: Record<string, { address: string; codehash?: string; proxyRuntimeCodehash?: string }>;
   };
   const env = {
     ...(environment === 'local' && existsSync(resolve(WALLET_ROOT, '.env'))
@@ -43,11 +44,12 @@ await run(() => {
   const topup = env.GAS_TOPUP_TARGET_WEI;
   const dailyCap = env.GAS_TANK_DAILY_CAP_WEI;
   if (topup === undefined || dailyCap === undefined) fail('faltan GAS_TOPUP_TARGET_WEI y GAS_TANK_DAILY_CAP_WEI');
-  const chainAddress = (name: string): string => {
-    const value = chain.contracts[name]?.address;
-    if (value === undefined) fail(`config/chains/base-mainnet.json sin ${name}`);
+  const chainValue = (name: string, field: 'address' | 'codehash' | 'proxyRuntimeCodehash'): string => {
+    const value = chain.contracts[name]?.[field];
+    if (value === undefined) fail(`config/chains/base-mainnet.json sin ${name}.${field}`);
     return value;
   };
+  const chainAddress = (name: string): string => chainValue(name, 'address');
   const previous = existsSync(out) ? (JSON.parse(readFileSync(out, 'utf8')) as Record<string, unknown>) : undefined;
   const make = (version: number, issuedAt?: Date) =>
     buildSnapshot({
@@ -56,11 +58,15 @@ await run(() => {
       platformId: env.PLATFORM_ID ?? 'mtw',
       ...(issuedAt === undefined ? {} : { issuedAt }),
       deployment: Object.fromEntries(Object.entries(deployment.contracts).map(([k, v]) => [k, v.address])),
+      deploymentCodehashes: Object.fromEntries(Object.entries(deployment.contracts).map(([k, v]) => [k, v.codehash])),
       chain: {
         safeL2Singleton: chainAddress('safeL2Singleton'),
         safeProxyFactory: chainAddress('safeProxyFactory'),
         usdc: chainAddress('usdc'),
         usdt: chainAddress('usdt'),
+        safeL2SingletonCodehash: chainValue('safeL2Singleton', 'codehash'),
+        safeProxyFactoryCodehash: chainValue('safeProxyFactory', 'codehash'),
+        safeProxyRuntimeCodehash: chainValue('safeProxyFactory', 'proxyRuntimeCodehash'),
       },
       gasTank: { topupMaxWei: topup, dailyCapWei: dailyCap },
     });

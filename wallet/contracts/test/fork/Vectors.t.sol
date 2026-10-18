@@ -86,13 +86,32 @@ contract VectorsTest is SystemFixture {
         keys[0] = _key("user", "mtw-user-key", userKey);
         keys[1] = _key("recovery", "mtw-recovery-key", recoveryKey);
         keys[2] = _key("executor", "mtw-executor-key", executor);
-        string[] memory kv = new string[](6);
+        string[] memory kv = new string[](7);
         kv[0] = _num("chainId", block.chainid);
         kv[1] = _num("forkBlock", ext.forkBlock);
         kv[2] = _str("keyDerivation", "privateKey = keccak256(utf8(label)) (forge-std makeAddrAndKey)");
         kv[3] = _raw("keys", _obj(keys));
         kv[4] = _raw("contracts", _contractsJson());
-        kv[5] = _addr("safe", address(safe));
+        kv[5] = _raw("codehashes", _codehashesJson());
+        kv[6] = _addr("safe", address(safe));
+        return _obj(kv);
+    }
+
+    /// @dev Runtime codehash (EXTCODEHASH) de cada contrato del sistema, de la Safe singleton y la proxy factory
+    ///      usadas y del proxy de una Safe del sistema: lo fija el snapshot de policy (verificación V9 §16).
+    function _codehashesJson() internal view returns (string memory) {
+        string[] memory kv = new string[](11);
+        kv[0] = _b32("securityGuard", address(sys.securityGuard).codehash);
+        kv[1] = _b32("rotationTimelock", address(sys.rotationTimelock).codehash);
+        kv[2] = _b32("walletFactory", address(sys.walletFactory).codehash);
+        kv[3] = _b32("safeBootstrap", address(sys.safeBootstrap).codehash);
+        kv[4] = _b32("policyRegistry", address(sys.policyRegistry).codehash);
+        kv[5] = _b32("destinationWhitelist", address(sys.destinationWhitelist).codehash);
+        kv[6] = _b32("denyAllModuleGuard", address(sys.denyAllModuleGuard).codehash);
+        kv[7] = _b32("swapExecutor", address(sys.swapExecutor).codehash);
+        kv[8] = _b32("safeL2Singleton", ext.safeL2Singleton.codehash);
+        kv[9] = _b32("safeProxyFactory", ext.safeProxyFactory.codehash);
+        kv[10] = _b32("safeProxyRuntime", address(safe).codehash);
         return _obj(kv);
     }
 
@@ -189,7 +208,7 @@ contract VectorsTest is SystemFixture {
         for (uint256 i; i < 3; ++i) {
             items[i] = _create2Item(i);
         }
-        string[] memory kv = new string[](7);
+        string[] memory kv = new string[](10);
         kv[0] = _addr("safeProxyFactory", ext.safeProxyFactory);
         kv[1] = _addr("safeSingleton", ext.safeL2Singleton);
         kv[2] = _b32("proxyCreationCodeHash", keccak256(ISafeProxyFactory(ext.safeProxyFactory).proxyCreationCode()));
@@ -200,7 +219,35 @@ contract VectorsTest is SystemFixture {
             "address = keccak256(0xff ++ safeProxyFactory ++ keccak256(keccak256(initializer) ++ saltNonce) ++ initCodeHash)[12:]"
         );
         kv[6] = _raw("predictions", _array(items));
+        kv[7] = _str(
+            "saltRule", "saltNonce = uint256(keccak256(abi.encode('MTW_SALT_V1', platformId, walletId))) (P12.T04)"
+        );
+        kv[8] = _raw("saltNonces", _array(_saltItems()));
+        // Creation code del proxy (initCodeHash = keccak256(proxyCreationCode ++ uint256(singleton))): backend y
+        // frontends calculan la dirección esperada sin consultar a la factory.
+        kv[9] = _str("proxyCreationCode", vm.toString(ISafeProxyFactory(ext.safeProxyFactory).proxyCreationCode()));
         return _obj(kv);
+    }
+
+    /// @dev saltNonce de una wallet (backend y frontends lo calculan igual) y la Safe que resulta con las claves del
+    ///      primer ítem de `predictions`.
+    function _saltItems() internal returns (string[] memory items) {
+        string[3] memory platforms = ["mtw", "mtw", "mt-test"];
+        string[3] memory wallets =
+            [WALLET_ID, "00000000-0000-4000-8000-000000000000", "0192f6c4-8a3e-7b1d-9c5f-2e4a6b8d0f13"];
+        (address u,) = makeAddrAndKey("mtw-vector-user-0");
+        (address r,) = makeAddrAndKey("mtw-vector-recovery-0");
+        (address s,) = makeAddrAndKey("mtw-vector-executor-0");
+        items = new string[](3);
+        for (uint256 i; i < 3; ++i) {
+            uint256 saltNonce = uint256(keccak256(abi.encode("MTW_SALT_V1", platforms[i], wallets[i])));
+            string[] memory kv = new string[](4);
+            kv[0] = _str("platformId", platforms[i]);
+            kv[1] = _str("walletId", wallets[i]);
+            kv[2] = _str("saltNonce", vm.toString(saltNonce));
+            kv[3] = _addr("predictedSafe", sys.walletFactory.predictWalletAddress(u, r, s, saltNonce));
+            items[i] = _obj(kv);
+        }
     }
 
     function _create2Item(uint256 i) internal returns (string memory) {

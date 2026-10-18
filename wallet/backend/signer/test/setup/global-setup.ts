@@ -32,6 +32,8 @@ export interface DeployedSystem {
   forkBlock: number;
   /** Direcciones del sistema (contracts/deployments/<red>.json → contracts). */
   contracts: Record<string, string>;
+  /** Runtime codehash de cada contrato del sistema (mismas claves). */
+  codehashes: Record<string, string>;
   policy: { admin: string; mode: string; guardians: string[] };
 }
 
@@ -127,7 +129,7 @@ async function deploySystem(): Promise<{ info: ChainInfo; cleanup: () => void }>
     const deployment = JSON.parse(readFileSync(jsonPath, 'utf8')) as {
       chainId: number;
       forkBlock: number;
-      contracts: Record<string, { address: string }>;
+      contracts: Record<string, { address: string; codehash: string }>;
       policy: { admin: string; mode: string; guardians: string[] };
     };
     const hex = await anvil.rpc<string>('anvil_dumpState');
@@ -146,6 +148,7 @@ async function deploySystem(): Promise<{ info: ChainInfo; cleanup: () => void }>
         chainId: deployment.chainId,
         forkBlock: deployment.forkBlock,
         contracts: Object.fromEntries(Object.entries(deployment.contracts).map(([k, v]) => [k, v.address])),
+        codehashes: Object.fromEntries(Object.entries(deployment.contracts).map(([k, v]) => [k, v.codehash])),
         policy: deployment.policy,
       },
     };

@@ -13,6 +13,8 @@ const WALLET_ROOT = resolve(import.meta.dirname, '../../../..');
 
 export interface DeployedSystem {
   contracts: Record<string, string>;
+  /** Runtime codehash de cada contrato (mismas claves que `contracts`). */
+  codehashes: Record<string, string>;
   policy: { admin: string; guardians: string[]; mode: string };
 }
 
@@ -55,11 +57,12 @@ export async function deploySystem(anvilUrl: string): Promise<DeployedSystem> {
       throw new Error(`deploy-core ci falló:\n${output.text.split('\n').slice(-25).join('\n')}`);
     }
     const json = JSON.parse(readFileSync(jsonPath, 'utf8')) as {
-      contracts: Record<string, { address: string }>;
+      contracts: Record<string, { address: string; codehash: string }>;
       policy: DeployedSystem['policy'];
     };
     return {
       contracts: Object.fromEntries(Object.entries(json.contracts).map(([k, v]) => [k, v.address])),
+      codehashes: Object.fromEntries(Object.entries(json.contracts).map(([k, v]) => [k, v.codehash])),
       policy: json.policy,
     };
   } finally {

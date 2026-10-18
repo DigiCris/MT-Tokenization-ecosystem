@@ -13,6 +13,10 @@ const address = z
   .string()
   .refine((v) => isAddress(v), 'dirección inválida')
   .transform((v) => v.toLowerCase() as `0x${string}`);
+const hash32 = z
+  .string()
+  .regex(/^0x[0-9a-fA-F]{64}$/, 'hash de 32 bytes')
+  .transform((v) => v.toLowerCase() as `0x${string}`);
 const amount = z
   .string()
   .regex(/^(0|[1-9][0-9]{0,77})$/)
@@ -39,6 +43,22 @@ export const PolicySnapshotSchema = z
         swapExecutor: address,
         safeL2Singleton: address,
         safeProxyFactory: address,
+      })
+      .strict(),
+    /** Runtime codehash esperado de cada contrato del sistema y de las piezas de Safe (verificación V9 §16). */
+    codehashes: z
+      .object({
+        securityGuard: hash32,
+        rotationTimelock: hash32,
+        walletFactory: hash32,
+        safeBootstrap: hash32,
+        policyRegistry: hash32,
+        destinationWhitelist: hash32,
+        denyAllModuleGuard: hash32,
+        swapExecutor: hash32,
+        safeL2Singleton: hash32,
+        safeProxyFactory: hash32,
+        safeProxyRuntime: hash32,
       })
       .strict(),
     tokens: z.array(z.object({ symbol: z.enum(['USDC', 'USDT']), address, decimals: z.literal(6) }).strict()).length(2),
