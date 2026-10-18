@@ -52,12 +52,12 @@ function knownKeys(root) {
   return existsSync(example) ? Object.keys(parseEnv(readFileSync(example, 'utf8'))) : [];
 }
 
-/** .env + overrides del proceso + convención <VAR>_FILE (ADR-030). */
-export function loadEnv(envFile, root = WALLET_ROOT) {
+/** .env + overrides del proceso (`processEnv`, por defecto process.env) + convención <VAR>_FILE (ADR-030). */
+export function loadEnv(envFile, root = WALLET_ROOT, { processEnv = process.env } = {}) {
   const fileEnv = readEnvFile(envFile) ?? {};
   const env = { ...fileEnv };
-  for (const k of knownKeys(root)) if (process.env[k] !== undefined && process.env[k] !== '') env[k] = process.env[k];
-  for (const [k, val] of Object.entries({ ...env, ...process.env })) {
+  for (const k of knownKeys(root)) if (processEnv[k] !== undefined && processEnv[k] !== '') env[k] = processEnv[k];
+  for (const [k, val] of Object.entries({ ...env, ...processEnv })) {
     if (!k.endsWith('_FILE') || !val) continue;
     const base = k.slice(0, -5);
     if (!env[base] && existsSync(val)) env[base] = readFileSync(val, 'utf8').trim();
@@ -65,7 +65,7 @@ export function loadEnv(envFile, root = WALLET_ROOT) {
   return env;
 }
 
-export function makeContext({ envName, fix, envFile, root = WALLET_ROOT, log }) {
+export function makeContext({ envName, fix, envFile, root = WALLET_ROOT, log, processEnv = process.env }) {
   const repoRoot = run('git', ['rev-parse', '--show-toplevel'], { cwd: root }).stdout.trim() || resolve(root, '..');
   const ctx = {
     root,
@@ -75,11 +75,11 @@ export function makeContext({ envName, fix, envFile, root = WALLET_ROOT, log }) 
     envFile,
     versions: JSON.parse(readFileSync(join(root, 'scripts/tools/versions.json'), 'utf8')),
     chainConfig: JSON.parse(readFileSync(join(root, 'config/chains/base-mainnet.json'), 'utf8')),
-    env: loadEnv(envFile, root),
+    env: loadEnv(envFile, root, { processEnv }),
     log: log ?? ((m) => process.stderr.write(m + '\n')),
   };
   ctx.reloadEnv = () => {
-    ctx.env = loadEnv(envFile, root);
+    ctx.env = loadEnv(envFile, root, { processEnv });
   };
   return ctx;
 }

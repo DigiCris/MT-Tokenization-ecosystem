@@ -53,8 +53,8 @@ export function ctxWithEnv(envText, { envName = 'local', fix = false } = {}) {
   const envFile = join(dir, '.env');
   writeFileSync(envFile, envText, { mode: 0o600 });
   const logs = [];
-  const ctx = makeContext({ envName, fix, envFile, log: (m) => logs.push(m) });
-  // Aislar del entorno del proceso: sólo cuenta el archivo temporal.
+  // Aislado del entorno del proceso (en CI los secretos llegan como variables): sólo cuenta el archivo temporal.
+  const ctx = makeContext({ envName, fix, envFile, log: (m) => logs.push(m), processEnv: {} });
   ctx.reloadEnv = () => {};
   return { ctx, dir, envFile, logs };
 }
