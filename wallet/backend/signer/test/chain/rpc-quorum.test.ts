@@ -162,6 +162,24 @@ describe('modo dual con fallas en un proveedor', () => {
     proxyB.setMode({ kind: 'pass' });
   });
 
+  it('error interno del nodo (no revert) → RPC_UNAVAILABLE, nunca CallRevertedError', async () => {
+    // Lo que devuelve un fork cuando no logra traer estado del RPC remoto: un error del nodo, no un revert.
+    proxyB.setMode({
+      kind: 'rpc-error',
+      methods: ['eth_call', 'eth_estimateGas'],
+      code: -32603,
+      message: 'failed to get account for 0x4200000000000000000000000000000000000015: operation timed out',
+    });
+    const client = rpc('dual', READ_TIMEOUT, 0);
+    expect(await problem(() => client.call(adminCall(), head - 1n))).toBe('RPC_UNAVAILABLE');
+    expect(await problem(() => client.simulate(transfer()))).toBe('RPC_UNAVAILABLE');
+    expect(await problem(() => client.estimateGas(transfer()))).toBe('RPC_UNAVAILABLE');
+    // El mismo error con el mensaje estándar de revert sí es un revert (nodos que usan -32000).
+    proxyB.setMode({ kind: 'rpc-error', methods: ['eth_call'], code: -32000, message: 'execution reverted' });
+    expect(await problem(() => client.simulate(transfer()))).toBe('REVERTED');
+    proxyB.setMode({ kind: 'pass' });
+  });
+
   it('revert en los dos → CallRevertedError en eth_call, simulación y estimación', async () => {
     proxyB.setMode({ kind: 'pass' });
     const client = rpc();

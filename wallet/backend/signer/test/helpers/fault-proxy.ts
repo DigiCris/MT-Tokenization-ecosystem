@@ -1,6 +1,6 @@
 // Proxy JSON-RPC de inyección de fallas (test-only, estrategia de testing §10 "Resiliencia"): se pone delante de un
 // Anvil real y altera las respuestas según el modo (timeout, resultado divergente o mal formado, error HTTP, head
-// atrasado).
+// atrasado, error JSON-RPC del nodo).
 import { createServer, type Server } from 'node:http';
 import { freePort } from './anvil.ts';
 
@@ -15,7 +15,9 @@ export type FaultMode =
   /** Responde con un error HTTP y un cuerpo que no es JSON. */
   | { kind: 'http-error'; status: number }
   /** Informa un head `lag` bloques por detrás del real. */
-  | { kind: 'head-lag'; lag: number };
+  | { kind: 'head-lag'; lag: number }
+  /** Responde un error JSON-RPC del nodo (no un revert) en los métodos indicados. */
+  | { kind: 'rpc-error'; methods: string[]; code: number; message: string };
 
 export interface FaultProxy {
   url: string;
@@ -47,6 +49,13 @@ export async function startFaultProxy(upstream: string): Promise<FaultProxy> {
         const current = mode;
         if (current.kind === 'http-error') {
           res.writeHead(current.status).end('injected failure');
+          return;
+        }
+        if (current.kind === 'rpc-error' && current.methods.includes(request.method)) {
+          const error = { code: current.code, message: current.message };
+          res
+            .writeHead(200, { 'content-type': 'application/json' })
+            .end(JSON.stringify({ jsonrpc: '2.0', id: request.id, error }));
           return;
         }
         if (current.kind === 'timeout') {

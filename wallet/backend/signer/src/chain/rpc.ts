@@ -34,6 +34,15 @@ export class RpcQuorumError extends Error {
   }
 }
 
+/**
+ * Error JSON-RPC de un revert de ejecución: código 3 (EIP-1474) o el mensaje estándar "execution reverted" (hay nodos que
+ * usan -32000). Cualquier otro error del nodo (interno, falla al traer estado, límite de ritmo) es una falla del RPC, no
+ * un revert: se reintenta y, si persiste, es RPC_UNAVAILABLE.
+ */
+export function isRevertError(error: unknown): error is JsonRpcError {
+  return error instanceof JsonRpcError && (error.rpcCode === 3 || /\brevert/i.test(error.message));
+}
+
 /** Revert de un eth_call/eth_estimateGas (con los datos de revert si el proveedor los devuelve). */
 export class CallRevertedError extends Error {
   override name = 'CallRevertedError';
@@ -108,7 +117,7 @@ export class SignerRpc {
         results = await Promise.all(this.#urls.map((url) => this.#one<T>(url, method, params)));
         keys = results.map(normalize);
       } catch (error) {
-        if (error instanceof JsonRpcError && error.rpcCode !== undefined && method === 'eth_call') throw error;
+        if (method === 'eth_call' && isRevertError(error)) throw error;
         lastProblem = 'RPC_UNAVAILABLE';
         continue;
       }
@@ -151,7 +160,7 @@ export class SignerRpc {
     try {
       return await this.#agree<Hex>('eth_call', [callObject(req), toHexQuantity(block)], data);
     } catch (error) {
-      if (error instanceof JsonRpcError) throw new CallRevertedError(error.message);
+      if (isRevertError(error)) throw new CallRevertedError(error.message);
       throw error;
     }
   }
@@ -186,7 +195,7 @@ export class SignerRpc {
         try {
           return await this.#one<Hex>(url, 'eth_call', [callObject(req), 'latest']);
         } catch (error) {
-          if (error instanceof JsonRpcError && error.rpcCode !== undefined) throw new CallRevertedError(error.message);
+          if (isRevertError(error)) throw new CallRevertedError(error.message);
           throw new RpcQuorumError('RPC_UNAVAILABLE', 'simulación sin respuesta');
         }
       }),
@@ -200,7 +209,7 @@ export class SignerRpc {
         try {
           return BigInt(await this.#one<string>(url, 'eth_estimateGas', [callObject(req), 'latest']));
         } catch (error) {
-          if (error instanceof JsonRpcError && error.rpcCode !== undefined) throw new CallRevertedError(error.message);
+          if (isRevertError(error)) throw new CallRevertedError(error.message);
           throw new RpcQuorumError('RPC_UNAVAILABLE', 'estimación sin respuesta');
         }
       }),
