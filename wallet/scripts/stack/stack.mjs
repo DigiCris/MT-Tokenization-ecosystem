@@ -325,6 +325,9 @@ async function bringUp(state, { walletOrigin, recoveryOrigin }) {
   };
   writeFileSync(state.envFile, '', { mode: 0o600 });
   updateEnvFile(state.envFile, { ...example, ...overrides });
+  // Dependencias del backend y del signer (en CI no vienen instaladas): opaque:setup ya las necesita.
+  ensureInstalled(BACKEND);
+  ensureInstalled(SIGNER);
   // Secretos locales nuevos (passwords, claves Ed25519, mTLS, keystores y credenciales) y el ServerSetup de OPAQUE.
   run('node', [join(WALLET_ROOT, 'scripts/lib/secrets-local.mjs')], {
     env: { ...process.env, APP_ENV: 'local', MTW_ENV_FILE: state.envFile },
@@ -343,8 +346,6 @@ async function bringUp(state, { walletOrigin, recoveryOrigin }) {
   compose(state, ['up', '-d', '--wait', '--wait-timeout', '600', ...SERVICES], 'docker compose up');
   await waitFor('Anvil', async () => (await anvilRpc(anvilUrl, 'eth_chainId', [])) === '0x2105', 300_000, 2000);
 
-  ensureInstalled(BACKEND);
-  ensureInstalled(SIGNER);
   log('migraciones del backend');
   run('node', ['src/cli/db.ts', 'migrate'], {
     cwd: BACKEND,
