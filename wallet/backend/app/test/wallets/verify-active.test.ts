@@ -155,6 +155,7 @@ describe('verificación post-deploy (V9 §16)', () => {
     ]);
   });
 
+  // Cuatro Safes fuera de la factory y la activación de un módulo: cada una trae estado del fork (más lento en CI).
   it('cada ítem alterado aparece: threshold 1, fallback handler, módulo habilitado (y nonce), otra singleton', async () => {
     const owners = [factorySafe.userKey, factorySafe.recoveryKey, factorySafe.executor];
     const outside = ['NOT_A_FACTORY_WALLET', 'ADDRESS_MISMATCH'];
@@ -197,7 +198,7 @@ describe('verificación post-deploy (V9 §16)', () => {
       'MODULES',
       'ROLES',
     ]);
-  });
+  }, 240_000);
 
   it('la wallet cuya Safe no verifica queda FAILED: nunca ACTIVE, OPAQUE y claves PENDING, sin Safe visible', async () => {
     const o = await onboard(env);
