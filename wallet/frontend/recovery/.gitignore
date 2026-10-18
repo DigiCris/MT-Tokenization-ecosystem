@@ -1,0 +1,7 @@
+dist/
+coverage/
+node_modules/
+test-results/
+playwright-report/
+# Copia de los design tokens que hace el build (scripts/sync-design-tokens.mjs, verificada por SHA-256).
+src/styles/design-tokens/

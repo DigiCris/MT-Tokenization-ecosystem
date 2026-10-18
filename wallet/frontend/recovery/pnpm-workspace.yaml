@@ -1,0 +1,19 @@
+# Política de supply chain del proyecto (P01.T05, docs/VERSIONS.md#supply-chain).
+saveExact: true
+strictPeerDependencies: true
+minimumReleaseAge: 10080
+strictDepBuilds: true
+# Scripts de instalación revisados y denegados (no se ejecuta código de instalación de terceros):
+allowBuilds:
+  '@reown/appkit': false # postinstall que sólo compara versiones de @reown/appkit-* y avisa; no hace falta para funcionar
+  protobufjs: false # postinstall de compatibilidad de versiones; no hace falta para funcionar
+# Única excepción de peers: los paquetes @solana/* 5.5.1 (transitivos de @walletconnect/ethereum-provider → @reown/appkit
+# → @base-org/account → @coinbase/cdp-sdk; Recovery no los importa) declaran `typescript ^5` como peer. TypeScript sólo
+# participa del chequeo de tipos, no del bundle: se acepta exactamente la versión fijada del proyecto.
+peerDependencyRules:
+  allowedVersions:
+    typescript: 6.0.3
+# uuid < 11.1.1 (GHSA-w5hq-g745-h8pq, High: v3/v5/v6 no validan los límites de un buffer externo) llega por
+# @metamask/utils, que sólo usa v4(): se fuerza la versión corregida, con la misma API.
+overrides:
+  'uuid@<11.1.1': 11.1.1

@@ -155,6 +155,65 @@ Dependencias de desarrollo: las mismas versiones que `backend/app` (`typescript`
 Scripts de instalación denegados en `backend/signer/pnpm-workspace.yaml`: `cpu-features`, `ssh2` y `protobufjs` (mismos
 motivos que en `backend/app`). Los procedimientos del ciclo de vida usan el binario `age` de la toolchain.
 
+### Versiones efectivas de `frontend/wallet` y `frontend/recovery` (P16)
+
+Dos proyectos independientes (un lockfile cada uno, sin código compartido) con la misma política de
+[supply chain](#supply-chain). Al crearlos (2026-10-18) estas versiones de la tabla todavía no tenían 7 días: se fijó la
+última de la misma línea que sí los cumplía; la de la tabla se adopta en el primer cambio de dependencias posterior a su
+fecha de elegibilidad (en las dos apps, respetando la regla de 72 h entre ambas de [F-SEC-09] para `viem`).
+
+| Paquete | Tabla (publicada) | Elegible desde | Fijada en los frontends (publicada) | Integridad (lockfile) |
+|---|---|---|---|---|
+| `react` | 19.3.1 (2026-10-14) | 2026-10-21 | 19.3.0 (2026-09-09) | `sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==` |
+| `react-dom` | 19.3.1 (2026-10-14) | 2026-10-21 | 19.3.0 (2026-09-09) | `sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==` |
+| `viem` | 2.57.7 (2026-10-14) | 2026-10-21 | 2.57.4 (2026-10-08) | `sha512-ro+8AKrcGU6tPfou0gBRYv6bxnU3tPxxJGY4qpJwjiR40eHCWzeGhrAgYMlIncFtlnry2/yGjz57WOC67oshCQ==` |
+| `@playwright/test` | 1.64.1 (2026-10-14) | 2026-10-21 | 1.64.0 (2026-10-07) | `sha512-oTN9FNYuN6bqQMwiho6jJKLCG2/QOYCixGXuCjRmzOq23eODeukuY2XiAVoVpAECbuezMt1MHQjAiQxK8F+Y+g==` |
+| `@tanstack/react-query` (sólo Recovery) | 5.104.3 (2026-10-15) | 2026-10-22 | 5.104.1 (2026-10-02) | `sha512-Zz70EgjahNI7aCz8BZxM3vUGU44ycxEAzMuCUjLeA7SVhhOkg3ZgPjPJPvHjs6Rmky/dtmnu1WzjGHNHmhCoZQ==` |
+| `vitest` | 5.0.5 (2026-10-15) | 2026-10-22 | 5.0.3 (2026-09-30) | `sha512-xMw97S3rjdtj5dkVat7jCsqWBpvchs3RlpQctUqwJD0KkERk40vz2fJ77lDwW/Vzh/pk18eItYAzkodhSes3jQ==` |
+| `eslint` | 10.13.0 (2026-10-16) | 2026-10-23 | 10.12.0 (2026-10-02) | `sha512-npHjrHb2o4ehH3mE+YuxABR+0gyb0aVWCIolgJDArwCiHEIsonBm3ZKjel5b0U5+a+MbEvIyRCGCzD3eKKK2NA==` |
+| `typescript-eslint` | 8.71.2 (2026-10-12) | 2026-10-19 | 8.71.1 (2026-10-05) | `sha512-oiNVPC3/NbV1FpaHU07l8O6ynqG9v4PAiW2WvTrAmZdR0f2HI/gE668ElMLCK7Xbsu5k2fK5C4fXNiq05j7/nQ==` |
+
+Con la versión exacta de la tabla: `react-router` 8.4.0, `@noble/hashes` 2.4.0, `vite` 8.3.4, `typescript` 6.0.3,
+`prettier` 3.9.10 y, sólo en Recovery, `wagmi` 3.7.7, `@wagmi/core` 3.6.5, `@wagmi/connectors` 8.2.0,
+`@walletconnect/ethereum-provider` 2.26.0, `@coinbase/wallet-sdk` 4.4.0 y `@metamask/connect-evm` 2.1.1 (integridad en
+la tabla de paquetes). Wallet no declara wagmi ni ningún conector, ni los tiene como transitivos
+(`frontend/wallet/test/unit/dependencies.test.ts`). `@noble/curves` y `@scure/base` se declaran cuando los usa el código
+(P17). Dependencias de desarrollo que no figuran en la tabla (fijadas el 2026-10-18, todas con más de 7 días):
+
+- `@vitest/coverage-v8` 5.0.3, `@eslint/js` 10.0.1 y `@types/node` 26.6.5 — las mismas que en `backend/app`.
+- `@types/react` 19.3.0 (2026-09-09) — `sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==`.
+- `@types/react-dom` 19.3.0 (2026-09-09) — `sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==`.
+- `eslint-plugin-react-hooks` 7.1.1 (2026-04-17) — `sha512-f2I7Gw6JbvCexzIInuSbZpfdQ44D7iqdWX01FKLvrPgqxoE7oMj8clOfto8U6vYiz4yd5oKu39rRSVOe1zRu0g==`.
+- `globals` 17.13.0 (2026-10-01) — `sha512-RwMTC61u7hrG3ZJMkZQOK4JLJrKS8QtoTii63EmWvFXHqycY9FObBJQCbsLxSO8kjKhWE5kV1GC+Vb1g3RI0Zg==`.
+- `jsdom` 30.1.2 (2026-10-04) — `sha512-0FFE/jE1rppmVfUrJUgxqXjcwolZYIGtAgj1pTussMhNZxIxi7W/PvfWaMNroGi2B36X1IKHbexpZ9DhkoOPiQ==`.
+
+Cambio respecto de §3.6: **`@vitejs/plugin-react` no se usa**. Vite 8 transforma JSX de forma nativa (Oxc, runtime
+automático) y el plugin sólo agrega React Refresh, cuyo preámbulo es un script inline que la CSP `script-src 'self'`
+(también aplicada en dev) bloquea; sin el plugin hay una dependencia menos y en dev los cambios recargan la página.
+
+Navegador de los tests: Chrome for Testing 156.0.8078.4 (`chromium-headless-shell` revisión 1248), fijado por
+`@playwright/test` 1.64.0 e instalado con `playwright install --only-shell chromium` (en CI con `--with-deps`).
+
+Fuentes self-hosted de `frontend/design-tokens/` (procedencia en su `LICENSES`):
+
+| Fuente | Paquete de origen | SHA-256 del `.woff2` |
+|---|---|---|
+| Inter Variable (latin, 100–900) | `@fontsource-variable/inter` 5.3.0 | `3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62` |
+| JetBrains Mono Variable (latin, 100–800) | `@fontsource-variable/jetbrains-mono` 5.3.0 | `18be452724bfdc236c074ca94a249a7f41a86752c7d04ab258ce9ed5651f6a7e` |
+
+Excepciones y override de supply chain de `frontend/recovery/pnpm-workspace.yaml` (Wallet no tiene ninguno,
+`allowBuilds: {}`):
+scripts de instalación denegados de `@reown/appkit` (sólo compara versiones de `@reown/appkit-*` y avisa) y `protobufjs`
+(postinstall de compatibilidad); y una regla de peers: los `@solana/*` 5.5.1, transitivos de
+`@walletconnect/ethereum-provider` → `@reown/appkit` → `@base-org/account` → `@coinbase/cdp-sdk` y nunca importados por
+Recovery, declaran `typescript ^5` como peer; como TypeScript sólo participa del chequeo de tipos, se acepta exactamente
+la 6.0.3 del proyecto (`peerDependencyRules.allowedVersions`) y `strictPeerDependencies` sigue activo para todo lo
+demás. Un override fuerza `uuid` 11.1.1 (2026-04-29) en lugar de las versiones < 11.1.1 que pedía `@metamask/utils`
+(GHSA-w5hq-g745-h8pq, High: `v3`/`v5`/`v6` no validan los límites de un buffer externo; la librería sólo usa `v4()`,
+misma API). La instalación avisa de dos subdependencias deprecadas de los conectores (`@paulmillr/qr` 0.2.1 y
+`@safe-global/safe-gateway-typescript-sdk` 3.23.1), sin vulnerabilidades conocidas (OSV-Scanner y `pnpm audit`); se
+revisan con la verificación de cada conector en P19.
+
 ## Herramientas de seguridad y de infraestructura
 
 | Componente | Versión | Tag / commit | Verificado |
