@@ -530,8 +530,7 @@ export async function deploy(env: OnboardingEnv, onboarded: OnboardedWallet): Pr
     try {
       return await env.deployer.handle(onboarded.walletId);
     } catch (error) {
-      const transient =
-        (error instanceof SignerClientError && error.retryable) || error instanceof RpcQuorumError;
+      const transient = (error instanceof SignerClientError && error.retryable) || error instanceof RpcQuorumError;
       if (!transient || attempt >= 5) throw error;
       await new Promise((resolveWait) => setTimeout(resolveWait, attempt * 2_000));
     }
