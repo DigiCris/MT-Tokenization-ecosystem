@@ -39,27 +39,51 @@ async function full(id: string): Promise<MailpitMessage> {
   };
 }
 
-/** Mensajes para un destinatario, del más viejo al más nuevo. */
-export async function messagesTo(address: string): Promise<MailpitMessage[]> {
+// Cada mensaje se pide completo (cuerpo y headers) una sola vez: con varios archivos de test sondeando en paralelo,
+// pedir todo en cada vuelta saturaba a Mailpit, el SMTP del worker vencía y el reintento llegaba tarde.
+const fullCache = new Map<string, Promise<MailpitMessage>>();
+
+function cachedFull(id: string): Promise<MailpitMessage> {
+  let message = fullCache.get(id);
+  if (!message) {
+    message = full(id);
+    // Un fallo transitorio de la API no queda cacheado.
+    message.catch(() => fullCache.delete(id));
+    fullCache.set(id, message);
+  }
+  return message;
+}
+
+async function summariesTo(address: string): Promise<Summary[]> {
   const result = await api<{ messages: Summary[] }>(
     `/api/v1/search?query=${encodeURIComponent(`to:"${address}"`)}&limit=50`,
   );
-  const ids = result.messages.sort((a, b) => a.Created.localeCompare(b.Created)).map((m) => m.ID);
-  return Promise.all(ids.map((id) => full(id)));
+  return result.messages.sort((a, b) => a.Created.localeCompare(b.Created));
 }
 
-/** Espera hasta que llegue un mensaje para el destinatario que cumpla el predicado. */
+/** Mensajes para un destinatario, del más viejo al más nuevo. */
+export async function messagesTo(address: string): Promise<MailpitMessage[]> {
+  return Promise.all((await summariesTo(address)).map((m) => cachedFull(m.ID)));
+}
+
+/**
+ * Espera hasta que llegue un mensaje para el destinatario que cumpla el predicado. El plazo cubre un reintento del
+ * worker de email (backoff de 5 s tras un intento que puede tardar hasta el socketTimeout de 15 s del SMTP).
+ */
 export async function waitForMessage(
   address: string,
   predicate: (message: MailpitMessage) => boolean = () => true,
-  timeoutMs = 30_000,
+  timeoutMs = 60_000,
 ): Promise<MailpitMessage> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const match = (await messagesTo(address)).reverse().find(predicate);
-    if (match) return match;
+    const summaries = (await summariesTo(address)).reverse();
+    for (const summary of summaries) {
+      const message = await cachedFull(summary.ID);
+      if (predicate(message)) return message;
+    }
     if (Date.now() > deadline) throw new Error(`no llegó el email esperado a ${address}`);
-    await sleep(150);
+    await sleep(250);
   }
 }
 

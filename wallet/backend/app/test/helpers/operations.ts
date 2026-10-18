@@ -675,7 +675,7 @@ export class ForkChain {
 const seenEmails = new Set<string>();
 
 /** El próximo email de `address` cuyo asunto contiene `subject` y que todavía no se usó en el archivo. */
-export async function nextEmail(address: string, subject: string, timeoutMs = 30_000): Promise<MailpitMessage> {
+export async function nextEmail(address: string, subject: string, timeoutMs = 60_000): Promise<MailpitMessage> {
   const message = await waitForMessage(address, (m) => m.subject.includes(subject) && !seenEmails.has(m.id), timeoutMs);
   seenEmails.add(message.id);
   return message;
