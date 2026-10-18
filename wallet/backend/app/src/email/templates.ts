@@ -78,6 +78,7 @@ export interface TemplateParams {
     occurredAt: string;
   };
   'cooperation-paused': { app: 'WALLET' | 'RECOVERY'; reason: string; occurredAt: string };
+  'safe-config-modified': { safe: string; items: string[]; occurredAt: string };
 }
 
 export type TemplateName = keyof TemplateParams;
@@ -102,6 +103,7 @@ export const TEMPLATE_NAMES = [
   'high-value-challenge',
   'high-value-executed',
   'cooperation-paused',
+  'safe-config-modified',
 ] as const satisfies readonly TemplateName[];
 
 export interface RenderedEmail {
@@ -432,6 +434,21 @@ const RENDERERS: Renderers = {
       ...timeRows(ctx, 'Desde', p.occurredAt),
     ],
     ifNotYou: 'no tenés que hacer nada; no ingreses tus claves en sitios que no sean los oficiales.',
+  }),
+  'safe-config-modified': (p, ctx) => ({
+    subject: 'La configuración de tu Safe cambió fuera de la plataforma',
+    heading: 'Tu Safe ya no está en modo asistido',
+    intro:
+      'La configuración on-chain de tu Safe ya no es la de una wallet asistida (por ejemplo, se retiró el Guard de seguridad firmando con tus claves U y R). Sin el Guard no hay control on-chain de las operaciones, así que la plataforma dejó de co-firmar; tus fondos siguen bajo tu control con tus claves U y R.',
+    details: [
+      ['Acción', 'Cambio de configuración de la Safe'],
+      ['Cambios detectados', p.items.join(', ')],
+      ['Red', ctx.networkLabel],
+      ['Safe', groupedAddress(p.safe)],
+      ...timeRows(ctx, 'Detectado', p.occurredAt),
+    ],
+    ifNotYou:
+      'usá tus claves U y R desde la app Recovery para restaurar la configuración o mover tus fondos a otra wallet, y contactá a soporte de inmediato.',
   }),
 };
 

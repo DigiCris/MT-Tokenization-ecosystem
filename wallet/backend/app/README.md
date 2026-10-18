@@ -7,7 +7,9 @@ errores RFC 9457, idempotencia, rate limiting y audit log append-only con cadena
 centralizada [B-AUTH] (registro y verificación de email, login, sesiones, CSRF, olvido y reset de contraseña, fuerza
 bruta y señales de riesgo, TOTP) y el email transaccional [B-MAIL] (Mailgun o SMTP/Mailpit por el outbox). P10, la
 PlatformSession [B-PSES]: desbloqueo de la Wallet por OPAQUE con AuthSecret_U, step-up con email OTP (+ TOTP), tokens
-JWS EdDSA de 15 min atados a una session key P-256 y requests críticos firmados.
+JWS EdDSA de 15 min atados a una session key P-256 y requests críticos firmados. P11–P12: cliente mTLS del signer,
+gas tank y onboarding server-side de la wallet hasta ACTIVE. P13: pipeline de operaciones (máquina de estados, nonces,
+worker S con lease y fencing, finalidad y reorgs, indexer y reconciliación) y la policy propia del backend.
 
 ## Requisitos
 
@@ -24,7 +26,7 @@ cd backend/app
 pnpm install --frozen-lockfile
 pnpm db:migrate          # rol mtw_migrator (DDL); idempotente
 pnpm dev:api             # listeners Wallet :8080 y Recovery :8081, métricas :9464
-pnpm dev:worker          # dispatcher del outbox y worker de email, métricas :9465
+pnpm dev:worker          # outbox, email y worker S (watcher, indexer, reconciliación), métricas :9465
 pnpm dev:gas-tank        # recargas de las S por el shard `platform` del signer, métricas :9466
 curl -s localhost:8080/api/v1/health/ready
 ```
@@ -56,29 +58,37 @@ src/
   config/        env.ts (Zod por APP_ENV, <VAR>_FILE, calidad de secretos), dotenv.ts, secret.ts
   db/            kysely.ts, schema.ts, migrator.ts, transaction.ts (withTransaction), backup.ts
     migrations/  0001_initial_schema.ts (todas las tablas de [B-DB]), 0002_account_preferences.ts,
-                 0003_signer_key_attestation.ts, 0004_wallet_onboarding.ts, grants.ts
+                 0003_signer_key_attestation.ts, 0004_wallet_onboarding.ts, 0005_operation_pipeline.ts, grants.ts
     repositories/ outbox, idempotency
   audit/         audit-writer.ts (cadena HMAC, verificación)
   auth/          account-service.ts (reglas de cuenta), password.ts, common-passwords.ts, otp.ts, challenges.ts,
                  sessions.ts, csrf.ts, risk.ts (fuerza bruta y señales), totp.ts
-  email/         provider.ts, mailgun.ts, smtp.ts, templates.ts (19 plantillas), format.ts, email-outbox.ts
+  email/         provider.ts, mailgun.ts, smtp.ts, templates.ts (20 plantillas), format.ts, email-outbox.ts
   platform-session/ opaque.ts (registro y login OPAQUE), unlock.ts (desbloqueo → OPERATIONS), step-up.ts, token.ts
                  (JWS EdDSA), sessions.ts (filas y revocación), request-signature.ts (requests críticos y envelope de
                  envío), plugin.ts (Fastify), keys.ts (session keys P-256), auth-secret.ts (derivación del cliente)
   queue/         queues.ts, outbox-dispatcher.ts, outbox-consumer.ts, redis.ts
   chain/         rpc-quorum.ts, safe-tx.ts, eip712.ts, signatures.ts, create2.ts, safe-proxy.ts (creation code del
-                 proxy de Safe fijado), decoders/, abis/ (generados)
+                 proxy de Safe fijado), safe-state.ts (estado y deriva de configuración de una Safe), watcher.ts
+                 (finalidad y reorgs), indexer.ts (eventos de SafeL2 y Transfer), reconciler.ts (DB ↔ cadena),
+                 decoders/, abis/ (generados)
   signer-client/ client.ts (mTLS hacia los shards, errores tipificados), sharding.ts (asignación por hash guardada en
                  signer_keys, S de onboarding y de rotación, reasignación tras una migración)
   gas/           gas-tank.ts (recargas de S, deploy de Safes y relay de cancelaciones por el shard `platform`)
-  policy/        snapshot.ts (snapshot de policy firmado: firma, entorno, versión, direcciones y codehashes)
+  policy/        snapshot.ts (snapshot de policy firmado completo), store.ts (anti-rollback en policy_snapshots),
+                 evaluate.ts (policy del backend, contrastada con los vectores compartidos)
+  operations/    state-machine.ts (transiciones auditadas), nonce-manager.ts, service.ts (prepare, firmas,
+                 cancelación por NoOp, lecturas, vencimientos), chain-context.ts, challenges.ts, ledger.ts (24 h),
+                 intent.ts (intención canónica y vistas de la API)
+  worker/        main.ts (cola wallet-operations y lazos periódicos), pipeline.ts (12 pasos), lease.ts (lease por
+                 Safe con fencing), fees.ts (EIP-1559 con topes y reemplazo)
   wallets/       wallet-service.ts (onboarding: alta, U, asignación de S, Safe esperada, pedido de deploy),
                  deployer.ts (deploy y activación en el proceso gas-tank), verification.ts (V9 §16), salt.ts,
-                 key-restore.ts (KEY_RESTORE), schemas.ts
+                 key-restore.ts (KEY_RESTORE), sovereign.ts (SOVEREIGN_MODIFIED), schemas.ts
   recovery/      enrollment.ts (enrollment de R y autorización de creación firmada por U)
   observability/ logger.ts, redaction.ts, metrics.ts
   api/           server.ts (dos listeners), errors.ts (RFC 9457), health.ts, routes/ (health, v1/auth, v1/users,
-                 v1/sessions, v1/platform-sessions, v1/wallets, v1/recovery), plugins/ (auth y CSRF, rate limit,
+                 v1/sessions, v1/platform-sessions, v1/wallets, v1/recovery, v1/operations), plugins/ (auth y CSRF, rate limit,
                  idempotencia, OpenAPI, seguridad)
   cli/           db.ts, audit-verify.ts, opaque-setup.ts, dev-session.ts, signer-reassign.ts
   services.ts    armado de los servicios de cuenta y de onboarding (proceso `api` y tests)
@@ -188,6 +198,66 @@ Todo por la API del listener de Wallet con la PlatformSession ONBOARDING (step-u
 KEY_RESTORE (U restaurada desde las 17 palabras o rotación de `OPAQUE_SERVER_SETUP`): step-up con la prueba de posesión
 (firma EIP-712 `KeyRestore` de la U vigente on-chain) → `POST /wallets/{id}/user-key/restore` reemplaza el registro
 OPAQUE de esa misma U.
+
+## Operaciones (P13)
+
+Una operación es una SafeTx de la Safe con su intención canónica (`canonical_intent`, de donde se recalcula el
+SafeTxHash). La prepara un flujo del backend (`OperationService.prepare`: policy con hechos on-chain por quórum,
+pre-check del Guard y nonce asignado bajo el lock de la wallet), la firma U (o R) en el navegador y la ejecuta el
+worker S con la co-firma del signer. Máquina de estados [B-SM] (`src/operations/state-machine.ts`): toda transición es
+un `UPDATE … WHERE id AND status IN (…) [AND lease_version]` con su evento `OPERATION_<ESTADO>` (y su outbox) en la
+misma transacción; la base rechaza al confirmar un cambio de estado sin ese evento (constraint trigger).
+
+```text
+CREATED ──firma U/R──▶ USER_SIGNED ──outbox──▶ QUEUED ──lease──▶ VALIDATING ──checks──▶ READY ──signer + tx──▶ SUBMITTED
+CREATED ──15 min──▶ EXPIRED · CREATED ──cancelar──▶ CANCELLED
+VALIDATING | READY | SUBMITTED ──transitorio──▶ FAILED_RETRYABLE ──backoff──▶ QUEUED   (20 reintentos → FAILED_FINAL)
+VALIDATING | READY | SUBMITTED ──definitivo──▶ FAILED_FINAL
+QUEUED ──NoOp que perdió la carrera / firma de más de 24 h──▶ FAILED_FINAL                         (agregado a §7.4)
+SUBMITTED ──receipt ok──▶ MINED ──bloque safe──▶ CONFIRMED ──bloque finalized──▶ FINALIZED
+MINED | CONFIRMED ──reorg──▶ REORGED ──▶ QUEUED (la misma SafeTx otra vez) | MINED (la misma tx re-incluida, agregado)
+USER_SIGNED | QUEUED | READY | SUBMITTED | FAILED_RETRYABLE | FAILED_FINAL ──cancelar──▶ CANCEL_REQUESTED
+CANCEL_REQUESTED ──se mina la NoOp──▶ CANCELLED · CANCEL_REQUESTED ──se mina la original──▶ MINED
+```
+
+- **API**: `POST /operations/{id}/signatures` (crítico, idempotente; en Wallet firma U con OPERATIONS y en Recovery R
+  con RECOVERY): firma ECDSA estricta contra el rol vigente on-chain, envelope `MTW-SUBMIT-V1` firmado por la session
+  key (±60 s, dentro de la vigencia de la sesión), SafeTxHash recalculado, policy y 2FA → USER_SIGNED → QUEUED +
+  `OPERATION_QUEUED`. `POST /operations/{id}/cancel`: sin firma → CANCELLED (el nonce vuelve a estar disponible);
+  firmada → CANCEL_REQUESTED y la NoOp del mismo nonce a firmar. `GET /operations/{id}` y
+  `GET /wallets/{id}/operations` con el historial (de la auditoría).
+- **Nonces** [B-NONCE-01/02]: el menor nonce ≥ el on-chain que no use ninguna operación viva; una CREATED vencida o
+  cancelada (o una FAILED_FINAL) libera el suyo y la próxima lo ocupa. Una sola SafeTx viva por hash.
+- **Worker S** (`src/worker/pipeline.ts`): por Safe con lease de 30 s y fencing (`exec_lease_version` copiado en
+  `lease_version`), en orden estricto de nonce (las de nonce mayor quedan `WAITING_LOWER_NONCE`) y en paralelo entre
+  Safes (`WORKER_OPERATIONS_CONCURRENCY`, ADR-019). Pasos: sesión y envelope al momento del envío (firma de menos de
+  24 h) → SafeTxHash → firma estricta contra el rol → nonce → policy (ledger de 24 h, challenges) y whitelist →
+  configuración de la Safe intacta (si no, SOVEREIGN_MODIFIED) → `evaluateAssisted` + `eth_call` desde la Safe →
+  firma de S en el signer (que repite todo y simula) → tx registrada antes de transmitirse (write-ahead) → receipt con
+  reemplazo por fee bump (≥ 12,5 %, mismo nonce de cuenta, topes del snapshot) → MINED. Un revert minado se re-simula:
+  determinístico → FAILED_FINAL + alerta; transitorio → reintento. Si el nonce de S avanzó sin receipt de nuestras tx
+  → TX_DROPPED y reintento. Otro worker retoma VALIDATING/READY/SUBMITTED con el lease vencido; una SUBMITTED se
+  reconcilia por sus `chain_transactions` antes de retransmitir.
+- **Watcher** (`WATCHER_INTERVAL_MS`): con `CONFIRMATION_POLICY=tags` CONFIRMED = bloque ≤ head `safe` y FINALIZED =
+  bloque ≤ head `finalized` (mínimo entre proveedores, hash reconfirmado); con `depth`, por profundidad. Reorg →
+  REORGED (`REORG_DETECTED`) y se resuelve solo. Una inconsistencia entre RPCs no transiciona nada.
+- **Indexer** (`INDEXER_INTERVAL_MS`): eventos de SafeL2 (`safe_executions`: las ejecuciones de la plataforma ligadas
+  a su operación y las soberanas, auditadas) y `Transfer` de USDC/USDT (`token_transfers`), con cursor por hash de
+  bloque (reorg → retrocede y re-escanea) y la misma finalidad. Si el proveedor limita el rango de `eth_getLogs`, el
+  rango se achica solo.
+- **Reconciliación** (`RECONCILER_INTERVAL_MS`; completa una vez por día): configuración de la Safe, nonce, ejecuciones
+  indexadas, roles, whitelist, rotaciones pendientes y saldos contra el neto indexado; cada discrepancia se audita una
+  vez (`RECONCILIATION_DISCREPANCY`) y alerta.
+- **SOVEREIGN_MODIFIED** (P13.T11): si U+R cambiaron la configuración de la Safe (Guard, module guard, fallback,
+  módulos, threshold, owners ≠ roles, singleton), la plataforma no co-firma: wallet marcada con los ítems, auditoría,
+  notificación y email al usuario, y el signer también se niega por su cuenta.
+
+Alertas en logs (campo `alert`): `REORG_DETECTED`, `TX_REVERTED`, `TX_STUCK`, `FEE_CAP`, `RETRIES_EXHAUSTED`,
+`SAFE_CONFIG_MODIFIED`, `RECONCILIATION_DISCREPANCY`, `SIGNER_RESPONSE_MISMATCH`. Métricas: `mtw_operation_transitions_total`,
+`mtw_wallet_operations{status}`, `mtw_wallet_operations_stuck`, `mtw_worker_step_duration_seconds`,
+`mtw_executor_transactions_total`, `mtw_reorgs_detected_total`, `mtw_reconciler_discrepancies_total`,
+`mtw_indexer_head_block`. Cada proceso registra al arrancar el snapshot de policy que cargó (anti-rollback,
+`policy_snapshots`).
 
 ## PlatformSession en local (`dev:session`)
 

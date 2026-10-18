@@ -2,6 +2,7 @@
 // el error completo (redactado); al cliente nunca le llegan detalles internos.
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 import { hasZodFastifySchemaValidationErrors, isResponseSerializationError } from 'fastify-type-provider-zod';
+import { RpcQuorumError } from '../../chain/rpc-quorum.ts';
 import { ApiError, PROBLEM_CONTENT_TYPE, type ProblemFieldError } from '../errors.ts';
 import type { AppInstance } from '../types.ts';
 
@@ -42,6 +43,10 @@ export function toApiError(error: unknown): ApiError {
   if (fastifyError.code === 'FST_ERR_CTP_BODY_TOO_LARGE') return new ApiError('PAYLOAD_TOO_LARGE');
   if (fastifyError.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE') return new ApiError('UNSUPPORTED_MEDIA_TYPE');
   if (isInfrastructureOutage(error)) return new ApiError('SERVICE_UNAVAILABLE', { cause: error });
+  // Lectura sensible sin quórum ([B-RPC-02]): no se decide nada y el cliente reintenta.
+  if (error instanceof RpcQuorumError) {
+    return new ApiError('SERVICE_UNAVAILABLE', { detail: `lectura on-chain sin quórum (${error.code})`, cause: error });
+  }
   const status = fastifyError.statusCode;
   if (typeof status === 'number' && status === 429) return new ApiError('RATE_LIMITED');
   if (typeof status === 'number' && status >= 400 && status < 500) return new ApiError('BAD_REQUEST');

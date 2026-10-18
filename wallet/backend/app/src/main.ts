@@ -1,6 +1,9 @@
-// Entrypoint del backend: `node main api` (listeners Wallet y Recovery), `node main worker` (dispatcher del outbox
-// y mantenimiento; el worker S de P13 se suma a este proceso) o `node main gas-tank` (recargas de las S por el shard
-// `platform` del signer, [B-SIG-05]). Cierre ordenado con SIGTERM/SIGINT.
+// Entrypoint del backend: `node main api` (listeners Wallet y Recovery), `node main worker` (dispatcher del outbox,
+// emails, worker S de operaciones con su watcher de finalidad, indexer y reconciliación, P13) o `node main gas-tank`
+// (recargas de las S y deploys por el shard `platform` del signer, [B-SIG-05]). Cada proceso registra el snapshot de
+// policy que cargó (anti-rollback, [B-POL-01]). Cierre ordenado con SIGTERM/SIGINT.
+import { hostname } from 'node:os';
+import { randomBytes } from 'node:crypto';
 import type { Server } from 'node:http';
 import { sql, type Kysely } from 'kysely';
 import { startApi } from './api/server.ts';
@@ -22,7 +25,19 @@ import { createRedis } from './queue/redis.ts';
 import { AuditWriter } from './audit/audit-writer.ts';
 import { GasTankService } from './gas/gas-tank.ts';
 import { OpaqueService } from './platform-session/opaque.ts';
-import { loadPolicySnapshot } from './policy/snapshot.ts';
+import { loadPolicySnapshot, type LoadedPolicySnapshot } from './policy/snapshot.ts';
+import { PolicySnapshotStore } from './policy/store.ts';
+import { ChainIndexer } from './chain/indexer.ts';
+import { Reconciler } from './chain/reconciler.ts';
+import { FinalityWatcher } from './chain/watcher.ts';
+import { EmailOutbox } from './email/email-outbox.ts';
+import { OperationService } from './operations/service.ts';
+import { OperationStateMachine } from './operations/state-machine.ts';
+import { PlatformSessionIssuer } from './platform-session/token.ts';
+import { SafeLease } from './worker/lease.ts';
+import { startOperationsWorker } from './worker/main.ts';
+import { OperationPipeline } from './worker/pipeline.ts';
+import { SovereignModification } from './wallets/sovereign.ts';
 import { createAccountServices, createWalletServices } from './services.ts';
 import { readSignerTls, SignerClient } from './signer-client/client.ts';
 import { SignerKeyService } from './signer-client/sharding.ts';
@@ -41,6 +56,31 @@ function throttledWarn(logger: Logger, message: string): (error: Error) => void 
     last = now;
     logger.warn({ err: error }, message);
   };
+}
+
+/**
+ * Registra el snapshot cargado en `policy_snapshots` y rechaza una versión vieja o adulterada (anti-rollback). El
+ * snapshot tiene que ser de esta plataforma (el signer exige el mismo platformId en las PlatformSessions).
+ */
+async function activatePolicy(
+  db: Kysely<Database>,
+  snapshot: LoadedPolicySnapshot,
+  config: AppConfig,
+  logger: Logger,
+): Promise<void> {
+  if (snapshot.platformId !== config.platformId) {
+    throw new Error(`el snapshot de policy es de la plataforma ${snapshot.platformId}, no de ${config.platformId}`);
+  }
+  await new PolicySnapshotStore(db).activate(snapshot);
+  logger.info({ policyVersion: snapshot.version, sha256: snapshot.sha256 }, 'snapshot de policy activo');
+}
+
+async function stuckOperations(db: Kysely<Database>): Promise<number> {
+  const row = await sql<{ n: number }>`
+    SELECT count(*)::int AS n FROM wallet_operations
+    WHERE status IN ('QUEUED', 'VALIDATING', 'READY', 'SUBMITTED', 'MINED', 'REORGED', 'CANCEL_REQUESTED')
+      AND updated_at < now() - interval '10 minutes'`.execute(db);
+  return row.rows[0]?.n ?? 0;
 }
 
 async function operationsByStatus(db: Kysely<Database>): Promise<Record<string, number>> {
@@ -94,6 +134,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
     // Onboarding (P12): shards del signer por mTLS y snapshot de policy firmado (direcciones y codehashes).
     const signer = loadSignerClientConfig();
     const snapshot = loadPolicySnapshot(signer.policy.snapshotPath, signer.policy.publicKey, config.appEnv);
+    await activatePolicy(db, snapshot, config, logger);
     const tls = readSignerTls(signer.mtls);
     const clients = new Map(
       signer.shards.map((s) => [
@@ -154,6 +195,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
     rpc.start();
     closers.unshift(() => rpc.stop());
     const snapshot = loadPolicySnapshot(signer.policy.snapshotPath, signer.policy.publicKey, config.appEnv);
+    await activatePolicy(db, snapshot, config, logger);
     const platform = new SignerClient({
       shardId: 'platform',
       url: signer.platformUrl,
@@ -257,6 +299,126 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       }),
     });
     closers.unshift(() => emailWorker.close());
+    // Worker S de operaciones (P13): pipeline por Safe con lease, watcher de finalidad, indexer y reconciliación.
+    const signer = loadSignerClientConfig();
+    const snapshot = loadPolicySnapshot(signer.policy.snapshotPath, signer.policy.publicKey, config.appEnv);
+    await activatePolicy(db, snapshot, config, logger);
+    const rpc = new RpcQuorumClient({
+      primaryUrl: config.rpc.primaryUrl.reveal(),
+      secondaryUrl: config.rpc.secondaryUrl.reveal(),
+      mode: config.rpc.quorumMode,
+      chainId: config.chainId,
+      timeoutMs: config.rpc.timeoutMs,
+      healthIntervalMs: config.rpc.healthIntervalMs,
+      maxHeadLagBlocks: config.rpc.maxHeadLagBlocks,
+      retries: config.rpc.quorumRetries,
+      backoffMs: config.rpc.quorumBackoffMs,
+      logger,
+      metrics,
+    });
+    rpc.start();
+    closers.unshift(() => rpc.stop());
+    const tls = readSignerTls(signer.mtls);
+    const clients = new Map(
+      signer.shards.map((s) => [
+        s.id,
+        new SignerClient({ shardId: s.id, url: s.url, tls, timeoutMs: signer.timeoutMs }),
+      ]),
+    );
+    closers.push(() => {
+      for (const client of clients.values()) client.close();
+      return Promise.resolve();
+    });
+    const audit = new AuditWriter(config.secrets.auditChainKey, metrics);
+    const machine = new OperationStateMachine({ db, audit, outbox });
+    const sovereign = new SovereignModification({
+      audit,
+      email: new EmailOutbox(outbox, config.secrets.fieldEncryptionKey),
+      logger: logger.child({ component: 'sovereign' }),
+      metrics,
+    });
+    const workerId = `${hostname()}:${String(process.pid)}:${randomBytes(4).toString('hex')}`;
+    const pipeline = new OperationPipeline({
+      db,
+      machine,
+      audit,
+      rpc,
+      snapshot: () => snapshot,
+      signers: new SignerKeyService({ db, shards: signer.shards, clients }),
+      issuer: await PlatformSessionIssuer.create(
+        config.secrets.sessionIssuerPrivateKey,
+        config.secrets.sessionIssuerPublicKey,
+      ),
+      sovereign,
+      lease: new SafeLease(db, workerId, { ttlMs: config.worker.leaseTtlMs }),
+      logger: logger.child({ component: 'operation-pipeline', workerId }),
+      metrics,
+      options: {
+        receiptTimeoutMs: config.worker.receiptTimeoutMs,
+        maxReplacements: config.worker.maxReplacements,
+        retry: config.worker.retry,
+      },
+    });
+    const operationsConnection = createRedis(
+      config.redis.url.reveal(),
+      'worker',
+      'mtw-worker-operations',
+      throttledWarn(logger, 'error de conexión con Valkey (cola wallet-operations)'),
+    );
+    closers.push(() => operationsConnection.quit());
+    const operationsWorker = startOperationsWorker({
+      db,
+      connection: operationsConnection,
+      outbox,
+      machine,
+      pipeline,
+      operations: new OperationService({
+        db,
+        machine,
+        audit,
+        rpc,
+        snapshot: () => snapshot,
+        sovereign,
+        logger: logger.child({ component: 'operations' }),
+        metrics,
+      }),
+      watcher: new FinalityWatcher({
+        db,
+        machine,
+        audit,
+        rpc,
+        confirmations: config.confirmations,
+        logger: logger.child({ component: 'finality-watcher' }),
+        metrics,
+      }),
+      indexer: new ChainIndexer({
+        db,
+        rpc,
+        audit,
+        snapshot: () => snapshot,
+        confirmations: config.confirmations,
+        logger: logger.child({ component: 'chain-indexer' }),
+        metrics,
+      }),
+      reconciler: new Reconciler({
+        db,
+        rpc,
+        audit,
+        snapshot: () => snapshot,
+        sovereign,
+        logger: logger.child({ component: 'reconciler' }),
+        metrics,
+      }),
+      logger,
+      metrics,
+      options: {
+        concurrency: config.worker.concurrency,
+        watcherIntervalMs: config.worker.watcherIntervalMs,
+        indexerIntervalMs: config.worker.indexerIntervalMs,
+        reconcilerIntervalMs: config.worker.reconcilerIntervalMs,
+      },
+    });
+    closers.unshift(() => operationsWorker.close());
     const maintenance = setInterval(() => {
       idempotency.deleteExpired().catch((error: unknown) => {
         logger.warn({ err: error }, 'limpieza de claves de idempotencia falló');
@@ -270,11 +432,18 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
     registerScrapeGauges(metrics, {
       queueCounts: () => queueCounts(queues),
       outboxLagSeconds: () => outbox.oldestUndispatchedAgeSeconds(),
+      operationsByStatus: () => operationsByStatus(db),
+      stuckOperations: () => stuckOperations(db),
     });
     metricsServer = await startMetricsServer(metrics.registry, config.metrics.bindHost, config.metrics.workerPort);
     logger.info(
-      { metricsPort: config.metrics.workerPort, emailProvider: provider.name },
-      'worker iniciado (outbox y email)',
+      {
+        metricsPort: config.metrics.workerPort,
+        emailProvider: provider.name,
+        workerId,
+        policyVersion: snapshot.version,
+      },
+      'worker iniciado (outbox, email y operaciones)',
     );
   }
   closers.unshift(

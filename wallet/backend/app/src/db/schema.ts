@@ -154,6 +154,9 @@ export interface WalletsTable {
   /** Motivo de un FAILED (p. ej. el ítem de la verificación post-deploy que no coincidió). */
   failure_reason: string | null;
   deploy_requested_at: Timestamp | null;
+  /** P13.T11: ítems de configuración de la Safe que difieren (SOVEREIGN_MODIFIED). */
+  config_drift: Json<string[]> | null;
+  config_drift_at: Timestamp | null;
 }
 
 export interface WalletKeysMetadataTable {
@@ -311,6 +314,21 @@ export interface WalletOperationsTable {
   tx_hash: Bytes | null;
   block_number: Int8 | null;
   block_hash: Bytes | null;
+  /** P13: vencimiento de una CREATED (15 min sin firma). */
+  expires_at: Timestamp | null;
+  /** [B-NONCE-03]: QUEUED a la espera de que se ejecute el nonce menor. */
+  blocked_reason: 'WAITING_LOWER_NONCE' | null;
+  /** Firma P-256 (base64url) del envelope de envío [B-PSES-06]. */
+  submission_envelope_signature: string | null;
+  /** PlatformSession (JWS) con la que se envió la firma; el signer la vuelve a verificar. */
+  platform_session_token: string | null;
+  /** ChallengeCompletion (JWS) del 2FA o del challenge de whitelist, si la operación lo exige. */
+  challenge_attestation: string | null;
+  requires_two_factor: Generated<boolean>;
+  /** Momento (servidor) en que se aceptó la firma U/R. */
+  signed_at: Timestamp | null;
+  /** NOOP_CANCEL: la operación que cancela [B-NONCE-06]. */
+  cancels_operation_id: string | null;
 }
 
 export interface ChainTransactionsTable {
@@ -377,6 +395,39 @@ export interface TokenTransfersTable {
   block_hash: Bytes;
   status: 'MINED' | 'CONFIRMED' | 'FINALIZED' | 'REORGED';
   created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** Ejecución de una Safe indexada desde los eventos de SafeL2 (P13.T07). */
+export interface SafeExecutionsTable {
+  id: Generated<string>;
+  chain_id: number;
+  safe_address: Bytes;
+  safe_nonce: Numeric;
+  safe_tx_hash: Bytes;
+  success: boolean;
+  origin: 'PLATFORM' | 'SOVEREIGN';
+  operation_id: string | null;
+  target: Bytes;
+  value: Numeric;
+  data: Bytes;
+  operation: number;
+  sender: Bytes;
+  tx_hash: Bytes;
+  log_index: number;
+  block_number: Int8;
+  block_hash: Bytes;
+  status: 'MINED' | 'CONFIRMED' | 'FINALIZED' | 'REORGED';
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** Último bloque procesado por un indexer (con su hash, para detectar reorgs). */
+export interface ChainCursorsTable {
+  name: string;
+  block_number: Int8;
+  block_hash: Bytes;
+  updated_at: GeneratedTimestamp;
 }
 
 export interface AuditEventsTable {
@@ -498,6 +549,8 @@ export interface Database {
   chain_transactions: ChainTransactionsTable;
   rotation_requests: RotationRequestsTable;
   token_transfers: TokenTransfersTable;
+  safe_executions: SafeExecutionsTable;
+  chain_cursors: ChainCursorsTable;
   audit_events: AuditEventsTable;
   audit_chain_lock: AuditChainLockTable;
   outbox_events: OutboxEventsTable;

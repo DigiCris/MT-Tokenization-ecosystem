@@ -304,6 +304,18 @@ const queueFields = {
   REDIS_URL: redisUrl,
   OUTBOX_POLL_INTERVAL_MS: positiveInt(500, 60_000),
   OUTBOX_BATCH_SIZE: positiveInt(100, 1_000),
+  // Worker S (P13): concurrencia entre Safes [B-Q-05], lease [B-NONCE-04], receipt y reemplazo [B-NONCE-05],
+  // reintentos [B-Q-03] y períodos del watcher, el indexer y la reconciliación [B-FIN].
+  WORKER_OPERATIONS_CONCURRENCY: positiveInt(8, 64),
+  WORKER_LEASE_TTL_MS: positiveInt(30_000, 600_000),
+  WORKER_RECEIPT_TIMEOUT_MS: positiveInt(60_000, 3_600_000),
+  WORKER_MAX_REPLACEMENTS: positiveInt(3, 20),
+  WORKER_RETRY_BASE_MS: positiveInt(5_000, 600_000),
+  WORKER_RETRY_MAX_MS: positiveInt(600_000, 3_600_000),
+  WORKER_MAX_RETRIES: positiveInt(20, 100),
+  WATCHER_INTERVAL_MS: positiveInt(2_000, 60_000),
+  INDEXER_INTERVAL_MS: positiveInt(4_000, 600_000),
+  RECONCILER_INTERVAL_MS: positiveInt(60_000, 3_600_000),
 };
 
 const rpcFields = {
@@ -496,6 +508,16 @@ export interface AppConfig {
   database: { url: Secret<string>; poolMax: number };
   redis: { url: Secret<string> };
   outbox: { pollIntervalMs: number; batchSize: number };
+  worker: {
+    concurrency: number;
+    leaseTtlMs: number;
+    receiptTimeoutMs: number;
+    maxReplacements: number;
+    retry: { baseMs: number; maxMs: number; maxRetries: number };
+    watcherIntervalMs: number;
+    indexerIntervalMs: number;
+    reconcilerIntervalMs: number;
+  };
   rpc: {
     primaryUrl: Secret<string>;
     secondaryUrl: Secret<string>;
@@ -554,6 +576,16 @@ export function loadConfig(options: LoadOptions = {}): AppConfig {
     database: { url: v.DATABASE_URL, poolMax: v.DATABASE_POOL_MAX },
     redis: { url: v.REDIS_URL },
     outbox: { pollIntervalMs: v.OUTBOX_POLL_INTERVAL_MS, batchSize: v.OUTBOX_BATCH_SIZE },
+    worker: {
+      concurrency: v.WORKER_OPERATIONS_CONCURRENCY,
+      leaseTtlMs: v.WORKER_LEASE_TTL_MS,
+      receiptTimeoutMs: v.WORKER_RECEIPT_TIMEOUT_MS,
+      maxReplacements: v.WORKER_MAX_REPLACEMENTS,
+      retry: { baseMs: v.WORKER_RETRY_BASE_MS, maxMs: v.WORKER_RETRY_MAX_MS, maxRetries: v.WORKER_MAX_RETRIES },
+      watcherIntervalMs: v.WATCHER_INTERVAL_MS,
+      indexerIntervalMs: v.INDEXER_INTERVAL_MS,
+      reconcilerIntervalMs: v.RECONCILER_INTERVAL_MS,
+    },
     rpc: {
       primaryUrl: v.RPC_PRIMARY_URL,
       secondaryUrl: v.RPC_SECONDARY_URL,

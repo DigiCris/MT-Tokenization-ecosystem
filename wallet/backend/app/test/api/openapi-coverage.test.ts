@@ -84,8 +84,17 @@ const ACCOUNT_PATHS = [
   '/api/v1/platform-sessions/check',
   '/api/v1/platform-sessions/{id}',
 ];
-/** El estado del enrollment de R lo consultan las dos apps (P12). */
-const SHARED_ONBOARDING_PATHS = ['/api/v1/recovery/enrollments/{id}'];
+/**
+ * El estado del enrollment de R lo consultan las dos apps (P12); el grupo `operations` (P13) existe en los dos
+ * listeners: en Wallet firma U (OPERATIONS) y en Recovery firma R (RECOVERY).
+ */
+const SHARED_ONBOARDING_PATHS = [
+  '/api/v1/recovery/enrollments/{id}',
+  '/api/v1/wallets/{id}/operations',
+  '/api/v1/operations/{id}',
+  '/api/v1/operations/{id}/signatures',
+  '/api/v1/operations/{id}/cancel',
+];
 /**
  * Sólo en el listener de Wallet ([B-API], [B-AUTHZ] 3): desbloqueo con U (OPAQUE), el grupo `wallet` y, del grupo
  * `recovery`, crear el enrollment e incorporar la autorización de U.

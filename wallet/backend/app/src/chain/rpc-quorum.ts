@@ -347,6 +347,53 @@ export class RpcQuorumClient {
     return value;
   }
 
+  /** Head común de los proveedores (el bloque de las lecturas sensibles: `min(heads) − 1` en dual). */
+  async commonHead(): Promise<bigint> {
+    const { blockNumber } = await this.readSensitive('eth_blockNumber', () => Promise.resolve(true));
+    return blockNumber;
+  }
+
+  /**
+   * Heads `safe` y `finalized` (ADR-018): el MÍNIMO entre los proveedores (nunca confirma de más). Si algún
+   * proveedor no responde, RPC_UNAVAILABLE y no se decide nada.
+   */
+  async headTags(): Promise<{ safe: bigint; finalized: bigint }> {
+    const values = await Promise.all(
+      this.#providers.map(async (p) => {
+        try {
+          const [safe, finalized] = await Promise.all([
+            this.#call(p, 'eth_getBlockByNumber:safe', () => p.client.getBlock({ blockTag: 'safe' })),
+            this.#call(p, 'eth_getBlockByNumber:finalized', () => p.client.getBlock({ blockTag: 'finalized' })),
+          ]);
+          return { safe: safe.number, finalized: finalized.number };
+        } catch (error) {
+          throw new RpcQuorumError(
+            errorKind(error) === 'timeout' ? 'RPC_TIMEOUT' : 'RPC_UNAVAILABLE',
+            'heads safe/finalized',
+            {
+              cause: error,
+            },
+          );
+        }
+      }),
+    );
+    return values.reduce((a, b) => ({
+      safe: a.safe < b.safe ? a.safe : b.safe,
+      finalized: a.finalized < b.finalized ? a.finalized : b.finalized,
+    }));
+  }
+
+  /** ¿Algún proveedor tiene la tx pendiente (en el mempool, sin bloque)? */
+  async isPending(hash: Hash): Promise<boolean> {
+    const results = await Promise.allSettled(
+      this.#providers.map((p) => this.#call(p, 'eth_getTransactionByHash', () => p.client.getTransaction({ hash }))),
+    );
+    // viem tipa el resultado como minado; una tx del mempool llega con blockNumber null.
+    return results.some(
+      (r) => r.status === 'fulfilled' && (r.value as { blockNumber: bigint | null }).blockNumber === null,
+    );
+  }
+
   // --- Escrituras ------------------------------------------------------------------------------------------
 
   /** [B-RPC-03] Transmite a todos los proveedores; éxito si al menos uno acepta o ya conoce la transacción. */

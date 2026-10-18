@@ -5,7 +5,13 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateToLatest, migrationStatus, pendingMigrations } from '../../src/db/migrator.ts';
-import { createTestDatabase, insertUser, type TestDatabase } from '../helpers/db.ts';
+import {
+  createTestDatabase,
+  insertPlatformSession,
+  insertUser,
+  signedEnvelopeColumns,
+  type TestDatabase,
+} from '../helpers/db.ts';
 
 const addr = () => randomBytes(20);
 const ALL_MIGRATIONS = [
@@ -13,6 +19,7 @@ const ALL_MIGRATIONS = [
   '0002_account_preferences',
   '0003_signer_key_attestation',
   '0004_wallet_onboarding',
+  '0005_operation_pipeline',
 ];
 const hash = () => randomBytes(32);
 const sig = () => randomBytes(65);
@@ -29,6 +36,7 @@ async function sqlStateOf(promise: Promise<unknown>): Promise<string | undefined
 const ALL_TABLES = [
   'audit_chain_lock',
   'audit_events',
+  'chain_cursors',
   'chain_transactions',
   'gas_topups',
   'idempotency_keys',
@@ -43,6 +51,7 @@ const ALL_TABLES = [
   'policy_snapshots',
   'recovery_metadata',
   'rotation_requests',
+  'safe_executions',
   'security_challenges',
   'sessions',
   'signer_keys',
@@ -81,6 +90,9 @@ const FOREIGN_KEYS: [string, string, string][] = [
   ['wallet_operations', 'platform_session_id', 'platform_sessions'],
   ['wallet_operations', 'two_factor_challenge_id', 'security_challenges'],
   ['wallet_operations', 'group_id', 'operation_groups'],
+  ['wallet_operations', 'cancels_operation_id', 'wallet_operations'],
+  ['safe_executions', 'operation_id', 'wallet_operations'],
+  ['safe_executions', 'safe_address', 'wallets'],
   ['chain_transactions', 'operation_id', 'wallet_operations'],
   ['chain_transactions', 'replaced_by_id', 'chain_transactions'],
   ['rotation_requests', 'wallet_id', 'wallets'],
@@ -146,10 +158,13 @@ describe('esquema [B-DB]', () => {
   }
 
   async function insertOperation(wallet: { id: string; safe_address: Buffer | null }, nonce: number, status: string) {
-    const signed = status !== 'CREATED';
+    const signed = !['CREATED', 'EXPIRED', 'CANCELLED'].includes(status);
+    const envelope = signed ? signedEnvelopeColumns(await insertPlatformSession(db.app, userId)) : {};
     return db.app
       .insertInto('wallet_operations')
       .values({
+        ...envelope,
+        expires_at: status === 'CREATED' ? new Date(Date.now() + 15 * 60_000) : null,
         user_id: userId,
         wallet_id: wallet.id,
         safe_address: wallet.safe_address ?? addr(),
@@ -286,6 +301,29 @@ describe('esquema [B-DB]', () => {
             calldata: Buffer.alloc(0),
             canonical_intent: '{}',
             owner_signature: randomBytes(64),
+            owner_role: 'U',
+            status: 'USER_SIGNED',
+          })
+          .execute(),
+      ),
+    ).toBe('23514');
+    // 0005: una firma aceptada sin el envelope verificado (firma de la session key, token y sesión) se rechaza.
+    expect(
+      await sqlStateOf(
+        db.app
+          .insertInto('wallet_operations')
+          .values({
+            user_id: userId,
+            wallet_id: wallet.id,
+            safe_address: wallet.safe_address ?? addr(),
+            chain_id: 8453,
+            safe_nonce: 1,
+            operation_type: 'SEND',
+            safe_tx_hash: hash(),
+            target: addr(),
+            calldata: Buffer.alloc(0),
+            canonical_intent: '{}',
+            owner_signature: sig(),
             owner_role: 'U',
             status: 'USER_SIGNED',
           })
@@ -555,12 +593,128 @@ describe('esquema [B-DB]', () => {
     expect(await sqlStateOf(enrollment(w1.id, {}))).toBeUndefined();
   });
 
+  it('0005: vencimiento de CREATED, envelope completo, bloqueo por nonce, NoOp, deriva y ejecuciones indexadas', async () => {
+    const owner = await insertUser(db.app);
+    const wallet = await insertWallet('ACTIVE', owner);
+    const base = {
+      user_id: owner,
+      wallet_id: wallet.id,
+      safe_address: wallet.safe_address ?? addr(),
+      chain_id: 8453,
+      operation_type: 'SEND' as const,
+      target: addr(),
+      calldata: Buffer.alloc(0),
+      canonical_intent: '{}',
+    };
+    const insert = (values: Record<string, unknown>) =>
+      db.app
+        .insertInto('wallet_operations')
+        .values({ ...base, safe_nonce: 1, safe_tx_hash: hash(), status: 'CREATED', ...values })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+    // CREATED sin vencimiento.
+    expect(await sqlStateOf(insert({ expires_at: null }))).toBe('23514');
+    const created = await insert({ expires_at: new Date(Date.now() + 60_000) });
+    // Sólo una NOOP_CANCEL nombra la operación que cancela.
+    expect(await sqlStateOf(insert({ expires_at: new Date(), cancels_operation_id: created.id }))).toBe('23514');
+    expect(
+      await sqlStateOf(
+        insert({ expires_at: new Date(), operation_type: 'NOOP_CANCEL', cancels_operation_id: created.id }),
+      ),
+    ).toBeUndefined();
+    const envelope = signedEnvelopeColumns(await insertPlatformSession(db.app, owner, { walletId: wallet.id }));
+    const signed = { ...envelope, owner_signature: sig(), owner_role: 'U' };
+    // Firma del envelope: P-256 r‖s (64 bytes, base64url sin padding).
+    expect(
+      await sqlStateOf(insert({ ...signed, status: 'QUEUED', submission_envelope_signature: 'x'.repeat(85) })),
+    ).toBe('23514');
+    expect(await sqlStateOf(insert({ ...signed, status: 'QUEUED', platform_session_token: 'no-es-un-jws' }))).toBe(
+      '23514',
+    );
+    // WAITING_LOWER_NONCE sólo mientras espera turno (QUEUED o FAILED_RETRYABLE).
+    expect(
+      await sqlStateOf(insert({ ...signed, safe_nonce: 2, status: 'READY', blocked_reason: 'WAITING_LOWER_NONCE' })),
+    ).toBe('23514');
+    expect(
+      await sqlStateOf(insert({ ...signed, safe_nonce: 3, status: 'QUEUED', blocked_reason: 'WAITING_LOWER_NONCE' })),
+    ).toBeUndefined();
+    // SOVEREIGN_MODIFIED exige los ítems que difieren y cuándo se detectó.
+    expect(
+      await sqlStateOf(
+        db.app.updateTable('wallets').set({ status: 'SOVEREIGN_MODIFIED' }).where('id', '=', wallet.id).execute(),
+      ),
+    ).toBe('23514');
+    await db.app
+      .updateTable('wallets')
+      .set({ status: 'SOVEREIGN_MODIFIED', config_drift: JSON.stringify(['GUARD']), config_drift_at: new Date() })
+      .where('id', '=', wallet.id)
+      .execute();
+
+    const execution = (values: Record<string, unknown>) =>
+      db.app
+        .insertInto('safe_executions')
+        .values({
+          chain_id: 8453,
+          safe_address: wallet.safe_address ?? addr(),
+          safe_nonce: 0,
+          safe_tx_hash: hash(),
+          success: true,
+          origin: 'SOVEREIGN',
+          target: addr(),
+          value: 0,
+          data: Buffer.alloc(0),
+          operation: 0,
+          sender: addr(),
+          tx_hash: hash(),
+          log_index: 0,
+          block_number: 1,
+          block_hash: hash(),
+          status: 'MINED',
+          ...values,
+        })
+        .execute();
+    expect(await sqlStateOf(execution({}))).toBeUndefined();
+    // Una ejecución de la plataforma siempre apunta a su operación; la Safe tiene que ser una wallet registrada.
+    expect(await sqlStateOf(execution({ origin: 'PLATFORM' }))).toBe('23514');
+    expect(await sqlStateOf(execution({ origin: 'PLATFORM', operation_id: created.id }))).toBeUndefined();
+    expect(await sqlStateOf(execution({ safe_address: addr() }))).toBe('23503');
+    const txHash = hash();
+    await execution({ tx_hash: txHash, log_index: 4 });
+    expect(await sqlStateOf(execution({ tx_hash: txHash, log_index: 4 }))).toBe('23505');
+
+    // La misma SafeTx se puede volver a preparar si la anterior venció; dos vivas con el mismo hash, no.
+    const sameHash = hash();
+    expect(await sqlStateOf(insert({ safe_nonce: 9, safe_tx_hash: sameHash, status: 'EXPIRED' }))).toBeUndefined();
+    expect(
+      await sqlStateOf(insert({ safe_nonce: 9, safe_tx_hash: sameHash, expires_at: new Date(Date.now() + 60_000) })),
+    ).toBeUndefined();
+    expect(
+      await sqlStateOf(insert({ safe_nonce: 9, safe_tx_hash: sameHash, expires_at: new Date(Date.now() + 60_000) })),
+    ).toBe('23505');
+
+    const cursor = (name: string) =>
+      db.app.insertInto('chain_cursors').values({ name, block_number: 1, block_hash: hash() }).execute();
+    expect(await sqlStateOf(cursor('safe-events'))).toBeUndefined();
+    expect(await sqlStateOf(cursor('Safe Events'))).toBe('23514');
+  });
+
   it('mtw_readonly lee todo salvo hashes y secretos cifrados, y no escribe', async () => {
     await db.admin.query('BEGIN');
     try {
       await db.admin.query('SET LOCAL ROLE mtw_readonly');
       await db.admin.query('SELECT id, email, status FROM users');
-      await db.admin.query('SELECT * FROM wallet_operations');
+      await db.admin.query(
+        'SELECT id, status, safe_nonce, owner_signature, submission_envelope FROM wallet_operations',
+      );
+      // El token de la PlatformSession y la atestación del challenge que acompañan a una firma no.
+      await expect(
+        db.admin.query('SAVEPOINT s0; SELECT platform_session_token FROM wallet_operations'),
+      ).rejects.toMatchObject({ code: '42501' });
+      await db.admin.query('ROLLBACK TO SAVEPOINT s0');
+      await expect(
+        db.admin.query('SAVEPOINT s0b; SELECT challenge_attestation FROM wallet_operations'),
+      ).rejects.toMatchObject({ code: '42501' });
+      await db.admin.query('ROLLBACK TO SAVEPOINT s0b');
       await expect(db.admin.query('SAVEPOINT s1; SELECT password_hash FROM users')).rejects.toMatchObject({
         code: '42501',
       });

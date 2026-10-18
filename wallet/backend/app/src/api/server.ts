@@ -24,6 +24,7 @@ import { registerSecurity } from './plugins/security.ts';
 import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/v1/auth.ts';
 import { platformSessionsRoutes } from './routes/v1/platform-sessions.ts';
+import { operationRoutes } from './routes/v1/operations.ts';
 import { recoveryRoutes } from './routes/v1/recovery.ts';
 import { sessionsRoutes } from './routes/v1/sessions.ts';
 import { usersRoutes } from './routes/v1/users.ts';
@@ -145,6 +146,8 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
       });
     }
     await app.register(recoveryRoutes, { prefix: API_PREFIX, client, enrollments: deps.wallets.enrollments });
+    // Operaciones (P13): en Wallet firma U (OPERATIONS) y en Recovery firma R (RECOVERY).
+    await app.register(operationRoutes, { prefix: API_PREFIX, client, operations: deps.wallets.operations });
   }
   if (extraRoutes) {
     await app.register(

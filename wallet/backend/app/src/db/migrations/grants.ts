@@ -24,6 +24,8 @@ export const ACCESS_POLICY: AccessPolicy = {
     opaque_records: ['registration_record'],
     operator_users: ['totp_secret_ciphertext'],
     sessions: ['token_hash'],
+    // Token de la PlatformSession y atestación del challenge que acompañan a una firma (los verifica el signer).
+    wallet_operations: ['platform_session_token', 'challenge_attestation'],
   },
 };
 

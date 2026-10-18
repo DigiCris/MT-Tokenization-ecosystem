@@ -24,7 +24,10 @@ import { WalletUnlockService } from './platform-session/unlock.ts';
 import type { BackendPolicySnapshot } from './policy/snapshot.ts';
 import { EnrollmentService } from './recovery/enrollment.ts';
 import type { SignerKeyService } from './signer-client/sharding.ts';
+import { OperationService } from './operations/service.ts';
+import { OperationStateMachine } from './operations/state-machine.ts';
 import { KeyRestoreService } from './wallets/key-restore.ts';
+import { SovereignModification } from './wallets/sovereign.ts';
 import { WalletService } from './wallets/wallet-service.ts';
 
 /** Lecturas on-chain con quórum y snapshot de policy firmado (direcciones y codehashes del sistema). */
@@ -131,6 +134,8 @@ export interface WalletServices {
   wallets: WalletService;
   enrollments: EnrollmentService;
   keyRestore: KeyRestoreService;
+  /** Operaciones de la Safe (P13): prepare interno, firmas, cancelación y lecturas. */
+  operations: OperationService;
 }
 
 /** Onboarding de wallets (P12): requiere los servicios de cuenta armados con dependencias on-chain. */
@@ -164,5 +169,20 @@ export function createWalletServices(input: {
       logger: logger.child({ component: 'recovery-enrollment' }),
     }),
     keyRestore: account.keyRestore,
+    operations: new OperationService({
+      db,
+      machine: new OperationStateMachine({ db, audit: account.audit, outbox: input.outbox }),
+      audit: account.audit,
+      rpc: onchain.rpc,
+      snapshot: onchain.snapshot,
+      sovereign: new SovereignModification({
+        audit: account.audit,
+        email: account.emails,
+        logger: logger.child({ component: 'sovereign' }),
+        metrics,
+      }),
+      logger: logger.child({ component: 'operations' }),
+      metrics,
+    }),
   };
 }

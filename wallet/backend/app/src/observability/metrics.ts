@@ -28,6 +28,14 @@ export interface Metrics {
   gasTankTransactions: Counter<'purpose' | 'result'>;
   walletOnboarding: Counter<'step' | 'result'>;
   walletVerificationFailures: Counter<'item'>;
+  operationTransitions: Counter<'to'>;
+  operationErrors: Counter<'code'>;
+  workerStepDuration: Histogram<'step'>;
+  executorTransactions: Counter<'result'>;
+  reorgsDetected: Counter<'kind'>;
+  sovereignModified: Counter;
+  reconcilerDiscrepancies: Counter<'kind'>;
+  indexerHeadBlock: Gauge<'indexer'>;
 }
 
 export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metrics {
@@ -171,6 +179,54 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       labelNames: ['item'],
       registers,
     }),
+    operationTransitions: new Counter({
+      name: 'mtw_operation_transitions_total',
+      help: 'Transiciones de wallet_operations por estado destino [B-SM]',
+      labelNames: ['to'],
+      registers,
+    }),
+    operationErrors: new Counter({
+      name: 'mtw_operation_errors_total',
+      help: 'Errores clasificados del pipeline de operaciones (last_error_code, [B-Q-03])',
+      labelNames: ['code'],
+      registers,
+    }),
+    workerStepDuration: new Histogram({
+      name: 'mtw_worker_step_duration_seconds',
+      help: 'Duración de cada paso del pipeline del worker S [B-Q-02]',
+      labelNames: ['step'],
+      buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+      registers,
+    }),
+    executorTransactions: new Counter({
+      name: 'mtw_executor_transactions_total',
+      help: 'Transacciones execTransaction de S por resultado (submitted, mined, reverted, replaced, dropped, confirmed, finalized, reorged)',
+      labelNames: ['result'],
+      registers,
+    }),
+    reorgsDetected: new Counter({
+      name: 'mtw_reorgs_detected_total',
+      help: 'Reorgs detectados por el watcher (operación, transfer o ejecución indexada) [B-FIN-02]',
+      labelNames: ['kind'],
+      registers,
+    }),
+    sovereignModified: new Counter({
+      name: 'mtw_wallets_sovereign_modified_total',
+      help: 'Wallets marcadas SOVEREIGN_MODIFIED por deriva de configuración de la Safe (alerta)',
+      registers,
+    }),
+    reconcilerDiscrepancies: new Counter({
+      name: 'mtw_reconciler_discrepancies_total',
+      help: 'Discrepancias DB ↔ cadena detectadas por la reconciliación [B-FIN-03]',
+      labelNames: ['kind'],
+      registers,
+    }),
+    indexerHeadBlock: new Gauge({
+      name: 'mtw_indexer_head_block',
+      help: 'Último bloque procesado por cada indexer',
+      labelNames: ['indexer'],
+      registers,
+    }),
   };
 }
 
@@ -181,6 +237,8 @@ export interface ScrapeSources {
   outboxLagSeconds?: () => Promise<number>;
   /** Operaciones por estado. */
   operationsByStatus?: () => Promise<Record<string, number>>;
+  /** Operaciones no terminales sin cambios hace más del umbral (alerta de operaciones atascadas, [B-OBS]). */
+  stuckOperations?: () => Promise<number>;
 }
 
 /** Gauges calculados en cada scrape a partir de Postgres y de BullMQ. */
@@ -222,6 +280,17 @@ export function registerScrapeGauges(metrics: Metrics, sources: ScrapeSources): 
       async collect() {
         this.reset();
         for (const [status, n] of Object.entries(await read())) this.set({ status }, n);
+      },
+    });
+  }
+  if (sources.stuckOperations) {
+    const read = sources.stuckOperations;
+    new Gauge({
+      name: 'mtw_wallet_operations_stuck',
+      help: 'Operaciones no terminales sin cambios de estado hace más de 10 minutos',
+      registers,
+      async collect() {
+        this.set(await read());
       },
     });
   }

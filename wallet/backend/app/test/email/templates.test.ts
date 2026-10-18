@@ -1,4 +1,4 @@
-// P09.T07 [B-MAIL-02/03]: snapshots de las 19 plantillas y verificación explícita de lo que exige cada email sensible:
+// P09.T07 [B-MAIL-02/03]: snapshots de las 20 plantillas y verificación explícita de lo que exige cada email sensible:
 // acción, dirección completa (EIP-55 en grupos de 4), red, Safe, expiración (hora local del usuario y UTC), origen y
 // qué hacer si no fue el usuario; sin links que ejecuten acciones y con el HTML escapado.
 import { describe, expect, it } from 'vitest';
@@ -29,6 +29,7 @@ const SAFE_TEMPLATES: TemplateName[] = [
   'recovery-started',
   'high-value-challenge',
   'high-value-executed',
+  'safe-config-modified',
 ];
 const WITH_DESTINATION: TemplateName[] = [
   'whitelist-challenge',

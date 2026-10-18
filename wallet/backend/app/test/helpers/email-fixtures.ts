@@ -77,4 +77,5 @@ export const TEMPLATE_FIXTURES: { [K in TemplateName]: TemplateParams[K] } = {
     occurredAt: AT,
   },
   'cooperation-paused': { app: 'WALLET', reason: 'el manifest servido no coincide con el firmado', occurredAt: AT },
+  'safe-config-modified': { safe: SAFE, items: ['GUARD', 'MODULE_GUARD'], occurredAt: AT },
 };

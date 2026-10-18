@@ -287,6 +287,28 @@ Si no fuiste vos: cancelá la rotación desde la app (Wallet o Recovery) antes d
 }
 `;
 
+exports[`snapshots > safe-config-modified 1`] = `
+{
+  "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>La configuración de tu Safe cambió fuera de la plataforma</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Tu Safe ya no está en modo asistido</h1><p>La configuración on-chain de tu Safe ya no es la de una wallet asistida (por ejemplo, se retiró el Guard de seguridad firmando con tus claves U y R). Sin el Guard no hay control on-chain de las operaciones, así que la plataforma dejó de co-firmar; tus fondos siguen bajo tu control con tus claves U y R.</p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Cambio de configuración de la Safe</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Cambios detectados</td><td style="padding:4px 0;font-family:monospace">GUARD, MODULE_GUARD</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Detectado</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:04 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Detectado (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:04 UTC</td></tr></table><p><strong>Si no fuiste vos:</strong> usá tus claves U y R desde la app Recovery para restaurar la configuración o mover tus fondos a otra wallet, y contactá a soporte de inmediato.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones.</p></body></html>",
+  "subject": "La configuración de tu Safe cambió fuera de la plataforma",
+  "text": "Tu Safe ya no está en modo asistido
+
+La configuración on-chain de tu Safe ya no es la de una wallet asistida (por ejemplo, se retiró el Guard de seguridad firmando con tus claves U y R). Sin el Guard no hay control on-chain de las operaciones, así que la plataforma dejó de co-firmar; tus fondos siguen bajo tu control con tus claves U y R.
+
+Acción: Cambio de configuración de la Safe
+Cambios detectados: GUARD, MODULE_GUARD
+Red: Base mainnet — chainId 8453
+Safe: 0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913
+Detectado: 17/10/2026, 12:04 (America/Argentina/Buenos_Aires)
+Detectado (UTC): 17/10/2026, 15:04 UTC
+
+Si no fuiste vos: usá tus claves U y R desde la app Recovery para restaurar la configuración o mover tus fondos a otra wallet, y contactá a soporte de inmediato.
+
+— MT Wallet. Este email no incluye links que ejecuten acciones.
+",
+}
+`;
+
 exports[`snapshots > step-up-code 1`] = `
 {
   "html": "<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Código de verificación</title></head><body style="font-family:Arial,sans-serif;color:#111;max-width:640px;margin:0 auto;padding:24px"><h1 style="font-size:20px">Confirmá que sos vos</h1><p>Ingresá este código en la app para continuar.</p><p style="font-size:28px;font-family:monospace;letter-spacing:4px;margin:24px 0"><strong>77441122</strong></p><table style="border-collapse:collapse;margin:16px 0"><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Acción</td><td style="padding:4px 0;font-family:monospace">Verificación adicional: onboarding de la wallet</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Red</td><td style="padding:4px 0;font-family:monospace">Base mainnet — chainId 8453</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Safe</td><td style="padding:4px 0;font-family:monospace">0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 12:19 (America/Argentina/Buenos_Aires)</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Vence (UTC)</td><td style="padding:4px 0;font-family:monospace">17/10/2026, 15:19 UTC</td></tr><tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top">Origen</td><td style="padding:4px 0;font-family:monospace">IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0</td></tr></table><p><strong>Si no fuiste vos:</strong> no ingreses el código en ningún lado; cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.</p><p style="color:#666;font-size:12px">MT Wallet. Este email no incluye links que ejecuten acciones. Ingresá el código sólo en la app: nadie de MT Wallet te lo va a pedir.</p></body></html>",

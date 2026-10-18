@@ -90,6 +90,7 @@ describe('health', () => {
             '0002_account_preferences',
             '0003_signer_key_attestation',
             '0004_wallet_onboarding',
+            '0005_operation_pipeline',
           ],
         },
       },

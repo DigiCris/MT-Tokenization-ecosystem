@@ -12,7 +12,9 @@ export type FaultMode =
   | { kind: 'wrong-chain' }
   | { kind: 'http-error'; status: number }
   /** Informa un head `lag` bloques por detrás del real. */
-  | { kind: 'head-lag'; lag: number };
+  | { kind: 'head-lag'; lag: number }
+  /** Rechaza `eth_getLogs` con un rango mayor a `blocks` (como un plan de proveedor con límite de rango). */
+  | { kind: 'max-log-range'; blocks: number };
 
 export interface FaultProxy {
   url: string;
@@ -52,6 +54,21 @@ export async function startFaultProxy(upstream: string): Promise<FaultProxy> {
         if (current.kind === 'http-error') {
           res.writeHead(current.status).end('injected failure');
           return;
+        }
+        if (current.kind === 'max-log-range') {
+          const tooWide = batch.find((r) => {
+            if (r.method !== 'eth_getLogs') return false;
+            const filter = (r.params?.[0] ?? {}) as { fromBlock?: string; toBlock?: string };
+            if (!filter.fromBlock?.startsWith('0x') || !filter.toBlock?.startsWith('0x')) return false;
+            return BigInt(filter.toBlock) - BigInt(filter.fromBlock) + 1n > BigInt(current.blocks);
+          });
+          if (tooWide) {
+            const error = { code: -32600, message: `eth_getLogs limitado a ${String(current.blocks)} bloques` };
+            res
+              .writeHead(200, { 'content-type': 'application/json' })
+              .end(JSON.stringify({ jsonrpc: '2.0', id: tooWide.id, error }));
+            return;
+          }
         }
         if (
           current.kind === 'timeout' &&

@@ -1,10 +1,27 @@
-// Snapshot de policy firmado en el backend [B-POL-01] (implementación propia, independiente de la del signer; P13.T10
-// le agrega la evaluación completa): firma Ed25519 sobre los bytes exactos del archivo con la clave pública de policy
-// fijada, formato y entorno. El backend envía `version` al signer en cada pedido (deben coincidir).
+// Snapshot de policy firmado en el backend [B-POL-01] (implementación propia, independiente de la del signer): firma
+// Ed25519 sobre los bytes exactos del archivo con la clave pública de policy fijada, formato, entorno y contenido
+// completo (direcciones y codehashes del sistema, tokens, operaciones por rol, límites, swap, sesión y gas). El
+// anti-rollback queda registrado en `policy_snapshots` (policy/store.ts). El backend envía `version` al signer en cada
+// pedido (deben coincidir).
 import { createHash, verify, type KeyObject } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { getAddress, isAddress, type Address, type Hex } from 'viem';
 import { z } from 'zod';
+
+export const OPERATION_TYPES = [
+  'SEND',
+  'SWAP_APPROVE',
+  'SWAP',
+  'WHITELIST_ADD',
+  'WHITELIST_REMOVE',
+  'ROTATION_PROPOSE',
+  'ROTATION_EXECUTE',
+  'NOOP_CANCEL',
+  'MIGRATION_TRANSFER',
+  'APPROVE_REVOKE',
+  'GUARD_UPGRADE',
+] as const;
+export type OperationKind = (typeof OPERATION_TYPES)[number];
 
 const address = z
   .string()
@@ -16,6 +33,11 @@ const hash32 = z
   .regex(/^0x[0-9a-fA-F]{64}$/)
   .transform((v) => v.toLowerCase() as Hex);
 
+const amount = z
+  .string()
+  .regex(/^(0|[1-9][0-9]{0,77})$/)
+  .transform((v) => BigInt(v));
+
 const SnapshotSchema = z.object({
   format: z.literal('mtw-policy-snapshot'),
   formatVersion: z.literal(1),
@@ -23,6 +45,7 @@ const SnapshotSchema = z.object({
   environment: z.enum(['local', 'staging', 'production']),
   platformId: z.string(),
   chainId: z.literal(8453),
+  issuedAt: z.string(),
   contracts: z.object({
     securityGuard: address,
     rotationTimelock: address,
@@ -49,16 +72,48 @@ const SnapshotSchema = z.object({
     safeProxyFactory: hash32,
     safeProxyRuntime: hash32,
   }),
-  tokens: z.array(z.object({ symbol: z.string(), address, decimals: z.number().int() })),
+  tokens: z
+    .array(z.object({ symbol: z.enum(['USDC', 'USDT']), address, decimals: z.literal(6) }))
+    .length(2)
+    .refine((t) => new Set(t.map((x) => x.symbol)).size === 2, 'tokens repetidos'),
+  /** Operaciones habilitadas por rol [B-POL-03]. */
+  operations: z.object({ U: z.array(z.enum(OPERATION_TYPES)), R: z.array(z.enum(OPERATION_TYPES)) }),
+  /** [B-POL-02] (ADR-025): montos en unidades de 6 decimales. */
+  limits: z.object({
+    perOperationMax: amount,
+    dailyOutflowMax: amount,
+    twoFactorThreshold: amount,
+    swapMax: amount,
+    minPerOperation: amount,
+  }),
+  swap: z.object({
+    defaultSlippageBps: z.number().int().min(0).max(50),
+    maxSlippageBps: z.number().int().min(0).max(50),
+    deadlineSeconds: z.number().int().min(60).max(3_600),
+  }),
+  session: z.object({
+    maxSignatureAgeSeconds: z.number().int().min(60).max(86_400),
+    clockSkewSeconds: z.number().int().min(0).max(300),
+  }),
+  gas: z.object({ maxFeePerGasWei: amount, maxPriorityFeePerGasWei: amount, maxGasLimit: z.number().int() }),
+  gasTank: z.object({ topupMaxWei: amount, dailyCapWei: amount, maxGasLimit: z.number().int() }),
 });
+
+type ParsedSnapshot = z.infer<typeof SnapshotSchema>;
 
 export interface BackendPolicySnapshot {
   version: number;
   environment: 'local' | 'staging' | 'production';
   platformId: string;
   chainId: 8453;
-  contracts: Record<keyof z.infer<typeof SnapshotSchema>['contracts'], Address>;
-  codehashes: Record<keyof z.infer<typeof SnapshotSchema>['codehashes'], Hex>;
+  contracts: Record<keyof ParsedSnapshot['contracts'], Address>;
+  codehashes: Record<keyof ParsedSnapshot['codehashes'], Hex>;
+  tokens: { USDC: Address; USDT: Address };
+  operations: { U: readonly OperationKind[]; R: readonly OperationKind[] };
+  limits: ParsedSnapshot['limits'];
+  swap: ParsedSnapshot['swap'];
+  session: ParsedSnapshot['session'];
+  gas: ParsedSnapshot['gas'];
   sha256: `0x${string}`;
 }
 
@@ -66,7 +121,44 @@ export class PolicySnapshotError extends Error {
   override name = 'PolicySnapshotError';
 }
 
-export function loadPolicySnapshot(path: string, publicKey: KeyObject, environment: string): BackendPolicySnapshot {
+/** Contenido del snapshot ya verificado (o de un vector): valida el formato y arma la vista del backend. */
+export function parsePolicySnapshot(json: unknown, sha256: `0x${string}`): BackendPolicySnapshot {
+  const parsed = SnapshotSchema.safeParse(json);
+  if (!parsed.success) throw new PolicySnapshotError('snapshot de policy con formato inválido');
+  const data = parsed.data;
+  if (data.swap.defaultSlippageBps > data.swap.maxSlippageBps) {
+    throw new PolicySnapshotError('snapshot de policy con slippage por defecto mayor al máximo');
+  }
+  const token = (symbol: 'USDC' | 'USDT') => {
+    const entry = data.tokens.find((t) => t.symbol === symbol);
+    if (!entry) throw new PolicySnapshotError(`snapshot de policy sin ${symbol}`);
+    return entry.address;
+  };
+  return {
+    version: data.version,
+    environment: data.environment,
+    platformId: data.platformId,
+    chainId: data.chainId,
+    contracts: data.contracts,
+    codehashes: data.codehashes,
+    tokens: { USDC: token('USDC'), USDT: token('USDT') },
+    operations: data.operations,
+    limits: data.limits,
+    swap: data.swap,
+    session: data.session,
+    gas: data.gas,
+    sha256,
+  };
+}
+
+export interface LoadedPolicySnapshot extends BackendPolicySnapshot {
+  /** Firma Ed25519 (64 bytes) sobre los bytes exactos del archivo. */
+  signature: Buffer;
+  /** Contenido JSON tal cual se firmó (para registrarlo en policy_snapshots). */
+  payload: unknown;
+}
+
+export function loadPolicySnapshot(path: string, publicKey: KeyObject, environment: string): LoadedPolicySnapshot {
   let bytes: Buffer;
   let signature: Buffer;
   try {
@@ -84,17 +176,7 @@ export function loadPolicySnapshot(path: string, publicKey: KeyObject, environme
   } catch {
     throw new PolicySnapshotError('snapshot de policy con formato inválido');
   }
-  const parsed = SnapshotSchema.safeParse(json);
-  if (!parsed.success) throw new PolicySnapshotError('snapshot de policy con formato inválido');
-  if (parsed.data.environment !== environment)
-    throw new PolicySnapshotError(`el snapshot es de ${parsed.data.environment}`);
-  return {
-    version: parsed.data.version,
-    environment: parsed.data.environment,
-    platformId: parsed.data.platformId,
-    chainId: parsed.data.chainId,
-    contracts: parsed.data.contracts,
-    codehashes: parsed.data.codehashes,
-    sha256: `0x${createHash('sha256').update(bytes).digest('hex')}`,
-  };
+  const snapshot = parsePolicySnapshot(json, `0x${createHash('sha256').update(bytes).digest('hex')}`);
+  if (snapshot.environment !== environment) throw new PolicySnapshotError(`el snapshot es de ${snapshot.environment}`);
+  return { ...snapshot, signature, payload: json };
 }

@@ -113,7 +113,14 @@ export async function startOnboardingEnv(options: {
     shards: [{ id: 'dev-1', url: executorShard.url, active: true }],
     clients: new Map([['dev-1', executorShard.client]]),
   });
-  const config = testConfig({ RATE_LIMIT_GLOBAL_PER_MINUTE: '100000' });
+  // La plataforma y la clave del emisor de sesiones son las que fijan el snapshot y los shards (el signer verifica los
+  // tokens de PlatformSession con esa clave pública y exige el platformId del snapshot).
+  const config = testConfig({
+    RATE_LIMIT_GLOBAL_PER_MINUTE: '100000',
+    PLATFORM_ID: snapshot.platformId,
+    SESSION_ISSUER_PRIVATE_KEY: keys.issuer.privateBase64,
+    SESSION_ISSUER_PUBLIC_KEY: keys.issuer.publicBase64,
+  });
   const onchain = { rpc, snapshot: () => snapshot };
   const common = { db, config, redis, rpc, onchain, signerKeys, logger, metrics };
   const wallet = await buildTestListener({ ...common, client: 'WALLET' });
@@ -243,7 +250,7 @@ export async function nextStepUpEmail(email: string): Promise<MailpitMessage> {
 export async function stepUp(
   browser: TestClient,
   email: string,
-  scope: 'ONBOARDING' | 'ENROLLMENT' | 'KEY_RESTORE',
+  scope: 'ONBOARDING' | 'ENROLLMENT' | 'KEY_RESTORE' | 'RECOVERY',
   keyRestore?: (nonce: Hex) => Promise<{ keyAddress: Address; signature: Hex }>,
 ): Promise<Session> {
   const key = newSessionKey();

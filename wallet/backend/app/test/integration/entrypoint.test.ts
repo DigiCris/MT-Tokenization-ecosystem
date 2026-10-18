@@ -89,6 +89,8 @@ beforeAll(async () => {
   env = localEnv({
     LOG_LEVEL: 'info',
     MTW_ENV_FILE: '/dev/null',
+    // El snapshot de policy es de la plataforma `mtw`: el arranque exige que coincida.
+    PLATFORM_ID: 'mtw',
     API_BIND_HOST: '127.0.0.1',
     API_WALLET_PORT: String(ports.wallet),
     API_RECOVERY_PORT: String(ports.recovery),
@@ -169,7 +171,7 @@ describe('entrypoint api', () => {
 });
 
 describe('entrypoint worker', () => {
-  it('el dispatcher publica eventos del outbox en BullMQ y cierra con SIGTERM', async () => {
+  it('el dispatcher publica eventos del outbox en BullMQ, el worker S los consume y cierra con SIGTERM', async () => {
     const outbox = new OutboxRepository(db.app);
     const worker = start('worker', env);
     const producer = createRedis(testRedisUrl(REDIS_DB), 'producer', 'test-entrypoint', () => undefined);
@@ -191,8 +193,21 @@ describe('entrypoint worker', () => {
         if (Date.now() > deadline) throw new Error('el worker no publicó el evento');
         await sleep(100);
       }
-      const job = await queues[QUEUES.walletOperations].getJob(outboxJobId({ aggregate_id: aggregateId, id }));
-      expect(job?.data.outboxEventId).toBe(id);
+      // El worker S del mismo proceso consume la cola wallet-operations (P13): el evento queda procesado (la
+      // operación no existe, así que no hay nada que ejecutar) y el job ya no está.
+      for (;;) {
+        const row = await db.app
+          .selectFrom('outbox_events')
+          .select('processed_at')
+          .where('id', '=', id)
+          .executeTakeFirstOrThrow();
+        if (row.processed_at) break;
+        if (Date.now() > deadline) throw new Error('el worker S no consumió el evento');
+        await sleep(100);
+      }
+      expect(
+        await queues[QUEUES.walletOperations].getJob(outboxJobId({ aggregate_id: aggregateId, id })),
+      ).toBeUndefined();
       const metrics = await (await fetch(`http://127.0.0.1:${String(ports.workerMetrics)}/metrics`)).text();
       expect(metrics).toContain('mtw_queue_jobs{queue="wallet-operations",state="waiting"}');
     } finally {
