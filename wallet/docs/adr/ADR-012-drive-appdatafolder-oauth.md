@@ -28,6 +28,33 @@ Detalle ([F-DRV]):
 - **Salud del backup** ([F-DRV-05]): chequeo periódico (cada 7 días o a pedido, sin bloquear nunca el desbloqueo) que reconecta Drive, verifica que el backup siga presente y coincida (hash) y, si falta, muestra una alerta persistente para re-subirlo.
 - **CSP:** `connect-src` incluye `https://www.googleapis.com` y `https://oauth2.googleapis.com` ([F-SEC-01]); `Referrer-Policy: no-referrer` en todos los origins criptográficos ([F-SEC-03]).
 
+## Resultado del spike (P17.T02, 2026-10-18)
+
+Sondeo con el cliente OAuth "Web application" real de Wallet-local (`GOOGLE_CLIENT_ID_WALLET`, redirect
+`http://localhost:5173/oauth/google/callback`) desde el origin del frontend, con un código de prueba: el endpoint
+distingue "falta client_secret" de "código inválido" sin login interactivo. El client id se omite; no hay secretos.
+
+| Request | Respuesta |
+|---|---|
+| `OPTIONS https://oauth2.googleapis.com/token` (`Origin: http://localhost:5173`, `Access-Control-Request-Method: POST`, `Access-Control-Request-Headers: content-type`) | `200`, `access-control-allow-origin: http://localhost:5173`, `access-control-allow-headers: content-type` (CORS permitido) |
+| `POST https://oauth2.googleapis.com/token` con `grant_type=authorization_code`, `code=<código de prueba>`, `client_id`, `redirect_uri`, `code_verifier` (PKCE S256) y **sin** `client_secret` | `400 {"error":"invalid_request","error_description":"client_secret is missing."}` |
+| El mismo canje con un `client_secret` falso | `401 {"error":"invalid_client","error_description":"The provided client secret is invalid."}` (el secret se valida antes que el código) |
+| `GET https://accounts.google.com/o/oauth2/v2/auth` con `response_type=token`, `scope=…/drive.appdata`, `state`, `prompt=consent` | `302` a `accounts.google.com/v3/signin/identifier` (pedido aceptado; sigue el login) |
+| `OPTIONS` de `oauth2.googleapis.com/revoke` (POST) y de Drive v3 (`GET /drive/v3/files`, `POST`/`PATCH /upload/drive/v3/files`, `DELETE /drive/v3/files/{id}`, con `authorization` y `content-type`) | `200` con `access-control-allow-origin: http://localhost:5173` en todos; `POST /revoke` con un token inválido → `400 {"error":"invalid_token"}` con CORS |
+
+**Conclusión:** Google exige `client_secret` para canjear el código de un cliente "Web application" aunque haya PKCE,
+así que la alternativa (a) de la regla no es viable sin backend. **Se fija el flujo implícito** (`response_type=token`)
+por redirección de página completa, sin JS de Google:
+
+- Ida: `state` de 32 bytes aleatorios y la ruta de regreso en `sessionStorage` (`src/drive/oauth-state.ts`, único
+  módulo con Web Storage junto con `src/storage/flags.ts`; regla Semgrep `mtw-fe-web-storage`) y
+  `location.assign(<auth URL>)` con `client_id`, `redirect_uri`, `response_type=token`, `scope=drive.appdata`,
+  `include_granted_scopes=false`, `state` y `prompt=consent` la primera vez.
+- Vuelta (`/oauth/google/callback`): antes de renderizar, se lee el fragmento, se limpia con `history.replaceState` y se
+  borra el `state` guardado; un `state` distinto, un `error` o un scope distinto de `drive.appdata` descartan el token.
+  El `access_token` queda sólo en memoria hasta su `expires_in`; no hay refresh token en este flujo.
+- Al cerrar sesión o bloquear: `POST https://oauth2.googleapis.com/revoke` y se descarta la referencia.
+
 ## Alternativas consideradas
 
 - **Google Identity Services (JS de Google):** descartado en los origins criptográficos, porque sería JavaScript de terceros en el origin de U o R (§4, §3.5).
@@ -42,7 +69,7 @@ Detalle ([F-DRV]):
 - Antes de que la Safe llegue a ACTIVE, U y R necesitan cada una al menos un backup independiente de la plataforma (archivo cifrado, QR del sobre o 17 palabras); la restauración en un dispositivo nuevo funciona desde Drive, archivo, QR o palabras ([F-KEY-10]).
 - Riesgos residuales: la deprecación del flujo OAuth elegido (registrada en P28.T03) y el borrado del `appDataFolder`, mitigado por el chequeo de salud y el backup independiente obligatorio.
 - Como el login de Google no se puede automatizar, el cliente Drive de cada app se prueba contra la API real con una cuenta de prueba autorizada una vez (`GOOGLE_DRIVE_TEST_*`), en cada `pnpm ci:local` y en CI, sin saltearse nunca (R-14, P22.T04).
-- El resultado del spike (request y response sin secretos) se registra en este ADR en P17.T02.
+- El resultado del spike (request y response sin secretos) quedó registrado arriba: flujo implícito.
 - Los clientes OAuth de staging y producción para los dominios reales, con publicación y verificación de marca, se configuran en el despliegue final (H-03).
 
 ## Verificación
