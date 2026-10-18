@@ -14,6 +14,9 @@ node_modules/
 dist/
 coverage/
 *.log
+# build/ dentro de los frontends es código fuente (plugins y scripts del build y sus tests, P16): el .gitignore de la raíz
+# del repositorio ignora cualquier build/.
+!frontend/**/build/
 
 # --- Foundry ---
 contracts/out/

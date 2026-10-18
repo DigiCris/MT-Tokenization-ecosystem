@@ -1,0 +1,64 @@
+{
+  "$comment": "Headers HTTP de la app Wallet ([F-SEC-01], [F-SEC-03], P16.T05). Los aplica `vite preview` en local y el contenedor estático wallet-web en P26 (desde dist/.well-known/security-headers.json, resuelto por entorno y cubierto por el manifest firmado). {apiOrigin} y {rpcOrigin} salen de la configuración del entorno. 'wasm-unsafe-eval' es requerido por OPAQUE (WASM). `remoteOnly` se emite sólo en staging y producción (local y ci corren sobre http://localhost).",
+  "headers": {
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Cross-Origin-Embedder-Policy": "require-corp"
+  },
+  "permissionsPolicy": {
+    "deny": [
+      "accelerometer",
+      "autoplay",
+      "bluetooth",
+      "browsing-topics",
+      "camera",
+      "display-capture",
+      "encrypted-media",
+      "fullscreen",
+      "geolocation",
+      "gyroscope",
+      "hid",
+      "idle-detection",
+      "magnetometer",
+      "microphone",
+      "midi",
+      "payment",
+      "picture-in-picture",
+      "publickey-credentials-get",
+      "screen-wake-lock",
+      "serial",
+      "usb",
+      "xr-spatial-tracking"
+    ],
+    "$cameraRoutes": "Rutas que escanean QR (restaurar desde el QR del sobre, importar la firma soberana): cámara sólo para el propio origin y sólo al cargarlas como documento.",
+    "cameraRoutes": ["/restore", "/sovereign"]
+  },
+  "csp": {
+    "default-src": ["'none'"],
+    "script-src": ["'self'", "'wasm-unsafe-eval'"],
+    "style-src": ["'self'"],
+    "img-src": ["'self'", "data:", "blob:"],
+    "font-src": ["'self'"],
+    "connect-src": [
+      "'self'",
+      "{apiOrigin}",
+      "{rpcOrigin}",
+      "https://www.googleapis.com",
+      "https://oauth2.googleapis.com"
+    ],
+    "worker-src": ["'self'"],
+    "frame-src": ["'none'"],
+    "frame-ancestors": ["'none'"],
+    "form-action": ["'none'"],
+    "base-uri": ["'none'"],
+    "object-src": ["'none'"],
+    "manifest-src": ["'none'"],
+    "require-trusted-types-for": ["'script'"],
+    "trusted-types": ["mtw-default"],
+    "upgrade-insecure-requests": []
+  },
+  "remoteOnly": ["upgrade-insecure-requests"]
+}
