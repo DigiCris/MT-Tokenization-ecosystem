@@ -1,7 +1,7 @@
 // P16.T04: POST /api/v1/security/csp-report en los dos listeners, contra Fastify y Valkey reales. Público y sin CSRF
-// (la app lo envía sin cookies, también antes del login); acepta los tres tipos de reporte, rechaza campos con datos
-// sensibles (query, fragmento, muestras arbitrarias) o desconocidos, deja un log estructurado y una métrica, y tiene un
-// bucket de rate limit propio por IP.
+// (la app lo envía sin cookies, también antes del login); acepta los tres tipos de reporte, rechaza con 400 los campos con
+// datos sensibles (query, fragmento, muestras arbitrarias) o desconocidos, deja un log estructurado y una métrica, y
+// tiene un bucket de rate limit propio por IP.
 import { Writable } from 'node:stream';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createLogger } from '../../src/observability/logger.ts';
@@ -116,9 +116,9 @@ describe('reporte de seguridad de los frontends', () => {
     ['directiva inválida', { directive: 'script-src <x>' }],
     ['campo desconocido', { extra: 'x' }],
     ['tipo desconocido', { type: 'OTHER' }],
-  ])('rechaza %s (422)', async (_label, patch) => {
+  ])('rechaza %s (400)', async (_label, patch) => {
     const response = await report('WALLET', { ...violation, ...patch });
-    expect(response.statusCode).toBe(422);
+    expect(response.statusCode).toBe(400);
   });
 
   it('sólo JSON (415)', async () => {

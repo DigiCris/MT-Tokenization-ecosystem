@@ -96,7 +96,7 @@ export const securityRoutes: FastifyPluginCallbackZod<SecurityRoutesOptions> = (
           'Sin autenticación: reporte de la app (violación de CSP/Trusted Types, service worker desregistrado o CSP inactiva); sólo log y métrica',
         security: [],
         body: SecurityReportSchema,
-        response: { 204: z.null().describe('Reporte registrado'), ...errorResponses(415, 422) },
+        response: { 204: z.null().describe('Reporte registrado'), ...errorResponses(415) },
       },
     },
     async (request, reply) => {
