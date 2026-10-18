@@ -105,6 +105,8 @@ const SHARED_ONBOARDING_PATHS = [
 ];
 /** P15.T07: la bandeja in-app de la cuenta, en los dos listeners. */
 const NOTIFICATION_PATHS = ['/api/v1/notifications', '/api/v1/notifications/{id}/read'];
+/** P16.T04: reportes de seguridad de las dos apps (CSP/Trusted Types y service workers), en los dos listeners. */
+const SECURITY_PATHS = ['/api/v1/security/csp-report'];
 /** Rutas compartidas con dos métodos: GET y POST /wallets/{id}/rotations. */
 const SHARED_EXTRA_OPERATIONS = 1;
 /**
@@ -202,7 +204,7 @@ describe('spec OpenAPI por listener', () => {
     expect(doc.openapi).toBe('3.1.0');
     expect(doc.info.title).toBe(client === 'WALLET' ? 'MTW API — Wallet' : 'MTW API — Recovery');
     const paths = Object.keys(doc.paths).sort();
-    const shared = [...ACCOUNT_PATHS, ...NOTIFICATION_PATHS, ...SHARED_ONBOARDING_PATHS];
+    const shared = [...ACCOUNT_PATHS, ...NOTIFICATION_PATHS, ...SECURITY_PATHS, ...SHARED_ONBOARDING_PATHS];
     expect(paths).toEqual(
       client === 'WALLET'
         ? [...shared, ...WALLET_ONLY_PATHS, '/api/v1/test/wallet-only'].sort()
@@ -246,7 +248,11 @@ describe('spec OpenAPI por listener', () => {
       (route) => `${route.method} ${route.url.replace(/:([A-Za-z0-9_]+)/g, '{$1}')}`,
     );
     const shared =
-      ACCOUNT_OPERATIONS + NOTIFICATION_PATHS.length + SHARED_ONBOARDING_PATHS.length + SHARED_EXTRA_OPERATIONS;
+      ACCOUNT_OPERATIONS +
+      NOTIFICATION_PATHS.length +
+      SECURITY_PATHS.length +
+      SHARED_ONBOARDING_PATHS.length +
+      SHARED_EXTRA_OPERATIONS;
     expect(api.length).toBe(
       client === 'WALLET' ? shared + WALLET_ONLY_PATHS.length + 1 : shared + RECOVERY_ONLY_PATHS.length,
     );

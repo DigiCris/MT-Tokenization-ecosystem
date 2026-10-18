@@ -1,4 +1,4 @@
-# CI de la app Wallet (P02): install congelado, lint, typecheck, tests (incluye Drive real), cobertura y build.
+# CI de la app Wallet (P02, P16): design tokens, install congelado, lint, typecheck, tests (unit, build de release; Drive real desde P17), build, tests de navegador, SBOM y regla de dependencias comunes.
 name: wallet-frontend-wallet
 
 on:
@@ -43,6 +43,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Historia completa: la regla de dependencias criptográficas comunes ([F-SEC-09]) recorre los lockfiles.
+          fetch-depth: 0
       - name: Toolchain fijada
         uses: ./wallet/ci/actions/setup-toolchain
         with:

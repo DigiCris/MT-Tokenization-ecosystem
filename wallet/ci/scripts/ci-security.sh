@@ -27,6 +27,7 @@ for project in backend/app backend/signer backend/integrity-monitor frontend/wal
   fi
 done
 
+# lint-fixtures/ de cada frontend contiene a propósito los patrones prohibidos que ESLint tiene que detectar (P16.T03).
 section "Semgrep: TypeScript/JavaScript, Solidity y reglas propias (sin reglas de optimización de gas, docs/security/semgrep-triage.md)"
 targets=()
 for d in backend frontend e2e tools contracts/src scripts ci; do
@@ -38,6 +39,7 @@ else
   docker_tool semgrep -v "$WALLET_ROOT:/src:ro" -e SEMGREP_SEND_METRICS=off -- \
     semgrep scan --metrics=off --error --quiet --disable-version-check \
     --exclude node_modules --exclude dist --exclude coverage --exclude dependencies --exclude out \
+    --exclude lint-fixtures --exclude test-results --exclude playwright-report \
     --config p/javascript --config p/typescript --config p/nodejs --config p/react --config p/secrets \
     --config p/smart-contracts --config /src/ci/semgrep \
     --exclude-rule solidity.performance.array-length-outside-loop.array-length-outside-loop \

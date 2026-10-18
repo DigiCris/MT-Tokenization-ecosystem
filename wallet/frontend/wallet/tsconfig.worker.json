@@ -1,0 +1,10 @@
+{
+  // Workers dedicados: globals de worker (sin DOM).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024", "webworker"],
+    "types": []
+  },
+  "include": ["src/workers/*.worker.ts", "src/workers/*-protocol.ts"],
+  "exclude": []
+}

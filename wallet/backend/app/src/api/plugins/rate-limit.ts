@@ -69,6 +69,12 @@ export const RATE_LIMIT_POLICIES = {
     { name: 'proposal', max: 10, windowMs: HOUR, keys: ['proposal'] },
     { name: 'ip', max: 60, windowMs: HOUR, keys: ['ip'] },
   ],
+  // Reportes de seguridad de los frontends (P16.T04): públicos, así que sólo por IP; una página con una violación
+  // repetida la reporta deduplicada y con tope propio en la app.
+  'csp-report': [
+    { name: 'ip-minute', max: 30, windowMs: MINUTE, keys: ['ip'] },
+    { name: 'ip-hour', max: 300, windowMs: HOUR, keys: ['ip'] },
+  ],
 } as const satisfies Record<string, readonly Bucket[]>;
 
 export type RateLimitPolicyName = keyof typeof RATE_LIMIT_POLICIES;

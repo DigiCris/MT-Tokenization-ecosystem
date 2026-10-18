@@ -24,7 +24,8 @@ export function readWorkspaceYaml(text) {
     const m = line.match(/^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/);
     if (m) {
       current = m[1];
-      top[current] = m[2] === '' ? {} : m[2].replace(/^['"]|['"]$/g, '');
+      // `clave:` sola abre un mapa; `clave: {}` es un mapa vacío explícito (p. ej. allowBuilds sin excepciones).
+      top[current] = m[2] === '' || m[2].trim() === '{}' ? {} : m[2].replace(/^['"]|['"]$/g, '');
       continue;
     }
     const sub = line.match(/^\s+['"]?([^'":]+?)['"]?:\s*(.+)$/);

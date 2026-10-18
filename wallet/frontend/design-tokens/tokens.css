@@ -1,0 +1,103 @@
+/*
+ * Design tokens de MT Wallet (P16.T01): sólo variables CSS y las fuentes self-hosted, sin código. Cada app los copia a
+ * su propio árbol con `scripts/sync-design-tokens.mjs` (verificando SHA-256); no hay dependencia npm compartida entre
+ * Wallet y Recovery (V9 §17). La paleta es coherente con la landing del producto (azul de marca sobre tinta oscura)
+ * sin compartir su código.
+ */
+
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('./fonts/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('./fonts/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: light;
+
+  /* Color: tinta, superficies y líneas. */
+  --mtw-color-ink: #0b1739;
+  --mtw-color-ink-soft: #1b2b50;
+  --mtw-color-text-muted: #5f6b86;
+  --mtw-color-surface: #ffffff;
+  --mtw-color-surface-alt: #f5f7fb;
+  --mtw-color-surface-raised: #fbfcff;
+  --mtw-color-line: #e3e7ef;
+  --mtw-color-line-strong: #c9d0de;
+
+  /* Color: marca y estados. */
+  --mtw-color-brand: #3157f6;
+  --mtw-color-brand-strong: #2443c7;
+  --mtw-color-brand-soft: #edf1ff;
+  --mtw-color-accent: #7ed7ff;
+  --mtw-color-success: #1f9d63;
+  --mtw-color-success-soft: #e8f7ef;
+  --mtw-color-warning: #b26b00;
+  --mtw-color-warning-soft: #fff4e0;
+  --mtw-color-danger: #c62f3d;
+  --mtw-color-danger-soft: #fdecee;
+  --mtw-color-focus: #3157f6;
+
+  /* Recovery distingue su origin con un acento propio sobre la misma base (V9 §17: el usuario tiene que saber en qué
+     app está). */
+  --mtw-color-recovery: #0f7b6c;
+  --mtw-color-recovery-soft: #e6f5f2;
+
+  /* Tipografía. */
+  --mtw-font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mtw-font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  --mtw-font-size-xs: 0.75rem;
+  --mtw-font-size-sm: 0.875rem;
+  --mtw-font-size-md: 1rem;
+  --mtw-font-size-lg: 1.125rem;
+  --mtw-font-size-xl: 1.375rem;
+  --mtw-font-size-2xl: 1.75rem;
+  --mtw-font-size-3xl: 2.25rem;
+  --mtw-font-weight-regular: 450;
+  --mtw-font-weight-medium: 560;
+  --mtw-font-weight-bold: 720;
+  --mtw-line-height-tight: 1.2;
+  --mtw-line-height-body: 1.55;
+  --mtw-letter-spacing-caps: 0.14em;
+
+  /* Espaciado (escala de 4 px). */
+  --mtw-space-1: 0.25rem;
+  --mtw-space-2: 0.5rem;
+  --mtw-space-3: 0.75rem;
+  --mtw-space-4: 1rem;
+  --mtw-space-5: 1.25rem;
+  --mtw-space-6: 1.5rem;
+  --mtw-space-8: 2rem;
+  --mtw-space-10: 2.5rem;
+  --mtw-space-12: 3rem;
+  --mtw-space-16: 4rem;
+
+  /* Forma y profundidad. */
+  --mtw-radius-sm: 8px;
+  --mtw-radius-md: 12px;
+  --mtw-radius-lg: 18px;
+  --mtw-radius-pill: 999px;
+  --mtw-shadow-sm: 0 1px 2px rgba(11, 23, 57, 0.06);
+  --mtw-shadow-md: 0 10px 28px rgba(20, 38, 80, 0.1);
+  --mtw-shadow-lg: 0 24px 60px rgba(20, 38, 80, 0.12);
+
+  /* Layout. */
+  --mtw-content-width: 72rem;
+  --mtw-form-width: 30rem;
+  --mtw-transition: 160ms ease;
+}

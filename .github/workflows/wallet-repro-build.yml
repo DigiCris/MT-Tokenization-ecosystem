@@ -1,4 +1,4 @@
-# Build reproducible de los frontends (P02): cada app se compila dos veces en jobs distintos y se comparan los release manifests.
+# Build reproducible de los frontends (P02, P16): un job arma los insumos del entorno ci (contratos de la red ci sobre un Anvil efímero y una clave pública de atestación) y cada app se compila dos veces en jobs distintos con esos mismos insumos; se comparan los release manifests.
 name: wallet-repro-build
 
 on:
@@ -27,8 +27,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  inputs:
+    name: inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # El RPC del fork para el Anvil efímero de la red ci (mismo secret que el job de contratos).
+    environment: wallet-ci-contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm foundry
+          foundry-rpc-cache: "true"
+      - name: Insumos del entorno ci
+        env:
+          FORK_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+        run: bash wallet/ci/scripts/ci-repro-build.sh --inputs "${{ runner.temp }}/frontend-inputs"
+      - name: Subir insumos
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-inputs
+          path: ${{ runner.temp }}/frontend-inputs
+          if-no-files-found: error
+          retention-days: 7
+
   build:
     name: build-${{ matrix.run }}
+    needs: inputs
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -43,7 +72,14 @@ jobs:
         uses: ./wallet/ci/actions/setup-toolchain
         with:
           tools: node pnpm
+      - name: Descargar insumos
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: frontend-inputs
+          path: ${{ runner.temp }}/frontend-inputs
       - name: Build de release
+        env:
+          MTW_FRONTEND_INPUTS: ${{ runner.temp }}/frontend-inputs
         run: bash wallet/ci/scripts/ci-repro-build.sh --single "${{ runner.temp }}/manifests"
       - name: Subir manifests
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

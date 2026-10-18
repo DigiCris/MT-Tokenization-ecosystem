@@ -46,6 +46,68 @@ ci_node_project() { # <ruta relativa> <fase>
   run_if_script "$dir" build
 }
 
+# Insumos públicos del build de los frontends en el entorno `ci` (P16): el deployment real de la red ci (DeployCore +
+# VerifyDeployment sobre un Anvil efímero que forkea el bloque fijado, deploy-ephemeral.sh) y una clave pública de
+# atestación del signer efímera (el build sólo embebe la pública; no hay signer que la use en este entorno). Con
+# MTW_FRONTEND_INPUTS=<dir> los toma de ahí: los builds del chequeo de reproducibilidad reciben los mismos.
+frontend_ci_inputs() {
+  export MTW_ENV=ci
+  if [ -n "${MTW_FRONTEND_INPUTS:-}" ]; then
+    MTW_DEPLOYMENT_FILE="$MTW_FRONTEND_INPUTS/contracts.json"
+    SIGNER_ATTESTATION_PUBLIC_KEY="$(cat "$MTW_FRONTEND_INPUTS/signer-attestation.pub")"
+    export MTW_DEPLOYMENT_FILE SIGNER_ATTESTATION_PUBLIC_KEY
+    return 0
+  fi
+  export MTW_DEPLOYMENT_FILE="$WALLET_ROOT/contracts/deployments/ci.json"
+  if [ ! -f "$MTW_DEPLOYMENT_FILE" ]; then
+    # En CI el RPC del fork llega del secret BASE_RPC_URL; en local, de wallet/.env sin imprimirlo.
+    if [ -z "${FORK_RPC_URL:-}" ]; then FORK_RPC_URL="${BASE_RPC_URL:-}"; fi
+    if [ -z "$FORK_RPC_URL" ] && [ -f "$WALLET_ROOT/.env" ]; then
+      FORK_RPC_URL="$(node "$WALLET_ROOT/scripts/lib/env-value.mjs" BASE_RPC_URL 2>/dev/null || true)"
+    fi
+    export FORK_RPC_URL
+    section "contratos del sistema de la red ci para los builds (Anvil efímero sobre el fork)"
+    (cd "$WALLET_ROOT/contracts" && { [ -d dependencies ] || forge soldeer install; })
+    bash "$CI_SCRIPTS_DIR/deploy-ephemeral.sh"
+  fi
+  if [ -z "${SIGNER_ATTESTATION_PUBLIC_KEY:-}" ]; then
+    SIGNER_ATTESTATION_PUBLIC_KEY="$(node -e "process.stdout.write(require('node:crypto').generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'der' }).toString('base64'))")"
+    export SIGNER_ATTESTATION_PUBLIC_KEY
+  fi
+}
+
+# Headless shell de Chromium de la versión fijada de @playwright/test (en CI, con sus dependencias del sistema).
+ensure_playwright_browser() { # <dir>
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    (cd "$1" && pnpm exec playwright install --with-deps --only-shell chromium)
+  else
+    (cd "$1" && pnpm exec playwright install --only-shell chromium)
+  fi
+}
+
+# App de frontend (P16): design tokens verificados contra su lock, install congelado, lint (con los casos prohibidos de
+# lint-fixtures/), typecheck, tests (unit y del build de release), build, tests de navegador contra `vite preview` del
+# build y SBOM CycloneDX.
+ci_frontend_app() { # <ruta relativa> <fase>
+  local rel="$1" phase="$2" dir
+  skip_if_missing "$rel/package.json" "$phase"
+  dir="$WALLET_ROOT/$rel"
+  frontend_ci_inputs
+  section "$rel: design tokens (SHA-256 contra design-tokens.lock.json)"
+  (cd "$dir" && node scripts/sync-design-tokens.mjs --check)
+  section "$rel: pnpm install --frozen-lockfile"
+  (cd "$dir" && pnpm install --frozen-lockfile)
+  run_if_script "$dir" lint
+  run_if_script "$dir" typecheck
+  run_if_script "$dir" test
+  run_if_script "$dir" build
+  section "$rel: navegador de Playwright (headless shell de la versión fijada)"
+  ensure_playwright_browser "$dir"
+  run_if_script "$dir" test:browser
+  section "$rel: SBOM CycloneDX (syft)"
+  bash "$CI_SCRIPTS_DIR/sbom.sh" "${rel#frontend/}"
+}
+
 image_ref() { # <nombre en versions.json securityImages>
   node -e "console.log(require(process.argv[1]).securityImages[process.argv[2]])" "$WALLET_ROOT/scripts/tools/versions.json" "$1"
 }

@@ -31,6 +31,7 @@ import { platformSessionsRoutes } from './routes/v1/platform-sessions.ts';
 import { operationRoutes } from './routes/v1/operations.ts';
 import { recoveryRoutes } from './routes/v1/recovery.ts';
 import { rotationRoutes } from './routes/v1/rotations.ts';
+import { securityRoutes } from './routes/v1/security.ts';
 import { sendRoutes } from './routes/v1/send.ts';
 import { sessionsRoutes } from './routes/v1/sessions.ts';
 import { swapRoutes } from './routes/v1/swap.ts';
@@ -134,6 +135,8 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
   await app.register(sessionsRoutes, { prefix: API_PREFIX, account });
   await app.register(usersRoutes, { prefix: API_PREFIX, account });
   await app.register(notificationRoutes, { prefix: API_PREFIX, notifications: deps.services.notifications });
+  // P16.T04: reportes de seguridad de las dos apps (CSP/Trusted Types y service workers), públicos y con rate limit.
+  await app.register(securityRoutes, { prefix: API_PREFIX, metrics: deps.metrics });
   await app.register(platformSessionsRoutes, {
     prefix: API_PREFIX,
     client,

@@ -40,6 +40,7 @@ export interface Metrics {
   twoFactorChallenges: Counter<'method' | 'result'>;
   swapQuotes: Counter<'result'>;
   notificationsCreated: Counter<'type'>;
+  frontendSecurityReports: Counter<'client' | 'type' | 'directive'>;
 }
 
 export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metrics {
@@ -253,6 +254,12 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_notifications_created_total',
       help: 'Notificaciones in-app creadas por tipo',
       labelNames: ['type'],
+      registers,
+    }),
+    frontendSecurityReports: new Counter({
+      name: 'mtw_frontend_security_reports_total',
+      help: 'Reportes de seguridad de los frontends (CSP/Trusted Types, service workers, CSP inactiva) por app y tipo',
+      labelNames: ['client', 'type', 'directive'],
       registers,
     }),
   };
