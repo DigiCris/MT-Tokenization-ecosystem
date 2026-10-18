@@ -1,5 +1,6 @@
 // Proxy JSON-RPC de inyección de fallas (test-only, §10 "Resiliencia"): se pone delante de un Anvil real del fork y
-// altera respuestas según el modo: timeout, respuesta divergente, chainId incorrecto, error HTTP o head atrasado.
+// altera respuestas según el modo: timeout, respuesta divergente, chainId incorrecto, error HTTP, head atrasado, límite
+// de rango de logs o error JSON-RPC del nodo.
 import { createServer, type Server } from 'node:http';
 import { freePort } from './fork.ts';
 
@@ -14,7 +15,9 @@ export type FaultMode =
   /** Informa un head `lag` bloques por detrás del real. */
   | { kind: 'head-lag'; lag: number }
   /** Rechaza `eth_getLogs` con un rango mayor a `blocks` (como un plan de proveedor con límite de rango). */
-  | { kind: 'max-log-range'; blocks: number };
+  | { kind: 'max-log-range'; blocks: number }
+  /** Responde un error JSON-RPC del nodo en los métodos indicados (p. ej. un fork que no logró traer estado). */
+  | { kind: 'rpc-error'; methods: string[]; code: number; message: string };
 
 export interface FaultProxy {
   url: string;
@@ -67,6 +70,16 @@ export async function startFaultProxy(upstream: string): Promise<FaultProxy> {
             res
               .writeHead(200, { 'content-type': 'application/json' })
               .end(JSON.stringify({ jsonrpc: '2.0', id: tooWide.id, error }));
+            return;
+          }
+        }
+        if (current.kind === 'rpc-error') {
+          const failing = batch.find((r) => current.methods.includes(r.method));
+          if (failing) {
+            const error = { code: current.code, message: current.message };
+            res
+              .writeHead(200, { 'content-type': 'application/json' })
+              .end(JSON.stringify({ jsonrpc: '2.0', id: failing.id, error }));
             return;
           }
         }

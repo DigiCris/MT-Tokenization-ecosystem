@@ -87,18 +87,17 @@ function revertData(error: unknown): Hex | null {
   return null;
 }
 
-/** Revert de ejecución (la llamada llegó al nodo y revirtió), a diferencia de una falla del RPC. */
-function isExecutionRevert(error: unknown): boolean {
+/**
+ * Revert de ejecución (la llamada llegó al nodo y revirtió), a diferencia de una falla del RPC. viem envuelve toda falla
+ * de `eth_call` en `CallExecutionError` —también un timeout o un error interno del nodo—, así que el envoltorio no
+ * alcanza: el revert lo marca `ExecutionRevertedError`/`ContractFunctionRevertedError` en la cadena de causas (viem
+ * mapea ahí el código 3 y el mensaje "execution reverted"). Una falla del RPC se propaga y se reintenta por quórum.
+ */
+export function isExecutionRevert(error: unknown): boolean {
   let current: unknown = error;
-  for (let depth = 0; depth < 6 && current; depth++) {
+  for (let depth = 0; depth < 8 && current; depth++) {
     const name = (current as { name?: unknown }).name;
-    if (
-      name === 'ExecutionRevertedError' ||
-      name === 'ContractFunctionRevertedError' ||
-      name === 'CallExecutionError'
-    ) {
-      return true;
-    }
+    if (name === 'ExecutionRevertedError' || name === 'ContractFunctionRevertedError') return true;
     current = (current as { cause?: unknown }).cause;
   }
   return false;
