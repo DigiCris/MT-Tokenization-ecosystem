@@ -82,7 +82,17 @@ jobs:
           EMAIL_TEST_GOOGLE_CLIENT_ID: ${{ secrets.EMAIL_TEST_GOOGLE_CLIENT_ID }}
           EMAIL_TEST_GOOGLE_CLIENT_SECRET: ${{ secrets.EMAIL_TEST_GOOGLE_CLIENT_SECRET }}
           EMAIL_TEST_GOOGLE_REFRESH_TOKEN: ${{ secrets.EMAIL_TEST_GOOGLE_REFRESH_TOKEN }}
+          # Log de cada Anvil de los tests (endpoint del fork redactado, test/helpers/fork.ts).
+          MTW_ANVIL_LOG_DIR: ${{ runner.temp }}/anvil-logs
         run: bash wallet/ci/scripts/ci-backend.sh
+      - name: Logs de Anvil (si falló)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: anvil-logs
+          path: ${{ runner.temp }}/anvil-logs
+          if-no-files-found: ignore
+          retention-days: 7
 
   integrity-monitor:
     name: integrity-monitor

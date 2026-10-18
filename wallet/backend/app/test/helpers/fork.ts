@@ -1,7 +1,7 @@
 // Anvil sobre el fork de Base (bloque fijado de config/chains/base-mainnet.json). El upstream es BASE_RPC_URL (o
 // FORK_RPC_URL): en CI llega del secret; en local se lee de wallet/.env. Sin upstream los tests fallan (no se saltean).
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -85,9 +85,32 @@ class AnvilExitedError extends Error {
   override name = 'AnvilExitedError';
 }
 
+/**
+ * Con MTW_ANVIL_LOG_DIR cada Anvil escribe su log (RPC recibidos, transacciones y bloques) en un archivo propio de ese
+ * directorio, con el archivo de test que lo levantó: CI lo sube como artefacto si el job falla. El banner de Anvil
+ * imprime el endpoint del fork (con la key del proveedor): toda URL que no sea local se reduce a su host antes de
+ * escribir. Sin la variable, Anvil corre en silencio.
+ */
+function anvilLog(port: number): number | null {
+  const dir = process.env.MTW_ANVIL_LOG_DIR;
+  if (!dir) return null;
+  mkdirSync(dir, { recursive: true });
+  const testFile = /\/(test\/[\w/.-]+\.test\.ts)/.exec(new Error().stack ?? '')?.[1] ?? 'global-setup';
+  const fd = openSync(resolve(dir, `anvil-${String(Date.now())}-${String(port)}.log`), 'a');
+  writeSync(fd, `# ${testFile}\n`);
+  return fd;
+}
+
 async function launchAnvil(options: AnvilOptions): Promise<AnvilInstance> {
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
+  const logFd = anvilLog(port);
+  const upstream = forkUpstreamUrl();
+  const redact = (text: string) =>
+    text
+      .split(upstream)
+      .join('<fork-upstream>')
+      .replace(/(https?:\/\/(?!127\.0\.0\.1|localhost)[^\s/'"]+)[^\s'"]*/g, '$1/<redactado>');
   const child: ChildProcess = spawn(
     'anvil',
     [
@@ -96,7 +119,7 @@ async function launchAnvil(options: AnvilOptions): Promise<AnvilInstance> {
       '--host',
       '127.0.0.1',
       '--fork-url',
-      forkUpstreamUrl(),
+      upstream,
       '--fork-block-number',
       String(forkBlockNumber()),
       '--chain-id',
@@ -113,19 +136,43 @@ async function launchAnvil(options: AnvilOptions): Promise<AnvilInstance> {
       '100',
       '--timeout',
       '60000',
-      '--silent',
+      ...(logFd === null ? ['--silent'] : []),
       ...(options.loadState === undefined ? [] : ['--load-state', options.loadState]),
     ],
-    { stdio: ['ignore', 'ignore', 'pipe'] },
+    { stdio: ['ignore', logFd === null ? 'ignore' : 'pipe', 'pipe'] },
   );
   let stderr = '';
-  child.stderr?.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+  // Por líneas completas: una URL partida entre dos chunks no se escapa de la redacción.
+  const pending = { stdout: '', stderr: '' };
+  const toLog = (stream: 'stdout' | 'stderr', chunk: Buffer, flush = false) => {
+    if (logFd === null) return;
+    const text = pending[stream] + chunk.toString();
+    const cut = flush ? text.length : text.lastIndexOf('\n') + 1;
+    pending[stream] = text.slice(cut);
+    if (cut > 0) writeSync(logFd, redact(text.slice(0, cut)));
+  };
+  child.stdout?.on('data', (chunk: Buffer) => {
+    toLog('stdout', chunk);
+  });
+  child.stderr?.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+    toLog('stderr', chunk);
+  });
   const exited = new Promise<number | null>((resolveExit) => child.once('exit', resolveExit));
+  if (logFd !== null) {
+    void exited.then(() => {
+      toLog('stdout', Buffer.alloc(0), true);
+      toLog('stderr', Buffer.alloc(0), true);
+      closeSync(logFd);
+    });
+  }
 
   // Cargar el estado del sistema (--load-state) con varios forks arrancando a la vez puede tardar.
   const deadline = Date.now() + 180_000;
   for (;;) {
-    if (child.exitCode !== null) throw new AnvilExitedError(`anvil terminó al arrancar: ${stderr.slice(-300)}`);
+    if (child.exitCode !== null) {
+      throw new AnvilExitedError(`anvil terminó al arrancar: ${redact(stderr.slice(-300))}`);
+    }
     try {
       await rpcCall(url, 'eth_chainId');
       break;
