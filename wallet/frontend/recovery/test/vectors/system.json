@@ -1,0 +1,45 @@
+{
+  "chainId": 8453,
+  "forkBlock": 52700000,
+  "keyDerivation": "privateKey = keccak256(utf8(label)) (forge-std makeAddrAndKey)",
+  "keys": {
+    "user": {
+      "label": "mtw-user-key",
+      "address": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904"
+    },
+    "recovery": {
+      "label": "mtw-recovery-key",
+      "address": "0x7184D30100a188c9F869ccB6883392534ecD6C9d"
+    },
+    "executor": {
+      "label": "mtw-executor-key",
+      "address": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E"
+    }
+  },
+  "contracts": {
+    "securityGuard": "0xc7183455a4C133Ae270771860664b6B7ec320bB1",
+    "rotationTimelock": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c",
+    "walletFactory": "0x1d1499e622D69689cdf9004d05Ec547d650Ff211",
+    "safeBootstrap": "0xa0Cb889707d426A7A386870A03bc70d1b0697598",
+    "policyRegistry": "0x5991A2dF15A8F6A256D3Ec51E99254Cd3fb576A9",
+    "destinationWhitelist": "0x2e234DAe75C793f67A35089C9d99245E1C58470b",
+    "denyAllModuleGuard": "0x5615dEB798BB3E4dFa0139dFa1b3D433Cc23b72f",
+    "swapExecutor": "0xF62849F9A0B5Bf2913b396098F7c7019b51A820a",
+    "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "usdt": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2"
+  },
+  "codehashes": {
+    "securityGuard": "0x5df807d494acaaefa674e779a31d7db17570aaf774954c17403b53153a298651",
+    "rotationTimelock": "0x2b4ab6cd40d4cfcdeb9c668313c4f847291f53bce6bcf9737bb9b2e8f0512785",
+    "walletFactory": "0xb015bffe820a6b205174d9d5bc519400fee52841b3501248a4db56453ccc132b",
+    "safeBootstrap": "0x78133c9245db81137db340512478bbaea2e3c99cc9cf5431097f24cc00d0fc27",
+    "policyRegistry": "0x414702451538e97cdcef8aa31320c42f33c5db1cee85a16838b68c1f1f2ff244",
+    "destinationWhitelist": "0xd98885073f4686d8f7ad0dfc4d7b55604e9f89449a260ec4beb0f6843595ef69",
+    "denyAllModuleGuard": "0x236dc0cbba40049ffd168456e80ff418165e2228d656b331e97b7700bc6a812e",
+    "swapExecutor": "0xa9deafabbe267ad646cbdc999fe66033df7692d7d46811012bc32d1aee71ebd6",
+    "safeL2Singleton": "0x180193227186ccb85316c94db1f0d156ed932b14712cfaac78901899178572dc",
+    "safeProxyFactory": "0x967dae4cda22b0c9ef7f31b010bdc1ceb0af9904b0c3dc060b5302e4c18a4529",
+    "safeProxyRuntime": "0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f"
+  },
+  "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688"
+}

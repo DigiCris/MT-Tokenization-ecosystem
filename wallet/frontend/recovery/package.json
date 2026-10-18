@@ -11,6 +11,8 @@
   "scripts": {
     "tokens": "node scripts/sync-design-tokens.mjs",
     "tokens:check": "node scripts/sync-design-tokens.mjs --check",
+    "vectors": "node scripts/sync-vectors.mjs",
+    "vectors:check": "node scripts/sync-vectors.mjs --check",
     "dev": "node scripts/sync-design-tokens.mjs && vite",
     "build": "node scripts/sync-design-tokens.mjs && vite build",
     "build:release": "node scripts/sync-design-tokens.mjs && vite build && node build/sign-manifest.ts",

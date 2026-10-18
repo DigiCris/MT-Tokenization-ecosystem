@@ -95,6 +95,8 @@ ci_frontend_app() { # <ruta relativa> <fase>
   frontend_ci_inputs
   section "$rel: design tokens (SHA-256 contra design-tokens.lock.json)"
   (cd "$dir" && node scripts/sync-design-tokens.mjs --check)
+  section "$rel: vectores iguales a los de contracts/ (§10, regla 2)"
+  (cd "$dir" && node scripts/sync-vectors.mjs --check)
   section "$rel: pnpm install --frozen-lockfile"
   (cd "$dir" && pnpm install --frozen-lockfile)
   run_if_script "$dir" lint

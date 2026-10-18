@@ -74,6 +74,15 @@ export function releaseIdOf(environment: Environment, gitCommit: string): string
   return `${APP}-${environment}-${gitCommit.slice(0, 12)}`;
 }
 
+/** El pipeline de release puede fijar el suyo (p. ej. `wallet-v1.0.0-rc.1`); si no, entorno + commit. */
+export function releaseIdFrom(env: Source, environment: Environment, gitCommit: string): string {
+  const releaseId = env.MTW_RELEASE_ID ?? releaseIdOf(environment, gitCommit);
+  if (!/^[a-z0-9][a-z0-9.@+-]{0,79}$/.test(releaseId) || !releaseId.startsWith(`${APP}-`)) {
+    throw new Error(`MTW_RELEASE_ID inválido: tiene que empezar con "${APP}-" (minúsculas, dígitos, . @ + -)`);
+  }
+  return releaseId;
+}
+
 export function loadBuildConfig(env: Source = process.env): BuildConfig {
   const environment = (env.MTW_ENV ?? 'local') as Environment;
   if (!ENVIRONMENTS.includes(environment)) throw new Error(`MTW_ENV desconocido: ${environment}`);
@@ -119,6 +128,6 @@ export function loadBuildConfig(env: Source = process.env): BuildConfig {
     deploymentFile,
     gitCommit,
     sourceDateEpoch,
-    releaseId: releaseIdOf(environment, gitCommit),
+    releaseId: releaseIdFrom(env, environment, gitCommit),
   };
 }

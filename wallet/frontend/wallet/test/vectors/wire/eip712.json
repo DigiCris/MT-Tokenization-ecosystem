@@ -1,0 +1,78 @@
+{
+  "domain": {
+    "name": "MTW Wallet",
+    "version": "1",
+    "chainId": 8453,
+    "verifyingContract": "0x1d1499e622D69689cdf9004d05Ec547d650Ff211"
+  },
+  "domainSeparator": "0x52be4788dcc3056991e355473327f313320d74fd805815c14f55e07f10603aea",
+  "roleEncoding": "uint8: 1 = U, 2 = R, 3 = S (enum Role de los contratos)",
+  "cancelRotation": "ver cancel-rotation.json (dominio MTW RotationTimelock)",
+  "types": [
+    {
+      "primaryType": "WalletCreationAuthorization",
+      "type": "WalletCreationAuthorization(string userId,string platformId,string walletId,address userKey,address recoveryKey,address executor,uint256 saltNonce,address expectedSafe,bytes32 enrollmentNonce)",
+      "typehash": "0x77fd3305d2dd1bf64ba38d936218873b046c699c9a783df8a1fcae4f7e572b63",
+      "structHash": "0x6aede6393c2ba1379a3710e09d282b02bf348e335cc3bb085069e00f84c741e8",
+      "digest": "0x73d19c1e319e94efc65d2a54798baa75bb5e2c3c4752d5e0a779a6efcb70c7f3",
+      "signer": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+      "signature": "0x40672546cf329139ac91ddfe9bcba14974a4db148f0bd47be824f09d8bbd7a4b3b35ae1e10cc44f537322ea9f39fd984e2b6652f0a7eb428f912bed1f55e28f61b",
+      "message": {
+        "userId": "4f1c2d9e-6b7a-4c3d-9e8f-0a1b2c3d4e5f",
+        "platformId": "mtw",
+        "walletId": "7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5",
+        "userKey": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+        "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+        "executor": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E",
+        "saltNonce": "0",
+        "expectedSafe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688",
+        "enrollmentNonce": "0x45d145e5bd021178613c22ff473be1a357653c893849202532de3e737de526da"
+      }
+    },
+    {
+      "primaryType": "RecoveryProofOfControl",
+      "type": "RecoveryProofOfControl(string userId,string platformId,string enrollmentId,address recoveryKey)",
+      "typehash": "0xdf4393b1877f6a2f42c97646c0491d2a76d07817e42a73e1d9e77e8152f26bee",
+      "structHash": "0xb91057c97947679d589202cb0e6e7b070e5a195ab9886ca18fa2f6f259dc709e",
+      "digest": "0xe6e291dc721e30bcaef892fec78150771d540392d1668c779a5ac678235f4882",
+      "signer": "0x7184D30100a188c9F869ccB6883392534ecD6C9d",
+      "signature": "0x578790726f4a38c4fced1358d9a2e694c381362eac9e8dd518c91ace97e79c2f1e8a012173c186745dcf3d1b55526492ea79d6c5fa79932e04d5b85cad5a367d1c",
+      "message": {
+        "userId": "4f1c2d9e-6b7a-4c3d-9e8f-0a1b2c3d4e5f",
+        "platformId": "mtw",
+        "enrollmentId": "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d",
+        "recoveryKey": "0x7184D30100a188c9F869ccB6883392534ecD6C9d"
+      }
+    },
+    {
+      "primaryType": "KeyAcceptance",
+      "type": "KeyAcceptance(string walletId,uint8 role,address newKey,bytes32 nonce)",
+      "typehash": "0xab12365a6312cea898ce9ce255da06aae23d8b5ebfc8660e13fd5d79333f31e3",
+      "structHash": "0x8a964341977276f87a44030be6d42d6a5098388c0851554a59e3293b6f16e845",
+      "digest": "0xbaad43f39a07e88fae048f898567aa017b58263f77ad3804413414e57ffb18c3",
+      "signer": "0xd39E49885C432cec12140673AF42Be648de9364b",
+      "signature": "0x78a698dfd08efac1e97faea5eded60d7986f7cdb1f12e3bb43a188503a83fcdb5d412e32859470c7a04f9264a07ffa55acdba6024de0cdd1ebb57e67f578a62e1b",
+      "message": {
+        "walletId": "7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5",
+        "role": 1,
+        "newKey": "0xd39E49885C432cec12140673AF42Be648de9364b",
+        "nonce": "0xa5ca3b080b9289ca4826e8e32c351558e8c2fd0fe81aa430dcde41d4000a204d"
+      }
+    },
+    {
+      "primaryType": "KeyRestore",
+      "type": "KeyRestore(string userId,string walletId,address keyAddress,bytes32 nonce)",
+      "typehash": "0x6eb674ff098d298a2826e4fb5672c3c814f63e4353a30b226f6613c70c2b9d58",
+      "structHash": "0xb8257aad397ef2d0e54736a1ac0bb73771bc8b47c330e1232fe9e5b84d30e5fd",
+      "digest": "0xbcb096443f9e15b95d85a4962fa8aec7dd3ba71c159b80555da58464e3fa207d",
+      "signer": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+      "signature": "0xc36a40ec90efb6ca416d3b391d7f8e6cf7a4c4f27aa1f9869d16fbbed99f807b5b2ac914f8e94346c125161002610271dff1f80ec48b2bd2e8fb487399cd91fe1b",
+      "message": {
+        "userId": "4f1c2d9e-6b7a-4c3d-9e8f-0a1b2c3d4e5f",
+        "walletId": "7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5",
+        "keyAddress": "0x79406Eb1d6abdA075A9789DBD7d31626FEFE2904",
+        "nonce": "0x8dc271c3b13756374c9b21883c3a50f2a29be6b598daf3c81eafae922ab3caa1"
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "format": "[B-PSES-02] binding = base64url(HMAC-SHA256(clave = bytes de opaqueSessionKey, mensaje = UTF-8 de jwkThumbprint ‖ loginAttemptId)); jwkThumbprint RFC 7638 de la session key P-256",
+  "opaqueSessionKey": "qElMagDKCSiiKBV0X8mbGydY6LUcqTFQhcZbjStG2fYWvA36_8Wt_m2IIds0FNE_rzoMDaugFHtJXuCuaILvUQ",
+  "sessionPublicJwk": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "r7c_mT9ccw9bwvO39H2siBRdwp5MGdfam9GqBplvmhQ",
+    "y": "8hxYIz89m7X_OLOKUosW6_7NhKspXUySAYIIEP-lyBU"
+  },
+  "jwkThumbprint": "xf_ggcbiUwCvnVyoYRLDVeHiiGJJnPvvFsd1en1fGew",
+  "loginAttemptId": "0f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b",
+  "message": "xf_ggcbiUwCvnVyoYRLDVeHiiGJJnPvvFsd1en1fGew0f1e2d3c-4b5a-4987-8a6b-5c4d3e2f1a0b",
+  "binding": "JDwZYUPQNd5dUfZN0sLnZyaNq1aLsVm1PjM0ngckyYY"
+}

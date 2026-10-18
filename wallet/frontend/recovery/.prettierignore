@@ -6,3 +6,5 @@ playwright-report/
 pnpm-lock.yaml
 # Copia verificada de wallet/frontend/design-tokens (scripts/sync-design-tokens.mjs).
 src/styles/design-tokens/
+# Copia byte a byte de contracts/test/vectors (scripts/sync-vectors.mjs --check).
+test/vectors/

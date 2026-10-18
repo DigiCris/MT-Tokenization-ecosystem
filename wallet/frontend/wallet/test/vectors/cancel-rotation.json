@@ -1,0 +1,23 @@
+{
+  "domain": {
+    "name": "MTW RotationTimelock",
+    "version": "1",
+    "chainId": 8453,
+    "verifyingContract": "0xa38D17ef017A314cCD72b8F199C0e108EF7Ca04c"
+  },
+  "primaryType": "CancelRotation(bytes32 proposalId,address safe)",
+  "message": {
+    "proposalId": "0x64a019b6fcae807e9cb9c9016136f55bd5e7fb01ada54826f752657e96e3a42c",
+    "safe": "0x2Ffa853A9213C92A16295C55FA6A5b27A6498688"
+  },
+  "proposal": {
+    "kind": 2,
+    "oldValue": "0xc80D387fCc59cB57AEf0eC2b137C77D26474288E",
+    "newValue": "0x30680C97b8eFE2404915432e7e16115679417AbF",
+    "createdAt": 1792189347,
+    "executableAt": 1792362147
+  },
+  "digest": "0x4202209581df769a7c553a5bbe1df2e0cba8cf10bd4d3e095d4210d973bbceae",
+  "signatureUser": "0x0c2f2b059b6491e5707ae94e8ec4c5f6aab53a01937c64cecbb028a6da7fccef3c69fea7d870280a8394b4c4a4cdb1f0ea7494649b937caf451ee34daf7ac84a1c",
+  "signatureRecovery": "0x10f3f7963490aaca6d4af19e57be3d38fe5465eb472c98619ad22bc106685bca0ef6dd72526cc3acedd7f2018f2ac728e8a2fea05630c753b0ea4193c058c61f1c"
+}
