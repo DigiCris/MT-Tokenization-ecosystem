@@ -93,6 +93,22 @@ describe('CORS por listener', () => {
     expect(preflight.headers['access-control-allow-origin']).toBe(WALLET_ORIGIN);
     expect(String(preflight.headers['access-control-allow-methods'])).toContain('POST');
     expect(String(preflight.headers['access-control-allow-headers'])).toContain('Idempotency-Key');
+    // Un request crítico firmado ([B-PSES-05]) desde el navegador manda los cuatro headers de la firma: todos tienen que
+    // estar permitidos, si no el navegador no envía el request.
+    const allowed = String(preflight.headers['access-control-allow-headers'])
+      .toLowerCase()
+      .split(/\s*,\s*/);
+    for (const header of [
+      'x-platform-session',
+      'x-session-timestamp',
+      'x-session-nonce',
+      'x-session-signature',
+      'x-csrf-token',
+      'idempotency-key',
+      'content-type',
+    ]) {
+      expect(allowed, header).toContain(header);
+    }
     expect(preflight.headers['access-control-max-age']).toBe('600');
 
     const evil = await wallet.app.inject({

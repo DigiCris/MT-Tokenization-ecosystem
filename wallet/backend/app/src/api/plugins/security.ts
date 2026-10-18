@@ -13,10 +13,17 @@ export interface SecurityOptions {
   allowApiOrigin: boolean;
 }
 
+/**
+ * Headers que el navegador puede mandar en un request CORS: además del CSRF y la idempotencia, todos los de un request
+ * crítico firmado ([B-PSES-05]: token, timestamp, nonce y firma). Sin uno de ellos el preflight falla y el request
+ * nunca sale del navegador.
+ */
 export const ALLOWED_REQUEST_HEADERS = [
   'Content-Type',
   'X-CSRF-Token',
   'X-Platform-Session',
+  'X-Session-Timestamp',
+  'X-Session-Nonce',
   'X-Session-Signature',
   'Idempotency-Key',
 ];
