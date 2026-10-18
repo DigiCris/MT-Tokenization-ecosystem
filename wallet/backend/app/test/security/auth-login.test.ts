@@ -78,14 +78,13 @@ describe('login: respuesta uniforme', () => {
   });
 
   it('el tiempo de respuesta no distingue un email inexistente de una contraseña incorrecta', async () => {
-    const rounds = 10;
+    const rounds = 16;
     const accounts = await Promise.all(Array.from({ length: rounds }, () => createVerifiedUser(env.wallet, env.db)));
     // Calentamiento: el primer hash dummy se calcula una vez por proceso.
     await login(randomEmail('calentamiento'), randomPassword());
     await login(accounts[0]?.email ?? '', 'calentamiento-incorrecto');
     const unknown: number[] = [];
     const wrong: number[] = [];
-    const pairs: number[] = [];
     const timed = async (attempt: () => Promise<{ statusCode: number }>) => {
       const start = performance.now();
       expect((await attempt()).statusCode).toBe(401);
@@ -106,12 +105,13 @@ describe('login: respuesta uniforme', () => {
       }
       unknown.push(u);
       wrong.push(w);
-      pairs.push(Math.abs(u - w) / Math.max(u, w));
     }
     // Los dos caminos pagan un Argon2id completo (m=64 MiB, t=3): sin él, el email inexistente respondería en una
-    // fracción del tiempo (diferencia relativa cercana a 1). La mediana de los pares queda dentro del ruido.
-    expect(Math.min(median(unknown), median(wrong))).toBeGreaterThan(20);
-    expect(median(pairs)).toBeLessThan(0.3);
+    // fracción del tiempo. Un oráculo de tiempo es un sesgo entre los dos caminos: se comparan sus medianas (pares
+    // intercalados, misma carga de la máquina); la dispersión de cada medición por sí sola no indica nada.
+    const [mu, mw] = [median(unknown), median(wrong)];
+    expect(Math.min(mu, mw)).toBeGreaterThan(20);
+    expect(Math.abs(mu - mw) / Math.max(mu, mw)).toBeLessThan(0.25);
   });
 
   it('un email con otra capitalización o espacios es la misma cuenta (normalización antes de buscar)', async () => {
