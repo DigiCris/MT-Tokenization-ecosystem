@@ -348,7 +348,6 @@ export async function startSignerShard(options: ShardOptions): Promise<SignerSha
   let output = '';
   let child: ChildProcess | undefined;
   let exited: Promise<void> = Promise.resolve();
-  let url = '';
   let client: SignerClient | undefined;
   for (let attempt = 1; ; attempt++) {
     env.SIGNER_PORT = String(attempt === 1 ? port : await freePort());
@@ -366,8 +365,12 @@ export async function startSignerShard(options: ShardOptions): Promise<SignerSha
         r();
       }),
     );
-    url = `https://127.0.0.1:${env.SIGNER_PORT}`;
-    client = new SignerClient({ shardId: options.shardId, url, tls: options.pki.tls(), timeoutMs: 60_000 });
+    client = new SignerClient({
+      shardId: options.shardId,
+      url: `https://127.0.0.1:${env.SIGNER_PORT}`,
+      tls: options.pki.tls(),
+      timeoutMs: 60_000,
+    });
     const deadline = Date.now() + 60_000;
     let ready = false;
     let portTaken = false;
@@ -400,6 +403,7 @@ export async function startSignerShard(options: ShardOptions): Promise<SignerSha
   }
   const shardClient = client;
   const shardChild = child;
+  const url = `https://127.0.0.1:${env.SIGNER_PORT}`;
   return {
     shardId: options.shardId,
     url,
