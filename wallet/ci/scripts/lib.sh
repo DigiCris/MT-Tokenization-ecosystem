@@ -97,6 +97,10 @@ ci_frontend_app() { # <ruta relativa> <fase>
   (cd "$dir" && node scripts/sync-design-tokens.mjs --check)
   section "$rel: vectores iguales a los de contracts/ (§10, regla 2)"
   (cd "$dir" && node scripts/sync-vectors.mjs --check)
+  if [ -f "$dir/scripts/sync-abis.mjs" ]; then
+    section "$rel: ABIs iguales a los de contracts/out-abi (§10, regla 2)"
+    (cd "$dir" && node scripts/sync-abis.mjs --check)
+  fi
   section "$rel: pnpm install --frozen-lockfile"
   (cd "$dir" && pnpm install --frozen-lockfile)
   run_if_script "$dir" lint
