@@ -32,7 +32,7 @@ import { loadPolicySnapshot, type BackendPolicySnapshot } from '../../src/policy
 import { testConfig } from '../helpers/config.ts';
 import { createTestDatabase, type TestDatabase } from '../helpers/db.ts';
 import { deployedChain, type DeployedSystem } from '../helpers/deploy.ts';
-import { startAnvil, type AnvilInstance } from '../helpers/fork.ts';
+import { startAnvil, type AnvilInstance, waitForReceipt } from '../helpers/fork.ts';
 import {
   createPki,
   edKey,
@@ -308,7 +308,7 @@ describe('retransmisión de cancelaciones [C-RTL-03]', () => {
       ],
       gas: 1_500_000n,
     });
-    const receipt = await pc.waitForTransactionReceipt({ hash: proposeHash });
+    const receipt = await waitForReceipt(pc, proposeHash);
     const [proposed] = parseEventLogs({ abi: rotationTimelockAbi, logs: receipt.logs, eventName: 'RotationProposed' });
     const proposalId = (proposed?.args as { id: Hex }).id;
 

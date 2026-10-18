@@ -24,6 +24,7 @@ import {
   type OperationsEnv,
 } from '../helpers/operations.ts';
 import { REDIS_DBS } from '../helpers/redis-dbs.ts';
+import { waitForReceipt } from '../helpers/fork.ts';
 
 const SWAP_ROUTER_02: Address = '0x2626664c2603336E57B271c5C0b26F421741e481';
 const CANONICAL_POOL: Address = '0xD56da2B74bA826f19015E6B7Dd9Dae1903E85DA1';
@@ -88,7 +89,7 @@ async function impersonated(from: Address, to: Address, data: Hex): Promise<void
     // Gas holgado: la venta grande cruza muchos ticks inicializados del pool.
     const tx = { from, to, data, gas: '0x1c9c380' };
     const hash = await env.chain.rpc<Hex>('eth_sendTransaction', [tx]);
-    const receipt = await env.chain.public.waitForTransactionReceipt({ hash });
+    const receipt = await waitForReceipt(env.chain.public, hash);
     if (receipt.status !== 'success') {
       const reason = await env.chain.rpc('eth_call', [tx, 'latest']).catch((error: unknown) => String(error));
       throw new Error(

@@ -31,6 +31,7 @@ import {
   syncRotations,
   warpTimelock,
 } from '../helpers/rotations.ts';
+import { waitForReceipt } from '../helpers/fork.ts';
 
 const ZERO = '0x0000000000000000000000000000000000000000' as const;
 
@@ -184,7 +185,7 @@ describe('cancelación por firma individual', { timeout: 300_000 }, () => {
           args: [view.proposalId as Hex, signature],
         });
       });
-    const receipt = await env.chain.public.waitForTransactionReceipt({ hash });
+    const receipt = await waitForReceipt(env.chain.public, hash);
     expect(receipt.status).toBe('success');
     expect(getAddress(receipt.from)).toBe(outsider.address);
     await syncRotations(env);

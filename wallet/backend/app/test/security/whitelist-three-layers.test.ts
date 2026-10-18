@@ -31,6 +31,7 @@ import {
   type OperationsEnv,
 } from '../helpers/operations.ts';
 import { REDIS_DBS } from '../helpers/redis-dbs.ts';
+import { waitForReceipt } from '../helpers/fork.ts';
 
 const ZERO: Address = '0x0000000000000000000000000000000000000000';
 const UNIT = 1_000_000n;
@@ -202,7 +203,7 @@ async function executeDirect(
     args,
     gas: 1_500_000n,
   });
-  const receipt = await env.chain.public.waitForTransactionReceipt({ hash: txHash });
+  const receipt = await waitForReceipt(env.chain.public, txHash);
   return { reason, status: receipt.status };
 }
 
@@ -401,7 +402,7 @@ describe('A18: el backend solo no altera la whitelist ni falsifica la autorizaci
       functionName: 'addDestination',
       args: [destination],
     });
-    expect((await env.chain.public.waitForTransactionReceipt({ hash })).status).toBe('success');
+    expect((await waitForReceipt(env.chain.public, hash)).status).toBe('success');
     const [onSafe] = await env.chain.public.readContract({
       address: whitelist,
       abi: destinationWhitelistAbi,

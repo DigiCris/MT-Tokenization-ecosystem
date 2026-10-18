@@ -58,6 +58,7 @@ import {
 import { newSessionKey, signP256, unlockWallet } from '../helpers/platform.ts';
 import { REDIS_DBS } from '../helpers/redis-dbs.ts';
 import { recoveryPost, signAndExecute, userPost } from '../helpers/rotations.ts';
+import { waitForReceipt } from '../helpers/fork.ts';
 
 const ZERO: Address = '0x0000000000000000000000000000000000000000';
 const UNIT = 1_000_000n;
@@ -309,7 +310,7 @@ async function directTransfer(
     args,
     gas: 1_500_000n,
   });
-  const receipt = await env.chain.public.waitForTransactionReceipt({ hash: txHash });
+  const receipt = await waitForReceipt(env.chain.public, txHash);
   return { reason, status: receipt.status };
 }
 

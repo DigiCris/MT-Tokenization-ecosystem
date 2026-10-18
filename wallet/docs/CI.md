@@ -50,14 +50,16 @@ reintentos con 429, así que cada consumidor tiene un tope (`--compute-units-per
 
 | Consumidor | Tope | Reintentos |
 |---|---|---|
-| Anvil de cada archivo de tests de `backend/app` y `backend/signer` (hasta 4 workers) | 50 CU/s | 60, backoff 2 s |
+| Anvil de cada archivo de tests de `backend/app` y `backend/signer` (hasta 4 workers) | 80 CU/s | 60, backoff 2 s |
 | Anvil del stack aislado de los tests de navegador (`scripts/stack/stack.mjs`) | 80 CU/s | 30, backoff 2 s |
 | Anvil efímero de los insumos de los builds (`ci/scripts/deploy-ephemeral.sh`) | 80 CU/s | 30, backoff 2 s |
 | Fork tests de `forge test --profile ci` | 100 CU/s | reintento de la corrida si hubo 429 (`ci-contracts.sh`) |
 | Anvil del compose para desarrollo local (`ANVIL_COMPUTE_UNITS_PER_SECOND`) | 330 CU/s | 30, backoff 2 s |
 
 Con `MTW_ANVIL_LOG_DIR` cada Anvil de los tests del backend deja su log (con el endpoint redactado) y el workflow
-`wallet-backend` lo sube como artefacto `anvil-logs` si el job falla. Un segundo proveedor para CI
+`wallet-backend` lo sube como artefacto `anvil-logs` si el job falla. Esos logs mostraron además que
+`waitForTransactionReceipt` de viem podía no volver a pedir el receipt de una tx ya minada: los tests esperan los
+receipts consultándolos directamente (`waitForReceipt` de `test/helpers/fork.ts` y del helper de cadena del signer). Un segundo proveedor para CI
 (`BASE_RPC_URL_SECONDARY` como secret) dividiría la carga entre dos keys.
 
 ## Reglas comunes

@@ -40,6 +40,7 @@ import {
   syncRotations,
   warpTimelock,
 } from '../helpers/rotations.ts';
+import { waitForReceipt } from '../helpers/fork.ts';
 
 const WALLET_ROOT = resolve(import.meta.dirname, '../../../..');
 
@@ -97,14 +98,14 @@ beforeAll(async () => {
     ],
     gas: 15_000_000n,
   });
-  await env.chain.public.waitForTransactionReceipt({ hash: guardTx });
+  await waitForReceipt(env.chain.public, guardTx);
   const moduleGuard = artifact('DenyAllModuleGuard');
   const moduleTx = await client.deployContract({
     abi: moduleGuard.abi,
     bytecode: moduleGuard.bytecode,
     gas: 2_000_000n,
   });
-  await env.chain.public.waitForTransactionReceipt({ hash: moduleTx });
+  await waitForReceipt(env.chain.public, moduleTx);
   const timelock = await env.chain.public.readContract({
     address: guardV2,
     abi: securityGuardAbi,

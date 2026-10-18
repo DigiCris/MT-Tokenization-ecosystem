@@ -37,6 +37,7 @@ import {
   signAndExecute,
   syncRotations,
 } from '../helpers/rotations.ts';
+import { waitForReceipt } from '../helpers/fork.ts';
 
 const ZERO: Address = '0x0000000000000000000000000000000000000000';
 const SENTINEL: Address = '0x0000000000000000000000000000000000000001';
@@ -197,7 +198,7 @@ async function executeDirect(
     args,
     gas: 1_500_000n,
   });
-  const receipt = await env.chain.public.waitForTransactionReceipt({ hash: txHash });
+  const receipt = await waitForReceipt(env.chain.public, txHash);
   return { reason, status: receipt.status };
 }
 
@@ -272,7 +273,7 @@ describe('P15.SEC: cancelación sin el backend', { timeout: 300_000 }, () => {
       functionName: 'cancelWithSignature',
       args: [id, signature],
     });
-    const receipt = await env.chain.public.waitForTransactionReceipt({ hash });
+    const receipt = await waitForReceipt(env.chain.public, hash);
     expect(receipt.status).toBe('success');
     const proposal = await env.chain.public.readContract({
       address: timelock,

@@ -23,6 +23,7 @@ import { addressToBuffer } from '../../src/lib/bytes.ts';
 import { verifyDeployedWallet, type ExpectedWallet } from '../../src/wallets/verification.ts';
 import { deploy, onboard, startOnboardingEnv, type OnboardingEnv } from '../helpers/onboarding.ts';
 import { REDIS_DBS } from '../helpers/redis-dbs.ts';
+import { waitForReceipt } from '../helpers/fork.ts';
 
 const ZERO: Address = '0x0000000000000000000000000000000000000000';
 /** Safe 1.5.0 singleton L1 de config/chains (referencia; el sistema usa SafeL2). */
@@ -70,7 +71,7 @@ async function safeOutsideFactory(config: {
     functionName: 'createProxyWithNonceL2',
     args,
   });
-  await publicClient().waitForTransactionReceipt({ hash });
+  await waitForReceipt(publicClient(), hash);
   return getAddress(result);
 }
 
@@ -90,7 +91,7 @@ async function execAsOwner(safe: Address, owner: PrivateKeyAccount, to: Address,
     functionName: 'execTransaction',
     args: [to, 0n, data, 0, 0n, 0n, 0n, ZERO, ZERO, signature],
   });
-  const receipt = await publicClient().waitForTransactionReceipt({ hash });
+  const receipt = await waitForReceipt(publicClient(), hash);
   expect(receipt.status).toBe('success');
 }
 
@@ -111,7 +112,7 @@ describe('verificación post-deploy (V9 §16)', () => {
       functionName: 'createWallet',
       args: [keys.userKey, keys.recoveryKey, keys.executor, saltNonce],
     });
-    await publicClient().waitForTransactionReceipt({ hash });
+    await waitForReceipt(publicClient(), hash);
     const safe = await publicClient().readContract({
       address: env.snapshot.contracts.walletFactory,
       abi: walletFactoryAbi,

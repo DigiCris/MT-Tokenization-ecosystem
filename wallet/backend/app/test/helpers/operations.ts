@@ -57,6 +57,7 @@ import { testRedisUrl } from './api.ts';
 import { waitForMessage, type MailpitMessage } from './mailpit.ts';
 import type { SnapshotSuccessors } from './signer-shard.ts';
 import { signP256, unlockWallet, type UnlockedSession } from './platform.ts';
+import { waitForReceipt } from './fork.ts';
 
 /** Holders de USDC/USDT en el bloque del fork (los mismos que usa SeedLocal). */
 export const USDC_HOLDER: Address = '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb';
@@ -603,7 +604,7 @@ export class ForkChain {
           data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [to, amount] }),
         },
       ]);
-      const receipt = await this.public.waitForTransactionReceipt({ hash });
+      const receipt = await waitForReceipt(this.public, hash);
       if (receipt.status !== 'success') throw new Error('fondeo revertido');
     } finally {
       await this.#rpc('anvil_stopImpersonatingAccount', [holder]);
@@ -640,7 +641,7 @@ export class ForkChain {
       args: [tx.to, 0n, tx.data, 0, 0n, 0n, 0n, ZERO, ZERO, signatures],
       gas: 1_500_000n,
     });
-    const receipt = await this.public.waitForTransactionReceipt({ hash: txHash });
+    const receipt = await waitForReceipt(this.public, txHash);
     if (receipt.status !== 'success') throw new Error('ejecución soberana revertida');
     return txHash;
   }

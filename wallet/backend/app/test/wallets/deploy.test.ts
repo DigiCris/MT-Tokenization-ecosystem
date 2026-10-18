@@ -21,6 +21,7 @@ import {
 } from '../helpers/onboarding.ts';
 import { unlockWallet } from '../helpers/platform.ts';
 import { REDIS_DBS } from '../helpers/redis-dbs.ts';
+import { waitForReceipt } from '../helpers/fork.ts';
 
 let env: OnboardingEnv;
 
@@ -204,7 +205,7 @@ describe('deploy y activación de la wallet', () => {
       functionName: 'createWallet',
       args: [o.userKey.account.address, o.recoveryKey.account.address, o.plan.executor, BigInt(o.plan.saltNonce)],
     });
-    const receipt = await publicClient().waitForTransactionReceipt({ hash });
+    const receipt = await waitForReceipt(publicClient(), hash);
     expect(receipt.status).toBe('success');
     const deployTxsBefore = await env.db.app
       .selectFrom('chain_transactions')

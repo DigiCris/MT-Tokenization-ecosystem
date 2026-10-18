@@ -138,5 +138,7 @@ describe('entrypoint gas-tank', () => {
     for (const secret of [vars.AUDIT_CHAIN_KEY, vars.OPAQUE_SERVER_SETUP, new URL(env.db.appUrl).password]) {
       expect(output).not.toContain(secret);
     }
-  });
+    // Onboarding por la API, arranque del proceso real, deploy por la cuenta gas tank y verificación: las esperas de
+    // arriba suman hasta ~330 s; el timeout por defecto (60 s) cortaba antes que ellas en un runner cargado.
+  }, 420_000);
 });

@@ -5,6 +5,7 @@
 import { decodeEventLog, encodeFunctionData, getAddress, type Address, type Hex } from 'viem';
 import { policyRegistryAbi } from '../../src/chain/abis/index.ts';
 import type { OperationsEnv } from './operations.ts';
+import { waitForReceipt } from './fork.ts';
 
 /** 24 h del timelock del PolicyRegistry más un segundo. */
 export const REGISTRY_DELAY_SECONDS = 24 * 3600 + 1;
@@ -35,7 +36,7 @@ export class Governance {
       const hash = await chain.rpc<Hex>('eth_sendTransaction', [
         { from, to: this.#env.base.snapshot.contracts.policyRegistry, data, gas: '0x7a1200' },
       ]);
-      return await chain.public.waitForTransactionReceipt({ hash });
+      return await waitForReceipt(chain.public, hash);
     } finally {
       await chain.rpc('anvil_stopImpersonatingAccount', [from]);
     }

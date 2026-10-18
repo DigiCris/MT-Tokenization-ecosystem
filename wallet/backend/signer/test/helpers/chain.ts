@@ -1,7 +1,17 @@
 // Operaciones on-chain de los tests sobre un Anvil propio con el sistema desplegado: Safes creadas por la
 // WalletFactory real, fondeo con USDC/USDT reales del fork (holders impersonados, como SeedLocal), firmas U/R de
 // SafeTx y ejecuciones soberanas U+R (el Guard no aplica política en ese camino: sirve para preparar estado).
-import { createPublicClient, createWalletClient, encodeFunctionData, http, type Hex as ViemHex } from 'viem';
+import {
+  createPublicClient,
+  createWalletClient,
+  encodeFunctionData,
+  http,
+  TransactionReceiptNotFoundError,
+  type Hex as ViemHex,
+  type PublicClient,
+  type TransactionReceipt,
+} from 'viem';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
 import { bytesToHex, type Hex } from '../../src/crypto/bytes.ts';
@@ -11,6 +21,27 @@ import { iSafeAbi, walletFactoryAbi } from '../../src/chain/abis/index.ts';
 import { execTransactionData, packSignatures } from '../../src/chain/exec-tx.ts';
 import { safeTxHash, type SafeTx } from '../../src/chain/safe-tx.ts';
 import type { AnvilInstance } from './anvil.ts';
+
+/**
+ * Espera el receipt de una tx consultando `eth_getTransactionReceipt` cada 250 ms. No usa `waitForTransactionReceipt` de
+ * viem: con Anvil bajo carga en CI, su watcher de bloques llegó a no volver a pedir el receipt de una tx ya minada.
+ */
+async function waitForReceipt(
+  client: Pick<PublicClient, 'getTransactionReceipt'>,
+  hash: ViemHex,
+  timeoutMs = 180_000,
+): Promise<TransactionReceipt> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const receipt = await client.getTransactionReceipt({ hash }).catch((error: unknown) => {
+      if (error instanceof TransactionReceiptNotFoundError) return null;
+      throw error;
+    });
+    if (receipt) return receipt;
+    if (Date.now() > deadline) throw new Error(`sin receipt de ${hash} en ${String(timeoutMs)} ms`);
+    await sleep(250);
+  }
+}
 
 export const USDC_HOLDER = '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb' as Address;
 export const USDT_HOLDER = '0x0D0707963952f2fBA59dD06f2b425ace40b492Fe' as Address;
@@ -89,14 +120,14 @@ export class TestChain {
       value: tx.value ?? 0n,
       ...(tx.gas === undefined ? {} : { gas: tx.gas }),
     });
-    const receipt = await this.public.waitForTransactionReceipt({ hash });
+    const receipt = await waitForReceipt(this.public, hash);
     if (receipt.status !== 'success') throw new Error(`tx revertida: ${hash}`);
     return hash;
   }
 
   async sendRaw(raw: Hex): Promise<{ hash: ViemHex; status: 'success' | 'reverted'; gasUsed: bigint }> {
     const hash = await this.public.sendRawTransaction({ serializedTransaction: raw });
-    const receipt = await this.public.waitForTransactionReceipt({ hash });
+    const receipt = await waitForReceipt(this.public, hash);
     return { hash, status: receipt.status, gasUsed: receipt.gasUsed };
   }
 
@@ -105,7 +136,7 @@ export class TestChain {
     await this.anvil.rpc('anvil_impersonateAccount', [from]);
     try {
       const hash = await this.anvil.rpc<ViemHex>('eth_sendTransaction', [{ from, to: tx.to, data: tx.data }]);
-      const receipt = await this.public.waitForTransactionReceipt({ hash });
+      const receipt = await waitForReceipt(this.public, hash);
       if (receipt.status !== 'success') throw new Error('tx impersonada revertida');
     } finally {
       await this.anvil.rpc('anvil_stopImpersonatingAccount', [from]);

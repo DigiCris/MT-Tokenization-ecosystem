@@ -79,14 +79,14 @@ async function launchAnvil(options: AnvilOptions): Promise<AnvilInstance> {
       '--fork-chain-id',
       '8453',
       // El RPC remoto limita el ritmo (429; ~500 CU/s para toda la key, que comparten los jobs de CI en paralelo,
-      // docs/CI.md#presupuesto-del-rpc-del-fork): tope de 50 CU/s por instancia y reintentos con backoff para
+      // docs/CI.md#presupuesto-del-rpc-del-fork): tope de 80 CU/s por instancia y reintentos con backoff para
       // absorber las ráfagas.
       '--retries',
       '60',
       '--fork-retry-backoff',
       '2000',
       '--compute-units-per-second',
-      '50',
+      '80',
       '--timeout',
       '60000',
     );

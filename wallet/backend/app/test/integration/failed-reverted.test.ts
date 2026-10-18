@@ -23,6 +23,7 @@ import {
   type OperationsEnv,
 } from '../helpers/operations.ts';
 import { REDIS_DBS } from '../helpers/redis-dbs.ts';
+import { waitForReceipt } from '../helpers/fork.ts';
 
 let env: OperationsEnv;
 let wallet: ActiveWallet;
@@ -73,7 +74,7 @@ async function asUsdcRole(
       maxPriorityFeePerGas: 50_000_000_000n,
       maxFeePerGas: 100_000_000_000n,
     });
-    if (wait) await env.chain.public.waitForTransactionReceipt({ hash });
+    if (wait) await waitForReceipt(env.chain.public, hash);
   } finally {
     await env.chain.rpc('anvil_stopImpersonatingAccount', [account]);
   }
