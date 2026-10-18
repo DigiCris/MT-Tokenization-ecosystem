@@ -58,6 +58,16 @@ beforeAll(async () => {
   await Promise.all([anvilA.rpc('anvil_mine', ['0x1']), anvilB.rpc('anvil_mine', ['0x1'])]);
   head = forkPoint + 1n;
   devAccount = checksumAddress((await anvilA.rpc<string[]>('eth_accounts'))[0] as Address);
+  // El fork trae del RPC remoto el estado que tocan la simulación y la estimación (las cuentas y los predeploys de Base
+  // del fee de L1) recién en el primer acceso: se precalienta acá, sin el timeout de lectura del cliente, para que los
+  // tests midan el quórum y no la latencia del proveedor.
+  const warm = { from: devAccount, to: recipient, data: '0x', value: '0x1' };
+  await Promise.all(
+    [anvilA, anvilB].map(async (anvil) => {
+      await anvil.rpc('eth_call', [warm, 'latest']);
+      await anvil.rpc('eth_estimateGas', [warm, 'latest']);
+    }),
+  );
   [proxyA, proxyB] = await Promise.all([startFaultProxy(anvilA.url), startFaultProxy(anvilB.url)]);
 }, 180_000);
 
