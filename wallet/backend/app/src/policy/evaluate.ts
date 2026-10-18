@@ -8,6 +8,7 @@ import { isAddressEqual, type Address, type Hex } from 'viem';
 import { RotationKind, type SystemAddresses } from '../chain/constants.ts';
 import { decodeSafeCall, UndecodableCallError, type DecodedCall } from '../chain/decoders/safe-call.ts';
 import type { SafeTx } from '../chain/safe-tx.ts';
+import { successorAddresses } from './guards.ts';
 import type { BackendPolicySnapshot, OperationKind } from './snapshot.ts';
 
 export const POLICY_REJECT_CODES = [
@@ -77,6 +78,8 @@ export interface PolicyFacts {
   successorRegistered?: boolean;
   /** GUARD_UPGRADE: propuesta de GUARD/MODULE_GUARD madura y no cancelada. */
   guardUpgradeMature?: boolean;
+  /** RotationTimelock del Guard que gobierna la Safe (la propuesta tiene que ir ahí). */
+  safeTimelock?: Address;
 }
 
 export interface PolicyInput {
@@ -115,14 +118,18 @@ function systemAddresses(snapshot: BackendPolicySnapshot): SystemAddresses {
     swapExecutor: c.swapExecutor,
     usdc: snapshot.tokens.USDC,
     usdt: snapshot.tokens.USDT,
+    rotationTimelocks: snapshot.successors.guards.map((g) => g.rotationTimelock),
   };
 }
 
-/** Contratos del sistema, de Safe y tokens: nunca son destino de fondos, de whitelist ni claves de una Safe. */
+/** Contratos del sistema (y sucesores), de Safe y tokens: nunca son destino de fondos, de whitelist ni claves. */
 function isSystemAddress(snapshot: BackendPolicySnapshot, address: Address): boolean {
-  return [...Object.values(snapshot.contracts), snapshot.tokens.USDC, snapshot.tokens.USDT].some((a) =>
-    isAddressEqual(a, address),
-  );
+  return [
+    ...Object.values(snapshot.contracts),
+    ...successorAddresses(snapshot),
+    snapshot.tokens.USDC,
+    snapshot.tokens.USDT,
+  ].some((a) => isAddressEqual(a, address));
 }
 
 function forbiddenDestination(snapshot: BackendPolicySnapshot, safe: Address, destination: Address): boolean {
@@ -330,6 +337,11 @@ function evaluateProposal(
   // R sólo propone el reemplazo de U (recuperación) o de S ([W-07]).
   if (input.role === 'R' && kind !== RotationKind.User && kind !== RotationKind.Executor) {
     return reject('ROTATION_INVALID', 'R sólo propone U o S');
+  }
+  // La propuesta va al RotationTimelock del Guard que gobierna la Safe ([C-GRD-17]: tras un upgrade, el del sucesor;
+  // sin el dato, el del sistema).
+  if (!isAddressEqual(call.timelock, facts.safeTimelock ?? snapshot.contracts.rotationTimelock)) {
+    return reject('ROTATION_INVALID', 'timelock');
   }
   if (kind === RotationKind.Guard || kind === RotationKind.ModuleGuard) {
     const current = kind === RotationKind.Guard ? facts.currentGuard : facts.currentModuleGuard;

@@ -15,6 +15,7 @@ import type { EmailOutbox } from '../email/email-outbox.ts';
 import type { RequestOrigin, TemplateName, TemplateParams } from '../email/templates.ts';
 import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
+import { notify } from '../notifications/notify.ts';
 import type { ChallengeService } from './challenges.ts';
 import { passwordPolicyProblem, type PasswordHasher, type PasswordProblem } from './password.ts';
 import { verifySecondFactor } from './second-factor.ts';
@@ -476,10 +477,19 @@ export class AccountService {
             : 'PASSWORD',
         },
       });
-      await this.#email(trx, updated, input.meta, 'new-login', {
-        occurredAt: new Date().toISOString(),
-        origin: this.#origin(input.meta),
-      });
+      const occurredAt = new Date().toISOString();
+      await this.#email(trx, updated, input.meta, 'new-login', { occurredAt, origin: this.#origin(input.meta) });
+      // [B-MAIL-03]: también en la bandeja in-app (sin datos de la sesión más allá del origen truncado).
+      await notify(
+        trx,
+        {
+          userId: user.id,
+          walletId: null,
+          type: 'NEW_LOGIN',
+          payload: { app: input.meta.client, occurredAt, ipPrefix: input.meta.ipPrefix },
+        },
+        this.#d.metrics,
+      );
       return { session };
     });
     if ('error' in outcome) {
@@ -609,10 +619,21 @@ export class AccountService {
         userId: user.id,
         payload: { revokedSessions: revoked },
       });
+      const occurredAt = new Date().toISOString();
       await this.#email(trx, user, input.meta, 'password-reset-completed', {
-        occurredAt: new Date().toISOString(),
+        occurredAt,
         origin: this.#origin(input.meta),
       });
+      await notify(
+        trx,
+        {
+          userId: user.id,
+          walletId: null,
+          type: 'PASSWORD_RESET_COMPLETED',
+          payload: { app: input.meta.client, occurredAt, revokedSessions: revoked, ipPrefix: input.meta.ipPrefix },
+        },
+        this.#d.metrics,
+      );
       return { email: user.email };
     });
     if ('error' in outcome) throw new ApiError(outcome.error);

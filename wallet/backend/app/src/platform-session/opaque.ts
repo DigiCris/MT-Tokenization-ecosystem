@@ -187,21 +187,29 @@ export class OpaqueService {
 
   // --- Login ------------------------------------------------------------------------------------------------------
 
-  /** Paso 1 del login: exige la wallet viva del usuario ACTIVE con su registro ACTIVE ([B-PSES-01]). */
+  /**
+   * Paso 1 del login: exige la wallet viva del usuario ACTIVE con su registro ACTIVE ([B-PSES-01]). Con `walletId`
+   * se desbloquea esa wallet: también la vieja de una migración excepcional (MIGRATING), cuya U sana firma la
+   * migración (P15.T06).
+   */
   async loginStart(input: {
     userId: string;
     accountSessionId: string;
     startLoginRequest: string;
     sessionPublicKey: P256PublicJwk;
+    walletId?: string;
   }): Promise<{ loginAttemptId: string; loginResponse: string; expiresAt: Date }> {
-    const record = await this.#db
+    let query = this.#db
       .selectFrom('wallets as w')
       .innerJoin('opaque_records as o', (join) => join.onRef('o.wallet_id', '=', 'w.id').on('o.status', '=', 'ACTIVE'))
       .select(['w.id as walletId', 'w.safe_address', 'o.key_version', 'o.registration_record'])
       .where('w.user_id', '=', input.userId)
-      .where('w.platform_id', '=', this.#platformId)
-      .where('w.status', '=', 'ACTIVE')
-      .executeTakeFirst();
+      .where('w.platform_id', '=', this.#platformId);
+    query =
+      input.walletId === undefined
+        ? query.where('w.status', '=', 'ACTIVE')
+        : query.where('w.id', '=', input.walletId).where('w.status', 'in', ['ACTIVE', 'MIGRATING']);
+    const record = await query.executeTakeFirst();
     if (!record) throw new WalletNotActiveError('la wallet del usuario no está activa');
     let started: { serverLoginState: string; loginResponse: string };
     try {

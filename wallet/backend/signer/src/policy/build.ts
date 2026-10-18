@@ -51,6 +51,11 @@ export interface BuildSnapshotInput {
   chain: ChainContracts;
   gas?: { maxFeePerGasWei: string; maxPriorityFeePerGasWei: string; maxGasLimit: number };
   gasTank: { topupMaxWei: string; dailyCapWei: string; maxGasLimit?: number };
+  /**
+   * Sucesores del Guard y del module guard ya activos en el PolicyRegistry ([C-GRD-17], runbook guard-upgrade.md).
+   * Sin sucesores el snapshot no lleva el campo (los snapshots anteriores no cambian).
+   */
+  successors?: { guards: { guard: string; rotationTimelock: string }[]; moduleGuards: string[] };
 }
 
 export interface ChainContracts {
@@ -125,6 +130,18 @@ export function buildSnapshot(input: BuildSnapshotInput): Record<string, unknown
       dailyCapWei: input.gasTank.dailyCapWei,
       maxGasLimit: input.gasTank.maxGasLimit ?? 3_000_000,
     },
+    ...(input.successors === undefined ||
+    (input.successors.guards.length === 0 && input.successors.moduleGuards.length === 0)
+      ? {}
+      : {
+          successors: {
+            guards: input.successors.guards.map((g) => ({
+              guard: checksumAddress(g.guard),
+              rotationTimelock: checksumAddress(g.rotationTimelock),
+            })),
+            moduleGuards: input.successors.moduleGuards.map((m) => checksumAddress(m)),
+          },
+        }),
   };
   // Validación con el mismo schema que usa el signer al cargarlo.
   PolicySnapshotSchema.parse(snapshot);

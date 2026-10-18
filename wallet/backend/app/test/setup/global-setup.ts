@@ -124,7 +124,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
         'noeviction',
         // Una base por archivo de test (test/helpers/redis-dbs.ts).
         '--databases',
-        '64',
+        '128',
         '--requirepass',
         redisPassword,
       ])

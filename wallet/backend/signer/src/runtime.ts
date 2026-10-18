@@ -119,7 +119,7 @@ export async function startSigner(config: SignerConfig, options: StartOptions = 
       throw new StartupError(`el RPC del signer es chainId ${chainId}, el snapshot ${snapshot.snapshot.chainId}`);
     }
     const provider = await openProvider(config, db, logger, metrics, options.developmentRoots);
-    const reader = new OnChainReader(rpc, snapshot.snapshot.contracts);
+    const reader = new OnChainReader(rpc, snapshot.snapshot.contracts, snapshot.snapshot.successors.guards);
     const attestor = new KeyAttestor({
       privateKey: config.attestationPrivateKey,
       publicKey: config.attestationPublicKey,

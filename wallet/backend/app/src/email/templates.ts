@@ -18,7 +18,8 @@ export interface TemplateContext {
   networkLabel: string;
 }
 
-type Role = 'U' | 'R' | 'S';
+/** Rol rotado: las tres claves de la Safe o, en un upgrade, el Guard o el guard de módulos (P15). */
+type Role = 'U' | 'R' | 'S' | 'GUARD' | 'MODULE_GUARD';
 
 export interface TemplateParams {
   'email-verification': { code: string; expiresAt: string; origin: RequestOrigin };
@@ -79,6 +80,8 @@ export interface TemplateParams {
   };
   'cooperation-paused': { app: 'WALLET' | 'RECOVERY'; reason: string; occurredAt: string };
   'safe-config-modified': { safe: string; items: string[]; occurredAt: string };
+  'migration-approved': { safe: string; healthy: string; occurredAt: string };
+  'migration-completed': { oldSafe: string; newSafe: string; occurredAt: string };
 }
 
 export type TemplateName = keyof TemplateParams;
@@ -104,6 +107,8 @@ export const TEMPLATE_NAMES = [
   'high-value-executed',
   'cooperation-paused',
   'safe-config-modified',
+  'migration-approved',
+  'migration-completed',
 ] as const satisfies readonly TemplateName[];
 
 export interface RenderedEmail {
@@ -126,6 +131,8 @@ const ROLE_NAMES: Record<Role, string> = {
   U: 'clave de usuario (U)',
   R: 'clave de recuperación (R)',
   S: 'clave de la plataforma (S)',
+  GUARD: 'Guard de seguridad de la Safe',
+  MODULE_GUARD: 'guard de módulos de la Safe',
 };
 const ACTOR_NAMES: Record<'U' | 'R' | 'SAFE', string> = {
   U: 'tu clave de usuario',
@@ -449,6 +456,32 @@ const RENDERERS: Renderers = {
     ],
     ifNotYou:
       'usá tus claves U y R desde la app Recovery para restaurar la configuración o mover tus fondos a otra wallet, y contactá a soporte de inmediato.',
+  }),
+  'migration-approved': (p, ctx) => ({
+    subject: 'Se aprobó la migración de tu wallet',
+    heading: 'Migración excepcional aprobada',
+    intro: `Dos operadores aprobaron mover tus fondos a una Safe nueva donde ${p.healthy} conserva su rol. Hasta que termine, la plataforma sólo co-firma la migración desde tu Safe actual; la transferencia la firmás vos con esa clave, después de que la autorización on-chain cumpla su plazo de 24 h.`,
+    details: [
+      ['Acción', 'Migración excepcional de la wallet'],
+      ['Credencial sana', p.healthy],
+      ['Red', ctx.networkLabel],
+      ['Safe actual', groupedAddress(p.safe)],
+      ...timeRows(ctx, 'Aprobada', p.occurredAt),
+    ],
+    ifNotYou: 'contactá a soporte de inmediato: sin tu firma con la credencial sana los fondos no se mueven.',
+  }),
+  'migration-completed': (p, ctx) => ({
+    subject: 'Migración de tu wallet completada',
+    heading: 'Tus fondos están en la Safe nueva',
+    intro: 'La Safe anterior quedó sin saldo y fuera de uso: desde ahora operá con la Safe nueva.',
+    details: [
+      ['Acción', 'Migración completada'],
+      ['Safe anterior', groupedAddress(p.oldSafe)],
+      ['Safe nueva', groupedAddress(p.newSafe)],
+      ['Red', ctx.networkLabel],
+      ...timeRows(ctx, 'Fecha', p.occurredAt),
+    ],
+    ifNotYou: 'contactá a soporte de inmediato.',
   }),
 };
 

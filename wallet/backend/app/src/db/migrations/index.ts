@@ -7,6 +7,7 @@ import * as signerKeyAttestation from './0003_signer_key_attestation.ts';
 import * as walletOnboarding from './0004_wallet_onboarding.ts';
 import * as operationPipeline from './0005_operation_pipeline.ts';
 import * as whitelistSendSwap from './0006_whitelist_send_swap.ts';
+import * as rotationsRecoveryMigration from './0007_rotations_recovery_migration.ts';
 
 export const MIGRATIONS: Readonly<Record<string, Migration>> = {
   '0001_initial_schema': initialSchema,
@@ -15,4 +16,5 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
   '0004_wallet_onboarding': walletOnboarding,
   '0005_operation_pipeline': operationPipeline,
   '0006_whitelist_send_swap': whitelistSendSwap,
+  '0007_rotations_recovery_migration': rotationsRecoveryMigration,
 };

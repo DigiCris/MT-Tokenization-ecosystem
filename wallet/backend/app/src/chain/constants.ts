@@ -24,4 +24,6 @@ export interface SystemAddresses {
   swapExecutor: Address;
   usdc: Address;
   usdt: Address;
+  /** RotationTimelocks de los Guards sucesores fijados en el snapshot ([C-GRD-17]): también reciben propose/cancel. */
+  rotationTimelocks?: readonly Address[];
 }

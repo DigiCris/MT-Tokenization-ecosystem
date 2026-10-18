@@ -35,6 +35,7 @@ import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
 import { challengeFacts } from '../operations/challenges.ts';
 import { swapPairingFacts } from '../operations/pairing.ts';
+import { rotationFacts, rotationSignerFields } from '../rotations/facts.ts';
 import { decodeRevertReason, policyFactsFrom, readOperationContext } from '../operations/chain-context.ts';
 import { safeTxFromJson, safeTxToJson, type CanonicalIntent } from '../operations/intent.ts';
 import { dailyOutflow } from '../operations/ledger.ts';
@@ -490,6 +491,8 @@ export class OperationPipeline {
       amount: call.kind === 'ERC20_TRANSFER' ? call.amount : 0n,
     });
     Object.assign(facts, await challengeFacts(this.#d.db, op, call));
+    // Rotación: KeyAcceptance de U'/R' o S' creada por el signer para esta wallet ([B-SIG-02]).
+    Object.assign(facts, await rotationFacts(this.#d.db, snapshot, op, call));
     // Par de un swap [B-SIG-02]: SWAP N+1 firmado por la U vigente (approve) o approve N−1 ya co-firmado por S (swap).
     Object.assign(
       facts,
@@ -716,6 +719,10 @@ export class OperationPipeline {
       },
     };
     if (op.challenge_attestation !== null) body.challengeAttestation = op.challenge_attestation;
+    // Rotación: material de la clave nueva que el signer verifica por su cuenta (KeyAcceptance o SignerKeyAttestation).
+    if (intent.operationType === 'ROTATION_PROPOSE' || intent.operationType === 'ROTATION_EXECUTE') {
+      Object.assign(body, await rotationSignerFields(this.#d.db, op.id));
+    }
     // Otra SafeTx del mismo nonce que S ya co-firmó (p. ej. una FAILED_FINAL): el reemplazo es explícito.
     if (intent.operationType !== 'NOOP_CANCEL') {
       const previous = await this.#d.db

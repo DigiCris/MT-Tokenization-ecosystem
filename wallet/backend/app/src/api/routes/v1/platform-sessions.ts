@@ -93,7 +93,16 @@ export const platformSessionsRoutes: FastifyPluginCallbackZod<PlatformSessionsRo
           tags,
           summary: 'Desbloqueo de la Wallet, paso 1: pedido OPAQUE (KE1) y session key P-256 a atar',
           security,
-          body: z.object({ startLoginRequest: OpaqueMessage, sessionPublicKey: P256PublicJwkSchema }).strict(),
+          body: z
+            .object({
+              startLoginRequest: OpaqueMessage,
+              sessionPublicKey: P256PublicJwkSchema,
+              walletId: z
+                .uuid()
+                .optional()
+                .describe('Wallet a desbloquear (por defecto la ACTIVE; la vieja de una migración, MIGRATING)'),
+            })
+            .strict(),
           response: {
             200: z.object({ loginAttemptId: z.uuid(), loginResponse: z.string(), expiresAt: z.iso.datetime() }),
             ...errorResponses(401, 403, 409, 415),
@@ -146,7 +155,16 @@ export const platformSessionsRoutes: FastifyPluginCallbackZod<PlatformSessionsRo
         tags,
         summary: 'Step-up: envía un código por email para un scope restringido, atado a la session key',
         security,
-        body: z.object({ scope: z.enum(STEP_UP_SCOPES), sessionPublicKey: P256PublicJwkSchema }).strict(),
+        body: z
+          .object({
+            scope: z.enum(STEP_UP_SCOPES),
+            sessionPublicKey: P256PublicJwkSchema,
+            walletId: z
+              .uuid()
+              .optional()
+              .describe('Wallet a la que se ata la sesión (p. ej. RECOVERY sobre la wallet vieja de una migración)'),
+          })
+          .strict(),
         response: {
           202: z.object({
             challengeId: z.uuid(),

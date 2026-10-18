@@ -1,5 +1,5 @@
 // Índice de base de Valkey propio por archivo de test: los archivos corren en paralelo y las colas de BullMQ (nombres
-// fijos) o un FLUSHDB no se pueden compartir. El contenedor de test arranca con 64 bases (global-setup.ts); la 0 es la
+// fijos) o un FLUSHDB no se pueden compartir. El contenedor de test arranca con 128 bases (global-setup.ts); la 0 es la
 // compartida por los listeners que sólo usan claves hasheadas por test (rate limit, riesgo de login).
 export const REDIS_DBS = {
   outbox: 3,
@@ -62,4 +62,16 @@ export const REDIS_DBS = {
   swapQuote: 60,
   readEndpoints: 61,
   whitelistThreeLayers: 62,
+  // P15: rotaciones, recovery, migración excepcional y notificaciones.
+  rotationPropose: 63,
+  rotationCancel: 64,
+  rotationExecute: 65,
+  recoveryFlows: 66,
+  rotationS: 67,
+  notifications: 68,
+  rotationBypass: 69,
+  guardUpgrade: 70,
+  executorKeyLoss: 71,
+  migration: 72,
+  notificationsApi: 73,
 } as const;

@@ -47,9 +47,9 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.ts'],
       // Los entrypoints de proceso (main.ts y las CLIs) se prueban como procesos reales en
-      // test/integration/{entrypoint,db-cli}.test.ts y test/audit/audit-chain.test.ts: la cobertura V8 de Vitest no
-      // incluye procesos hijos. Los ABIs son generados.
-      exclude: ['src/chain/abis/**', 'src/main.ts', 'src/cli/**'],
+      // test/integration/{entrypoint,db-cli,executor-key-loss,migration}.test.ts y test/audit/audit-chain.test.ts: la
+      // cobertura V8 de Vitest no incluye procesos hijos. Los ABIs son generados.
+      exclude: ['src/chain/abis/**', 'src/main.ts', 'src/cli/**', 'src/operators/cli.ts'],
       reporter: ['text-summary', 'text', 'lcov', 'json-summary'],
       reportsDirectory: 'coverage',
       thresholds: {

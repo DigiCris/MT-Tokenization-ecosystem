@@ -1,6 +1,6 @@
 // Grupo `wallet` de [B-API] (P12): onboarding server-side en el listener de Wallet. Todas las escrituras son críticas
 // (PlatformSession + firma del request, [B-PSES-05]) con scope ONBOARDING ([W-07]), salvo el reemplazo del registro
-// OPAQUE (KEY_RESTORE). Las lecturas usan la sesión de cuenta.
+// OPAQUE (KEY_RESTORE) y el paso 1 del registro OPAQUE de U' (U_REPLACEMENT, P15). Las lecturas usan la sesión de cuenta.
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -131,7 +131,10 @@ export const walletRoutes: FastifyPluginCallbackZod<WalletRoutesOptions> = (app,
   app.post(
     '/wallets/:id/user-key/opaque-registration',
     {
-      config: { auth: 'account', platformSession: { scopes: ['ONBOARDING', 'KEY_RESTORE'], critical: true } },
+      config: {
+        auth: 'account',
+        platformSession: { scopes: ['ONBOARDING', 'KEY_RESTORE', 'U_REPLACEMENT'], critical: true },
+      },
       schema: {
         operationId: 'startUserKeyOpaqueRegistration',
         tags,

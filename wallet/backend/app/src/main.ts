@@ -40,6 +40,9 @@ import { SwapCoordinator } from './swap/coordinator.ts';
 import { OperationEffects } from './worker/effects.ts';
 import { startOperationsWorker } from './worker/main.ts';
 import { WhitelistSync } from './whitelist/sync.ts';
+import { CancelRelayer, gasTankJobHandler } from './rotations/cancel-relay.ts';
+import { RotationSync } from './rotations/sync.ts';
+import { MigrationSync } from './recovery/migration.ts';
 import { OperationPipeline } from './worker/pipeline.ts';
 import { SovereignModification } from './wallets/sovereign.ts';
 import { createAccountServices, createWalletServices } from './services.ts';
@@ -244,14 +247,23 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       throttledWarn(logger, 'error de conexión con Valkey (cola gas-tank)'),
     );
     closers.push(() => deployConnection.quit());
+    // Cancelaciones de rotación firmadas por U o R que pidió la API (P15.T02).
+    const cancelRelay = new CancelRelayer({
+      db,
+      rpc,
+      gasTank,
+      snapshot: () => snapshot,
+      audit: new AuditWriter(config.secrets.auditChainKey, metrics),
+      logger: logger.child({ component: 'cancel-relay' }),
+    });
     const deployWorker = createOutboxWorker({
       queue: QUEUES.gasTank,
       connection: deployConnection,
       outbox,
       logger,
-      // Las txs de la cuenta gas tank van de a una (lock de la DB): sin concurrencia entre deploys.
+      // Las txs de la cuenta gas tank van de a una (lock de la DB): sin concurrencia entre deploys y relays.
       concurrency: 1,
-      handler: walletDeployJobHandler(deployer),
+      handler: gasTankJobHandler({ deploy: walletDeployJobHandler(deployer), cancelRelay }),
     });
     closers.unshift(() => deployWorker.close());
     metricsServer = await startMetricsServer(metrics.registry, config.metrics.bindHost, config.metrics.gasTankPort);
@@ -343,13 +355,14 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       metrics,
     });
     const workerId = `${hostname()}:${String(process.pid)}:${randomBytes(4).toString('hex')}`;
+    const signers = new SignerKeyService({ db, shards: signer.shards, clients });
     const pipeline = new OperationPipeline({
       db,
       machine,
       audit,
       rpc,
       snapshot: () => snapshot,
-      signers: new SignerKeyService({ db, shards: signer.shards, clients }),
+      signers,
       issuer: await PlatformSessionIssuer.create(
         config.secrets.sessionIssuerPrivateKey,
         config.secrets.sessionIssuerPublicKey,
@@ -384,11 +397,34 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       metrics,
     });
     const highValue = new HighValueNotifier({ db, emails, metrics });
+    // P15: rotaciones desde los eventos del RotationTimelock (propuestas, cancelaciones, ejecuciones y madurez).
+    const rotationSync = new RotationSync({
+      db,
+      rpc,
+      audit,
+      emails,
+      snapshot: () => snapshot,
+      logger: logger.child({ component: 'rotation-sync' }),
+      metrics,
+      signerKeys: signers,
+    });
+    // P15.T06: cierre de las migraciones excepcionales (Safe vieja sin saldo → MIGRATED).
+    const migrationSync = new MigrationSync({
+      db,
+      rpc,
+      audit,
+      emails,
+      snapshot: () => snapshot,
+      logger: logger.child({ component: 'migration-sync' }),
+      metrics,
+    });
     const effects = new OperationEffects(
       [
         { name: 'whitelist', runOnce: () => whitelistSync.runOnce() },
         { name: 'swap-groups', runOnce: () => swapCoordinator.runOnce() },
         { name: 'high-value', runOnce: () => highValue.runOnce() },
+        { name: 'rotations', runOnce: () => rotationSync.runOnce() },
+        { name: 'migrations', runOnce: () => migrationSync.runOnce() },
       ],
       logger.child({ component: 'operation-effects' }),
     );

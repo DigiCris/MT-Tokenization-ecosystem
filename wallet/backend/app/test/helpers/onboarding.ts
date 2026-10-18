@@ -23,6 +23,7 @@ import { loadPolicySnapshot, type BackendPolicySnapshot } from '../../src/policy
 import { createOutboxWorker } from '../../src/queue/outbox-consumer.ts';
 import { createRedis } from '../../src/queue/redis.ts';
 import { QUEUES } from '../../src/queue/queues.ts';
+import { CancelRelayer, gasTankJobHandler } from '../../src/rotations/cancel-relay.ts';
 import { SignerClientError } from '../../src/signer-client/client.ts';
 import { SignerKeyService } from '../../src/signer-client/sharding.ts';
 import { walletDeployJobHandler, WalletDeployer } from '../../src/wallets/deployer.ts';
@@ -44,6 +45,7 @@ import {
   type EdKeyPair,
   type Pki,
   type SignerShard,
+  type SnapshotSuccessors,
 } from './signer-shard.ts';
 
 await opaque.ready;
@@ -69,6 +71,8 @@ export interface OnboardingEnv {
   pipeline: EmailPipeline;
   gasTank: GasTankService;
   deployer: WalletDeployer;
+  /** Retransmisión de cancelaciones de rotación (P15): la consume el mismo worker de la cola `gas-tank`. */
+  cancelRelay: CancelRelayer;
   metrics: Metrics;
   /** Arranca el worker de la cola `gas-tank` (por defecto el test corre el deployer a mano). */
   startDeployWorker: () => void;
@@ -78,6 +82,8 @@ export interface OnboardingEnv {
 export async function startOnboardingEnv(options: {
   redisDb: number;
   deployWorker?: boolean;
+  /** Sucesores del Guard fijados en el snapshot de policy (P15.T08). */
+  snapshotSuccessors?: SnapshotSuccessors;
   /** Logger de los listeners y del deployer (por defecto silencioso; los tests de canario lo capturan). */
   logger?: Logger;
 }): Promise<OnboardingEnv> {
@@ -90,7 +96,7 @@ export async function startOnboardingEnv(options: {
   const metrics = createMetrics({ defaultMetrics: false });
   const pki = createPki();
   const keys = { attestation: edKey(), policy: edKey(), issuer: edKey() };
-  const snapshotPath = writePolicySnapshot(dir, keys.policy, chain.system);
+  const snapshotPath = writePolicySnapshot(dir, keys.policy, chain.system, 1, options.snapshotSuccessors);
   const snapshot = loadPolicySnapshot(snapshotPath, keys.policy.publicKey, 'local');
   const [executorShard, platformShard] = await Promise.all([
     startSignerShard({ shardId: 'dev-1', anvilUrl: anvil.url, pki, keys, snapshotPath }),
@@ -156,6 +162,14 @@ export async function startOnboardingEnv(options: {
     metrics,
     logger,
   });
+  const cancelRelay = new CancelRelayer({
+    db: db.app,
+    rpc,
+    gasTank,
+    snapshot: () => snapshot,
+    audit: wallet.services.audit,
+    logger,
+  });
   let deployWorker: Worker | undefined;
   let deployConnection: Redis | undefined;
   const startDeployWorker = () => {
@@ -167,7 +181,7 @@ export async function startOnboardingEnv(options: {
       outbox: new OutboxRepository(db.app),
       logger,
       concurrency: 1,
-      handler: walletDeployJobHandler(deployer),
+      handler: gasTankJobHandler({ deploy: walletDeployJobHandler(deployer), cancelRelay }),
     });
   };
   if (options.deployWorker) startDeployWorker();
@@ -188,6 +202,7 @@ export async function startOnboardingEnv(options: {
     pipeline,
     gasTank,
     deployer,
+    cancelRelay,
     metrics,
     startDeployWorker,
     close: async () => {
@@ -251,11 +266,16 @@ export async function nextStepUpEmail(email: string): Promise<MailpitMessage> {
 export async function stepUp(
   browser: TestClient,
   email: string,
-  scope: 'ONBOARDING' | 'ENROLLMENT' | 'KEY_RESTORE' | 'RECOVERY',
+  scope: 'ONBOARDING' | 'ENROLLMENT' | 'KEY_RESTORE' | 'RECOVERY' | 'U_REPLACEMENT',
   keyRestore?: (nonce: Hex) => Promise<{ keyAddress: Address; signature: Hex }>,
+  walletId?: string,
 ): Promise<Session> {
   const key = newSessionKey();
-  const started = await browser.post('/api/v1/platform-sessions/step-up/start', { scope, sessionPublicKey: key.jwk });
+  const started = await browser.post('/api/v1/platform-sessions/step-up/start', {
+    scope,
+    sessionPublicKey: key.jwk,
+    ...(walletId === undefined ? {} : { walletId }),
+  });
   if (started.statusCode !== 202) throw new Error(`step-up/start: ${String(started.statusCode)} ${started.body}`);
   const { challengeId, keyRestoreNonce } = started.json<{ challengeId: string; keyRestoreNonce?: Hex }>();
   const message = await nextStepUpEmail(email);

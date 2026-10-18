@@ -6,6 +6,7 @@ import { getAddress, isAddressEqual, type Abi, type Address, type Hex } from 'vi
 import { iSafeAbi, securityGuardAbi, walletFactoryAbi } from './abis/index.ts';
 import type { BaseClient } from './rpc-quorum.ts';
 import { SAFE_SLOTS, SAFE_THRESHOLD } from '../wallets/verification.ts';
+import { guardInfo, isAcceptedModuleGuard } from '../policy/guards.ts';
 import type { BackendPolicySnapshot } from '../policy/snapshot.ts';
 
 const SENTINEL: Address = '0x0000000000000000000000000000000000000001';
@@ -26,6 +27,12 @@ export interface SafeChainState {
   moduleGuard: Address;
   fallbackHandler: Address;
   modules: Address[];
+  /**
+   * Guard aceptado que gobierna la Safe (el del sistema o un sucesor fijado en el snapshot, [C-GRD-17]) y su
+   * RotationTimelock; con un Guard no aceptado, los del sistema (y la deriva lo marca).
+   */
+  governingGuard: Address;
+  timelock: Address;
 }
 
 const slotAddress = (word: Hex | undefined): Address =>
@@ -42,38 +49,28 @@ export async function readSafeState(
   const read = <T>(address: Address, abi: Abi, functionName: string, args: readonly unknown[] = []) =>
     client.readContract({ address, abi, functionName, args, blockNumber }) as Promise<T>;
   const storage = (slot: Hex) => client.getStorageAt({ address: safe, slot, blockNumber });
-  const [
-    block,
-    registered,
-    isWallet,
-    roles,
-    nonce,
-    threshold,
-    owners,
-    singleton,
-    guard,
-    moduleGuard,
-    fallback,
-    modules,
-  ] = await Promise.all([
-    client.getBlock({ blockNumber }),
-    read<boolean>(c.securityGuard, securityGuardAbi, 'isRegistered', [safe]),
-    read<boolean>(c.walletFactory, walletFactoryAbi, 'isWallet', [safe]),
-    read<{ userKey: Address; recoveryKey: Address; executor: Address; initialized: boolean }>(
-      c.securityGuard,
-      securityGuardAbi,
-      'rolesOf',
-      [safe],
-    ),
-    read<bigint>(safe, iSafeAbi, 'nonce'),
-    read<bigint>(safe, iSafeAbi, 'getThreshold'),
-    read<readonly Address[]>(safe, iSafeAbi, 'getOwners'),
-    storage(SAFE_SLOTS.singleton),
-    storage(SAFE_SLOTS.guard),
-    storage(SAFE_SLOTS.moduleGuard),
-    storage(SAFE_SLOTS.fallbackHandler),
-    read<readonly [readonly Address[], Address]>(safe, iSafeAbi, 'getModulesPaginated', [SENTINEL, 10n]),
-  ]);
+  // Primero el Guard instalado: los roles los tiene el Guard que gobierna la Safe (tras un upgrade, el sucesor).
+  const guard = slotAddress(await storage(SAFE_SLOTS.guard));
+  const governing = guardInfo(snapshot, guard) ?? { guard: c.securityGuard, rotationTimelock: c.rotationTimelock };
+  const [block, registered, isWallet, roles, nonce, threshold, owners, singleton, moduleGuard, fallback, modules] =
+    await Promise.all([
+      client.getBlock({ blockNumber }),
+      read<boolean>(governing.guard, securityGuardAbi, 'isRegistered', [safe]),
+      read<boolean>(c.walletFactory, walletFactoryAbi, 'isWallet', [safe]),
+      read<{ userKey: Address; recoveryKey: Address; executor: Address; initialized: boolean }>(
+        governing.guard,
+        securityGuardAbi,
+        'rolesOf',
+        [safe],
+      ),
+      read<bigint>(safe, iSafeAbi, 'nonce'),
+      read<bigint>(safe, iSafeAbi, 'getThreshold'),
+      read<readonly Address[]>(safe, iSafeAbi, 'getOwners'),
+      storage(SAFE_SLOTS.singleton),
+      storage(SAFE_SLOTS.moduleGuard),
+      storage(SAFE_SLOTS.fallbackHandler),
+      read<readonly [readonly Address[], Address]>(safe, iSafeAbi, 'getModulesPaginated', [SENTINEL, 10n]),
+    ]);
   return {
     blockNumber: blockNumber.toString(),
     timestamp: Number(block.timestamp),
@@ -89,10 +86,12 @@ export async function readSafeState(
     threshold: threshold.toString(),
     owners: owners.map((o) => getAddress(o)),
     singleton: slotAddress(singleton),
-    guard: slotAddress(guard),
+    guard,
     moduleGuard: slotAddress(moduleGuard),
     fallbackHandler: slotAddress(fallback),
     modules: modules[0].map((m) => getAddress(m)),
+    governingGuard: governing.guard,
+    timelock: governing.rotationTimelock,
   };
 }
 
@@ -105,8 +104,9 @@ export function safeConfigDrift(state: SafeChainState, snapshot: BackendPolicySn
   const drift: ConfigDriftItem[] = [];
   if (!state.registered || !state.isWallet || !state.roles.initialized) drift.push('NOT_REGISTERED');
   if (!isAddressEqual(state.singleton, c.safeL2Singleton)) drift.push('SINGLETON');
-  if (!isAddressEqual(state.guard, c.securityGuard)) drift.push('GUARD');
-  if (!isAddressEqual(state.moduleGuard, c.denyAllModuleGuard)) drift.push('MODULE_GUARD');
+  // [C-GRD-17]: el Guard y el module guard del sistema o un sucesor fijado en el snapshot.
+  if (guardInfo(snapshot, state.guard) === null) drift.push('GUARD');
+  if (!isAcceptedModuleGuard(snapshot, state.moduleGuard)) drift.push('MODULE_GUARD');
   if (!isAddressEqual(state.fallbackHandler, ZERO)) drift.push('FALLBACK_HANDLER');
   if (state.modules.length > 0) drift.push('MODULES');
   if (state.threshold !== SAFE_THRESHOLD.toString()) drift.push('THRESHOLD');

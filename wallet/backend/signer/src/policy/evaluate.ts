@@ -85,6 +85,8 @@ export interface PolicyFacts {
   successorRegistered?: boolean;
   /** GUARD_UPGRADE: propuesta GUARD/MODULE_GUARD madura y no cancelada en el timelock. */
   guardUpgradeMature?: boolean;
+  /** RotationTimelock del Guard que gobierna la Safe ([C-GRD-17]); sin el dato, el del sistema. */
+  safeTimelock?: Address;
 }
 
 export interface PolicyInput {
@@ -222,6 +224,9 @@ export function evaluatePolicy(snapshot: PolicySnapshot, input: PolicyInput): Po
     case 'ROTATION_PROPOSE': {
       if (!ROTATION_KINDS_BY_ROLE[role].includes(op.kind))
         return reject('ROTATION_INVALID', `${role} no propone ${op.kind}`);
+      if (!sameAddress(op.timelock, facts.safeTimelock ?? snapshot.contracts.rotationTimelock)) {
+        return reject('ROTATION_INVALID', 'timelock');
+      }
       if (op.kind === 'GUARD' || op.kind === 'MODULE_GUARD') {
         const current = op.kind === 'GUARD' ? facts.currentGuard : facts.currentModuleGuard;
         if (current === undefined || !sameAddress(current, op.oldValue)) return reject('ROTATION_INVALID', 'old');

@@ -139,11 +139,13 @@ export async function unlockWallet(
   browser: TestClient,
   authSecretHex: string,
   key: SessionKey = newSessionKey(),
+  walletId?: string,
 ): Promise<UnlockedSession> {
   const { clientLoginState, startLoginRequest } = opaque.client.startLogin({ password: authSecretHex });
   const started = await browser.post('/api/v1/platform-sessions/opaque/start', {
     startLoginRequest,
     sessionPublicKey: key.jwk,
+    ...(walletId === undefined ? {} : { walletId }),
   });
   if (started.statusCode !== 200) throw new Error(`opaque/start: ${String(started.statusCode)} ${started.body}`);
   const { loginAttemptId, loginResponse } = started.json<{ loginAttemptId: string; loginResponse: string }>();

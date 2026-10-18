@@ -272,6 +272,7 @@ describe('reconciliación', () => {
         old_key: randomBytes(20),
         new_key: randomBytes(20),
         proposal_id: proposalId,
+        executable_at: new Date(Date.now() + 48 * 3600 * 1000),
         initiated_by: 'U',
         status: 'PENDING_TIMELOCK',
       })

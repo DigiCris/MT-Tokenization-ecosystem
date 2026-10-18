@@ -37,6 +37,8 @@ import { SovereignModification } from '../../src/wallets/sovereign.ts';
 import { createRedis } from '../../src/queue/redis.ts';
 import { HighValueNotifier } from '../../src/send/notifications.ts';
 import { SwapCoordinator } from '../../src/swap/coordinator.ts';
+import { MigrationSync } from '../../src/recovery/migration.ts';
+import { RotationSync } from '../../src/rotations/sync.ts';
 import { WhitelistSync } from '../../src/whitelist/sync.ts';
 import { SafeLease } from '../../src/worker/lease.ts';
 import { startOperationsWorker, type OperationsWorker } from '../../src/worker/main.ts';
@@ -53,6 +55,7 @@ import {
 } from './onboarding.ts';
 import { testRedisUrl } from './api.ts';
 import { waitForMessage, type MailpitMessage } from './mailpit.ts';
+import type { SnapshotSuccessors } from './signer-shard.ts';
 import { signP256, unlockWallet, type UnlockedSession } from './platform.ts';
 
 /** Holders de USDC/USDT en el bloque del fork (los mismos que usa SeedLocal). */
@@ -87,6 +90,9 @@ export interface OperationsEnv {
   whitelistSync: () => WhitelistSync;
   swapCoordinator: () => SwapCoordinator;
   highValue: () => HighValueNotifier;
+  /** P15: rotaciones desde los eventos del RotationTimelock y cierre de las migraciones excepcionales. */
+  rotationSync: () => RotationSync;
+  migrationSync: () => MigrationSync;
   close: () => Promise<void>;
 }
 
@@ -102,10 +108,15 @@ export interface PipelineFactoryOptions {
   rpc?: RpcQuorumClient;
 }
 
-export async function startOperationsEnv(options: { redisDb: number; logger?: Logger }): Promise<OperationsEnv> {
+export async function startOperationsEnv(options: {
+  redisDb: number;
+  logger?: Logger;
+  snapshotSuccessors?: SnapshotSuccessors;
+}): Promise<OperationsEnv> {
   const base = await startOnboardingEnv({
     redisDb: options.redisDb,
     ...(options.logger === undefined ? {} : { logger: options.logger }),
+    ...(options.snapshotSuccessors === undefined ? {} : { snapshotSuccessors: options.snapshotSuccessors }),
   });
   const db = base.db.app;
   const wallets = base.wallet.wallets;
@@ -209,6 +220,31 @@ export async function startOperationsEnv(options: { redisDb: number; logger?: Lo
         metrics: base.metrics,
       }),
     highValue: () => new HighValueNotifier({ db, emails, metrics: base.metrics }),
+    rotationSync: () =>
+      new RotationSync({
+        db,
+        rpc: base.rpc,
+        audit,
+        emails,
+        snapshot: () => base.snapshot,
+        logger,
+        metrics: base.metrics,
+        signerKeys: new SignerKeyService({
+          db,
+          shards: [{ id: 'dev-1', url: base.executorShard.url, active: true }],
+          clients: new Map([['dev-1', base.executorShard.client]]),
+        }),
+      }),
+    migrationSync: () =>
+      new MigrationSync({
+        db,
+        rpc: base.rpc,
+        audit,
+        emails,
+        snapshot: () => base.snapshot,
+        logger,
+        metrics: base.metrics,
+      }),
     close: async () => {
       for (const client of extraClients) client.close();
       await base.close();

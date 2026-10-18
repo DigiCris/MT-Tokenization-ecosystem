@@ -34,13 +34,19 @@ export class WalletUnlockService {
     this.#metrics = deps.metrics;
   }
 
-  async start(input: { session: AuthenticatedSession; startLoginRequest: string; sessionPublicKey: P256PublicJwk }) {
+  async start(input: {
+    session: AuthenticatedSession;
+    startLoginRequest: string;
+    sessionPublicKey: P256PublicJwk;
+    walletId?: string | undefined;
+  }) {
     try {
       return await this.#opaque.loginStart({
         userId: input.session.userId,
         accountSessionId: input.session.sessionId,
         startLoginRequest: input.startLoginRequest,
         sessionPublicKey: input.sessionPublicKey,
+        ...(input.walletId === undefined ? {} : { walletId: input.walletId }),
       });
     } catch (error) {
       if (error instanceof WalletNotActiveError) throw new ApiError('WALLET_NOT_ACTIVE');

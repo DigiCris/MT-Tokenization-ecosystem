@@ -151,6 +151,59 @@ export async function liveKeys(
   return { U: of('U'), R: of('R'), S: of('S') };
 }
 
+/** Credencial sana que reutiliza la wallet nueva de una migración excepcional, en el mismo rol (P15.T06). */
+export interface MigrationReuse {
+  fromWalletId: string;
+  role: 'U' | 'R';
+  key: Address;
+}
+
+export async function migrationReuse(
+  db: Kysely<Database> | Transaction<Database>,
+  walletId: string,
+): Promise<MigrationReuse | null> {
+  const row = await db
+    .selectFrom('migration_cases as c')
+    .innerJoin('wallet_keys_metadata as k', (join) =>
+      join
+        .onRef('k.wallet_id', '=', 'c.old_wallet_id')
+        .onRef('k.role', '=', 'c.healthy_role')
+        .on('k.status', '=', 'ACTIVE'),
+    )
+    .select(['c.old_wallet_id', 'c.healthy_role', 'k.key_address'])
+    .where('c.new_wallet_id', '=', walletId)
+    .where('c.status', '=', 'APPROVED')
+    .executeTakeFirst();
+  return row
+    ? { fromWalletId: row.old_wallet_id, role: row.healthy_role, key: bufferToAddress(row.key_address) }
+    : null;
+}
+
+/** En la wallet nueva de una migración, el rol sano tiene que ser exactamente la credencial sana de la vieja. */
+export function assertMigrationKey(reuse: MigrationReuse | null, role: 'U' | 'R', key: Address): void {
+  if (reuse?.role === role && !isAddressEqual(reuse.key, key)) {
+    throw new ApiError('KEY_NOT_ALLOWED', {
+      detail: `en la migración, ${role} tiene que ser la credencial sana de la wallet anterior`,
+    });
+  }
+}
+
+/** Versión de una clave U o R nueva de una wallet activa (la siguiente a la última vigente o rotada). */
+export async function nextKeyVersion(
+  db: Kysely<Database> | Transaction<Database>,
+  walletId: string,
+  role: 'U' | 'R',
+): Promise<number> {
+  const row = await db
+    .selectFrom('wallet_keys_metadata')
+    .select((eb) => eb.fn.max('key_version').as('v'))
+    .where('wallet_id', '=', walletId)
+    .where('role', '=', role)
+    .where('status', 'in', ['ACTIVE', 'ROTATED_OUT'])
+    .executeTakeFirst();
+  return (row?.v ?? 0) + 1;
+}
+
 /** Enrollment vivo (SUBMITTED o CONFIRMED) de la wallet. */
 export async function liveEnrollment(db: Kysely<Database> | Transaction<Database>, walletId: string) {
   return db
@@ -204,15 +257,25 @@ export async function assertKeyUnused(
   trx: Transaction<Database>,
   key: Address,
   own: { walletId: string; role: 'U' | 'R' },
+  reuse: MigrationReuse | null = null,
 ): Promise<void> {
   const bytes = addressToBuffer(key);
+  // La credencial sana de una migración excepcional (P15.T06) puede seguir viva en la wallet vieja, en el mismo rol.
+  const reused = (walletId: string, role: string) =>
+    reuse !== null &&
+    reuse.role === own.role &&
+    role === own.role &&
+    walletId === reuse.fromWalletId &&
+    isAddressEqual(reuse.key, key);
   const metadata = await trx
     .selectFrom('wallet_keys_metadata')
     .select(['wallet_id', 'role', 'status'])
     .where('key_address', '=', bytes)
     .execute();
   const foreign = metadata.some(
-    (m) => m.wallet_id !== own.walletId || m.role !== own.role || (m.status !== 'PENDING' && m.status !== 'REVOKED'),
+    (m) =>
+      !reused(m.wallet_id, m.role) &&
+      (m.wallet_id !== own.walletId || m.role !== own.role || (m.status !== 'PENDING' && m.status !== 'REVOKED')),
   );
   const signer = await trx.selectFrom('signer_keys').select('id').where('address', '=', bytes).executeTakeFirst();
   const enrolled = await trx
@@ -221,7 +284,9 @@ export async function assertKeyUnused(
     .where('r_address', '=', bytes)
     .where('status', 'in', ['SUBMITTED', 'CONFIRMED'])
     .execute();
-  const enrolledElsewhere = enrolled.some((e) => own.role === 'U' || e.wallet_id !== own.walletId);
+  const enrolledElsewhere = enrolled.some(
+    (e) => !reused(e.wallet_id, 'R') && (own.role === 'U' || e.wallet_id !== own.walletId),
+  );
   if (foreign || signer !== undefined || enrolledElsewhere) {
     throw new ApiError('KEY_NOT_ALLOWED', { detail: 'la clave ya se usa en otra wallet o en otro rol' });
   }
@@ -264,12 +329,39 @@ export class WalletService {
         if (actor.platform.walletId !== null) {
           throw new ApiError('SCOPE_NOT_ALLOWED', { detail: 'la PlatformSession es de otra wallet' });
         }
+        // Migración excepcional aprobada (P15.T06): la wallet nueva queda vinculada a la vieja (MIGRATING) y al caso.
+        const migration = await trx
+          .selectFrom('migration_cases as c')
+          .innerJoin('wallets as w', 'w.id', 'c.old_wallet_id')
+          .select(['c.id', 'c.old_wallet_id'])
+          .where('c.user_id', '=', actor.userId)
+          .where('c.status', '=', 'APPROVED')
+          .where('w.status', '=', 'MIGRATING')
+          .where('w.platform_id', '=', platformId)
+          .forUpdate()
+          .executeTakeFirst();
         const row = await trx
           .insertInto('wallets')
-          .values({ user_id: actor.userId, platform_id: platformId, chain_id: chainId, status: 'CREATING' })
+          .values({
+            user_id: actor.userId,
+            platform_id: platformId,
+            chain_id: chainId,
+            status: 'CREATING',
+            migrated_from_wallet_id: migration?.old_wallet_id ?? null,
+          })
           .returningAll()
           .executeTakeFirstOrThrow();
-        await this.#audit(trx, actor, row.id, 'WALLET_CREATED', { chainId });
+        if (migration) {
+          await trx
+            .updateTable('migration_cases')
+            .set({ new_wallet_id: row.id })
+            .where('id', '=', migration.id)
+            .execute();
+        }
+        await this.#audit(trx, actor, row.id, 'WALLET_CREATED', {
+          chainId,
+          ...(migration ? { migratedFromWalletId: migration.old_wallet_id, migrationCaseId: migration.id } : {}),
+        });
         return { wallet: walletView(row), created: true };
       },
       { auditLock: true },
@@ -317,6 +409,11 @@ export class WalletService {
     actor: WalletActor,
     wallet: WalletRow,
   ): Promise<number> {
+    if (actor.platform.scope === 'U_REPLACEMENT') {
+      // U' de una wallet activa (P15.T04): la versión siguiente a la última U.
+      if (wallet.status !== 'ACTIVE') throw new ApiError('WALLET_NOT_ACTIVE');
+      return nextKeyVersion(db, wallet.id, 'U');
+    }
     if (actor.platform.scope === 'KEY_RESTORE') {
       if (wallet.status !== 'ACTIVE') throw new ApiError('WALLET_NOT_ACTIVE');
       const u = await db
@@ -354,7 +451,9 @@ export class WalletService {
         const wallet = await walletForActor(trx, platformId, actor, walletId, { forUpdate: true });
         if (actor.platform.scope !== 'ONBOARDING') throw new ApiError('SCOPE_NOT_ALLOWED');
         const keyVersion = await this.#opaqueKeyVersion(trx, actor, wallet);
-        await assertKeyUnused(trx, userKey, { walletId, role: 'U' });
+        const reuse = await migrationReuse(trx, walletId);
+        assertMigrationKey(reuse, 'U', userKey);
+        await assertKeyUnused(trx, userKey, { walletId, role: 'U' }, reuse);
         const current = await trx
           .selectFrom('wallet_keys_metadata')
           .select(['id', 'key_address'])
@@ -385,6 +484,7 @@ export class WalletService {
               key_version: keyVersion,
               status: 'PENDING',
               source: 'INTERNAL',
+              reused_from_wallet_id: reuse?.role === 'U' ? reuse.fromWalletId : null,
               ...metadata,
             })
             .execute();

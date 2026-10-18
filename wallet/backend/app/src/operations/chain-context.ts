@@ -162,7 +162,7 @@ export async function readOperationContext(
               ? RotationKind.Executor
               : undefined;
         if (kind !== undefined) {
-          const id = await read<Hex>(c.rotationTimelock, rotationTimelockAbi, 'executableProposal', [
+          const id = await read<Hex>(state.timelock, rotationTimelockAbi, 'executableProposal', [
             safe,
             kind,
             call.oldOwner,
@@ -183,7 +183,7 @@ export async function readOperationContext(
           read<Address>(c.policyRegistry, policyRegistryAbi, isGuard ? 'successorGuardOf' : 'successorModuleGuardOf', [
             current,
           ]),
-          read<Hex>(c.rotationTimelock, rotationTimelockAbi, 'executableProposal', [
+          read<Hex>(state.timelock, rotationTimelockAbi, 'executableProposal', [
             safe,
             isGuard ? RotationKind.Guard : RotationKind.ModuleGuard,
             current,
@@ -202,13 +202,12 @@ export async function readOperationContext(
     }
     let precheck: Precheck | null = null;
     if (request.precheck) {
-      const [ok, reason] = await read<readonly [boolean, Hex]>(c.securityGuard, securityGuardAbi, 'evaluateAssisted', [
-        safe,
-        request.ownerRole === 'U' ? Role.User : Role.Recovery,
-        safeTx.to,
-        safeTx.value,
-        safeTx.data,
-      ]);
+      const [ok, reason] = await read<readonly [boolean, Hex]>(
+        state.governingGuard,
+        securityGuardAbi,
+        'evaluateAssisted',
+        [safe, request.ownerRole === 'U' ? Role.User : Role.Recovery, safeTx.to, safeTx.value, safeTx.data],
+      );
       let callOk = true;
       let callRevert: Hex | null = null;
       try {
@@ -241,6 +240,7 @@ export function policyFactsFrom(context: OperationChainContext): PolicyFacts {
     ...(facts.guardUpgradeMature === undefined ? {} : { guardUpgradeMature: facts.guardUpgradeMature }),
     currentGuard: state.guard,
     currentModuleGuard: state.moduleGuard,
+    safeTimelock: state.timelock,
   };
 }
 

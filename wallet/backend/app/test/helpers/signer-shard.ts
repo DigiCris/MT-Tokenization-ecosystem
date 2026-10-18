@@ -159,7 +159,19 @@ export function vectorSystem(): SnapshotSystem {
   return { contracts: rename(system.contracts), codehashes: rename(system.codehashes) };
 }
 
-export function writePolicySnapshot(dir: string, key: EdKeyPair, system: SnapshotSystem, version = 1): string {
+/** Sucesores del Guard y del module guard fijados en el snapshot ([C-GRD-17]); por defecto, ninguno. */
+export interface SnapshotSuccessors {
+  guards: { guard: string; rotationTimelock: string }[];
+  moduleGuards: string[];
+}
+
+export function writePolicySnapshot(
+  dir: string,
+  key: EdKeyPair,
+  system: SnapshotSystem,
+  version = 1,
+  successors?: SnapshotSuccessors,
+): string {
   const chain = JSON.parse(readFileSync(resolve(WALLET_ROOT, 'config/chains/base-mainnet.json'), 'utf8')) as {
     contracts: Record<string, { address: string; codehash?: string; proxyRuntimeCodehash?: string }>;
   };
@@ -235,6 +247,7 @@ export function writePolicySnapshot(dir: string, key: EdKeyPair, system: Snapsho
     session: { maxSignatureAgeSeconds: 86400, clockSkewSeconds: 60 },
     gas: { maxFeePerGasWei: '10000000000', maxPriorityFeePerGasWei: '2000000000', maxGasLimit: 1500000 },
     gasTank: { topupMaxWei: '1000000000000000', dailyCapWei: '3000000000000000', maxGasLimit: 3000000 },
+    ...(successors === undefined ? {} : { successors }),
   };
   const path = join(dir, 'policy-snapshot.json');
   const bytes = Buffer.from(`${JSON.stringify(snapshot, null, 2)}\n`);

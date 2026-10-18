@@ -25,9 +25,12 @@ import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/v1/auth.ts';
 import { balanceRoutes } from './routes/v1/balances.ts';
 import { emergencyRoutes } from './routes/v1/emergency.ts';
+import { migrationRoutes } from './routes/v1/migration.ts';
+import { notificationRoutes } from './routes/v1/notifications.ts';
 import { platformSessionsRoutes } from './routes/v1/platform-sessions.ts';
 import { operationRoutes } from './routes/v1/operations.ts';
 import { recoveryRoutes } from './routes/v1/recovery.ts';
+import { rotationRoutes } from './routes/v1/rotations.ts';
 import { sendRoutes } from './routes/v1/send.ts';
 import { sessionsRoutes } from './routes/v1/sessions.ts';
 import { swapRoutes } from './routes/v1/swap.ts';
@@ -130,6 +133,7 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
   await app.register(authRoutes, { prefix: API_PREFIX, account, csrfForSession });
   await app.register(sessionsRoutes, { prefix: API_PREFIX, account });
   await app.register(usersRoutes, { prefix: API_PREFIX, account });
+  await app.register(notificationRoutes, { prefix: API_PREFIX, notifications: deps.services.notifications });
   await app.register(platformSessionsRoutes, {
     prefix: API_PREFIX,
     client,
@@ -150,7 +154,12 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
         keyRestore: deps.wallets.keyRestore,
       });
     }
-    await app.register(recoveryRoutes, { prefix: API_PREFIX, client, enrollments: deps.wallets.enrollments });
+    await app.register(recoveryRoutes, {
+      prefix: API_PREFIX,
+      client,
+      enrollments: deps.wallets.enrollments,
+      uReplacement: deps.wallets.uReplacement,
+    });
     // Operaciones (P13): en Wallet firma U (OPERATIONS) y en Recovery firma R (RECOVERY); el 2FA de alto valor (P14)
     // sólo en Wallet.
     await app.register(operationRoutes, {
@@ -162,6 +171,9 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
     // P14: whitelist (lectura en los dos; alta y baja con U sólo en Wallet), send, swap y saldos en Wallet, y el grupo
     // de emergencia (R) en Recovery.
     await app.register(whitelistRoutes, { prefix: API_PREFIX, client, whitelist: deps.wallets.whitelist });
+    // P15: rotaciones en los dos listeners (U propone/ejecuta en Wallet, R en Recovery) y relay público de cancelación.
+    await app.register(rotationRoutes, { prefix: API_PREFIX, client, rotations: deps.wallets.rotations });
+    await app.register(migrationRoutes, { prefix: API_PREFIX, client, migrations: deps.wallets.migrations });
     if (isWallet) {
       await app.register(sendRoutes, { prefix: API_PREFIX, send: deps.wallets.send });
       await app.register(swapRoutes, { prefix: API_PREFIX, swaps: deps.wallets.swaps });

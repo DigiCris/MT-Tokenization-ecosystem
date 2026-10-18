@@ -13,6 +13,7 @@ import type { AppConfig } from './config/env.ts';
 import type { OutboxRepository } from './db/repositories/outbox-repository.ts';
 import type { Database } from './db/schema.ts';
 import { EmailOutbox } from './email/email-outbox.ts';
+import { NotificationService } from './notifications/service.ts';
 import type { Logger } from './observability/logger.ts';
 import type { Metrics } from './observability/metrics.ts';
 import { OpaqueService } from './platform-session/opaque.ts';
@@ -23,6 +24,9 @@ import { PlatformSessionIssuer } from './platform-session/token.ts';
 import { WalletUnlockService } from './platform-session/unlock.ts';
 import type { BackendPolicySnapshot } from './policy/snapshot.ts';
 import { EnrollmentService } from './recovery/enrollment.ts';
+import { MigrationService } from './recovery/migration.ts';
+import { UReplacementService } from './recovery/u-replacement.ts';
+import { RotationService } from './rotations/service.ts';
 import type { SignerKeyService } from './signer-client/sharding.ts';
 import { OperationService } from './operations/service.ts';
 import { OperationStateMachine } from './operations/state-machine.ts';
@@ -57,6 +61,8 @@ export interface AccountServices {
   nonces: RequestNonceStore;
   /** KEY_RESTORE (sólo con dependencias on-chain: el step-up verifica la U vigente). */
   keyRestore: KeyRestoreService | null;
+  /** Notificaciones in-app de la cuenta (P15.T07). */
+  notifications: NotificationService;
 }
 
 /** Cuenta [B-AUTH] y PlatformSession [B-PSES] (async: espera el WASM de OPAQUE y valida las claves al arrancar). */
@@ -136,6 +142,7 @@ export async function createAccountServices(input: {
     unlock,
     nonces: new RequestNonceStore(redis),
     keyRestore,
+    notifications: new NotificationService({ db }),
   };
 }
 
@@ -151,6 +158,11 @@ export interface WalletServices {
   send: SendService;
   swaps: SwapService;
   balances: BalanceService;
+  /** P15: rotaciones asistidas (propuesta, ejecución y relay de cancelación) y registro de U' (perdí U). */
+  rotations: RotationService;
+  uReplacement: UReplacementService;
+  /** P15.T06: migración excepcional (casos de operadores y prepare del MIGRATION_TRANSFER). */
+  migrations: MigrationService;
 }
 
 /** Onboarding de wallets (P12): requiere los servicios de cuenta armados con dependencias on-chain. */
@@ -226,5 +238,32 @@ export function createWalletServices(input: {
     send: new SendService({ db, operations, snapshot: onchain.snapshot }),
     swaps: new SwapService({ db, operations, quotes, snapshot: onchain.snapshot }),
     balances: new BalanceService({ db, rpc: onchain.rpc, snapshot: onchain.snapshot }),
+    rotations: new RotationService({
+      db,
+      operations,
+      signerKeys: input.signerKeys,
+      rpc: onchain.rpc,
+      snapshot: onchain.snapshot,
+      audit: account.audit,
+      outbox: input.outbox,
+      logger: logger.child({ component: 'rotations' }),
+      metrics,
+    }),
+    uReplacement: new UReplacementService({
+      db,
+      platformId: config.platformId,
+      opaque: account.opaque,
+      audit: account.audit,
+      emails: account.emails,
+      snapshot: onchain.snapshot,
+      metrics,
+    }),
+    migrations: new MigrationService({
+      db,
+      operations,
+      rpc: onchain.rpc,
+      snapshot: onchain.snapshot,
+      audit: account.audit,
+    }),
   };
 }

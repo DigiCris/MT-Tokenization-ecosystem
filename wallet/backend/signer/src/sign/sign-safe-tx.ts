@@ -261,7 +261,7 @@ export class SignSafeTxService {
     if (!state.registered || !state.isWallet) throw new SignerError('SAFE_NOT_REGISTERED');
     const roleKey = req.ownerRole === 'U' ? state.roles.userKey : state.roles.recoveryKey;
     if (!sameAddress(owner, roleKey)) throw new SignerError('OWNER_NOT_ROLE', req.ownerRole);
-    const configProblems = safeConfigProblems(state, snapshot.contracts);
+    const configProblems = safeConfigProblems(state, snapshot);
     if (configProblems.length > 0) throw new SignerError('SAFE_CONFIG_MODIFIED', configProblems.join(','));
     if (req.safeTx.nonce > state.nonce) throw new SignerError('NONCE_NOT_REACHED', `on-chain ${state.nonce}`);
     if (req.safeTx.nonce < state.nonce) throw new SignerError('NONCE_CONSUMED', `on-chain ${state.nonce}`);
@@ -296,6 +296,7 @@ export class SignSafeTxService {
           req.safeTx.value,
           req.safeTx.data,
           state.block,
+          state.governingGuard,
         );
         if (!pre.ok) throw new SignerError('GUARD_WOULD_REVERT', pre.reason);
       } catch (error) {
@@ -525,6 +526,7 @@ export class SignSafeTxService {
             }));
           return facts;
         case 'ROTATION_PROPOSE': {
+          facts.safeTimelock = state.timelock;
           if (op.kind === 'GUARD' || op.kind === 'MODULE_GUARD') {
             facts.currentGuard = state.guard;
             facts.currentModuleGuard = state.moduleGuard;
@@ -548,7 +550,7 @@ export class SignSafeTxService {
           if (kind !== undefined) {
             const kindEnum = Number(Object.entries(ROTATION_KINDS).find(([, v]) => v === kind)?.[0]);
             const id = await reader.executableProposal(
-              c.rotationTimelock,
+              state.timelock,
               req.safe,
               kindEnum,
               op.oldOwner,
@@ -565,7 +567,7 @@ export class SignSafeTxService {
           const kindEnum = op.target === 'GUARD' ? 3 : 4;
           const [successor, id] = await Promise.all([
             reader.successorOf(c.policyRegistry, op.target, current, block),
-            reader.executableProposal(c.rotationTimelock, req.safe, kindEnum, current, op.newValue, block),
+            reader.executableProposal(state.timelock, req.safe, kindEnum, current, op.newValue, block),
           ]);
           facts.successorRegistered = sameAddress(successor, op.newValue);
           facts.guardUpgradeMature = id !== null;

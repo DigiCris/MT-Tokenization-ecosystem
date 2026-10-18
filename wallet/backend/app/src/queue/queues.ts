@@ -9,7 +9,10 @@ export const QUEUES = {
   walletOperations: 'wallet-operations',
   email: 'email',
   notifications: 'notifications',
-  /** Transacciones de la cuenta gas tank que pide la API (deploy de Safes): las consume el proceso gas-tank. */
+  /**
+   * Transacciones de la cuenta gas tank que pide la API (deploy de Safes y retransmisión de cancelaciones de
+   * rotación): las consume el proceso gas-tank.
+   */
   gasTank: 'gas-tank',
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -20,6 +23,7 @@ export const EVENT_ROUTES: Readonly<Record<string, QueueName>> = {
   EMAIL_REQUESTED: QUEUES.email,
   NOTIFICATION_REQUESTED: QUEUES.notifications,
   WALLET_DEPLOY_REQUESTED: QUEUES.gasTank,
+  ROTATION_CANCEL_RELAY_REQUESTED: QUEUES.gasTank,
 };
 
 export function queueForEvent(eventType: string): QueueName | undefined {

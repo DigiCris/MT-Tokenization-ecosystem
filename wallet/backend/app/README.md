@@ -59,12 +59,12 @@ src/
   db/            kysely.ts, schema.ts, migrator.ts, transaction.ts (withTransaction), backup.ts
     migrations/  0001_initial_schema.ts (todas las tablas de [B-DB]), 0002_account_preferences.ts,
                  0003_signer_key_attestation.ts, 0004_wallet_onboarding.ts, 0005_operation_pipeline.ts,
-                 0006_whitelist_send_swap.ts, grants.ts
+                 0006_whitelist_send_swap.ts, 0007_rotations_recovery_migration.ts, grants.ts
     repositories/ outbox, idempotency
   audit/         audit-writer.ts (cadena HMAC, verificación)
   auth/          account-service.ts (reglas de cuenta), password.ts, common-passwords.ts, otp.ts, challenges.ts,
                  sessions.ts, csrf.ts, risk.ts (fuerza bruta y señales), totp.ts
-  email/         provider.ts, mailgun.ts, smtp.ts, templates.ts (20 plantillas), format.ts, email-outbox.ts
+  email/         provider.ts, mailgun.ts, smtp.ts, templates.ts (22 plantillas), format.ts, email-outbox.ts
   platform-session/ opaque.ts (registro y login OPAQUE), unlock.ts (desbloqueo → OPERATIONS), step-up.ts, token.ts
                  (JWS EdDSA de PlatformSession y ChallengeCompletion), sessions.ts (filas y revocación),
                  request-signature.ts (requests críticos y envelope de
@@ -72,14 +72,15 @@ src/
   queue/         queues.ts, outbox-dispatcher.ts, outbox-consumer.ts, redis.ts
   chain/         rpc-quorum.ts, safe-tx.ts, eip712.ts, signatures.ts, create2.ts, safe-proxy.ts (creation code del
                  proxy de Safe fijado), safe-state.ts (estado y deriva de configuración de una Safe), watcher.ts
-                 (finalidad y reorgs), indexer.ts (eventos de SafeL2, Transfer y DestinationWhitelist),
+                 (finalidad y reorgs), indexer.ts (eventos de SafeL2, Transfer, DestinationWhitelist y RotationTimelock),
                  reconciler.ts (DB ↔ cadena),
                  decoders/, abis/ (generados)
   signer-client/ client.ts (mTLS hacia los shards, errores tipificados), sharding.ts (asignación por hash guardada en
                  signer_keys, S de onboarding y de rotación, reasignación tras una migración)
   gas/           gas-tank.ts (recargas de S, deploy de Safes y relay de cancelaciones por el shard `platform`)
-  policy/        snapshot.ts (snapshot de policy firmado completo), store.ts (anti-rollback en policy_snapshots),
-                 evaluate.ts (policy del backend, contrastada con los vectores compartidos)
+  policy/        snapshot.ts (snapshot de policy firmado completo, con los Guards sucesores), store.ts (anti-rollback
+                 en policy_snapshots), evaluate.ts (policy del backend, contrastada con los vectores compartidos),
+                 guards.ts (Guards, timelocks y module guards aceptados: el del sistema y los sucesores)
   operations/    state-machine.ts (transiciones auditadas), nonce-manager.ts, service.ts (prepare, par de swap, firmas,
                  cancelación por NoOp, lecturas, vencimientos), chain-context.ts, challenges.ts, ledger.ts (24 h),
                  intent.ts (intención canónica y vistas de la API), pairing.ts (approve/swap), groups.ts (estado
@@ -89,17 +90,24 @@ src/
   send/          service.ts (prepare de transfer), notifications.ts (aviso de alto valor ejecutado)
   swap/          quote.ts (QuoterV2), prepare.ts (par approve/swap, re-cotización, revocación, grupo), coordinator.ts
                  (pares incompletos, estado del grupo, allowances residuales)
-  notifications/ notify.ts (notificaciones in-app con deduplicación)
+  notifications/ notify.ts (notificaciones in-app con deduplicación), service.ts (bandeja: lectura y marca de leída)
+  rotations/     service.ts (propuesta, ejecución y relay de cancelación), facts.ts (KeyAcceptance y S′ del signer),
+                 sync.ts (eventos del timelock → estados y efectos, madurez, retiro de S en el shard), cancel-relay.ts
+                 (gas tank)
+  operators/     service.ts (operadores con TOTP), cli.ts (`pnpm operators`: alta, migración, reemplazo de S)
   worker/        main.ts (cola wallet-operations y lazos periódicos), pipeline.ts (12 pasos), lease.ts (lease por
-                 Safe con fencing), fees.ts (EIP-1559 con topes y reemplazo), effects.ts (efectos de P14)
+                 Safe con fencing), fees.ts (EIP-1559 con topes y reemplazo), effects.ts (efectos de P14 y P15)
   wallets/       wallet-service.ts (onboarding: alta, U, asignación de S, Safe esperada, pedido de deploy),
                  deployer.ts (deploy y activación en el proceso gas-tank), verification.ts (V9 §16), salt.ts,
                  key-restore.ts (KEY_RESTORE), sovereign.ts (SOVEREIGN_MODIFIED), balances.ts, schemas.ts
-  recovery/      enrollment.ts (enrollment de R y autorización de creación firmada por U)
+  recovery/      enrollment.ts (enrollment de R —también el de reemplazo— y autorización de creación firmada por U),
+                 u-replacement.ts (perdí U: registro de U′), migration.ts (migración excepcional), executor-replacement.ts
+                 (pérdida de S: reemplazo soberano)
   observability/ logger.ts, redaction.ts, metrics.ts
   api/           server.ts (dos listeners), errors.ts (RFC 9457), health.ts, routes/ (health, v1/auth, v1/users,
                  v1/sessions, v1/platform-sessions, v1/wallets, v1/recovery, v1/operations, v1/whitelist, v1/send,
-                 v1/swap, v1/balances, v1/emergency), plugins/ (auth y CSRF, rate limit, idempotencia, OpenAPI,
+                 v1/swap, v1/balances, v1/emergency, v1/rotations, v1/migration, v1/notifications), plugins/ (auth y
+                 CSRF, rate limit, idempotencia, OpenAPI,
                  seguridad)
   cli/           db.ts, audit-verify.ts, opaque-setup.ts, dev-session.ts, signer-reassign.ts
   services.ts    armado de los servicios de cuenta y de onboarding (proceso `api` y tests)
@@ -308,6 +316,38 @@ Alertas en logs (campo `alert`): `REORG_DETECTED`, `TX_REVERTED`, `TX_STUCK`, `F
 
 Métricas: `mtw_whitelist_events_total{event}`, `mtw_two_factor_challenges_total{method,result}`,
 `mtw_swap_quotes_total{result}`, `mtw_notifications_created_total{type}`.
+
+## Rotaciones, recovery y migración (P15)
+
+- **Rotaciones** (`src/rotations/`): `POST /wallets/{id}/rotations` prepara `RotationTimelock.propose` para firmar con
+  U (Wallet: U, R, S, GUARD, MODULE_GUARD) o con R (Recovery: U o S, [C-GRD-11]). La clave nueva nunca la manda el
+  cliente: U′ sale del flujo U_REPLACEMENT (registro OPAQUE PENDING + KeyAcceptance), R′ del enrollment de reemplazo
+  (con su KeyAcceptance), S′ la crea el signer para la wallet (con su SignerKeyAttestation) y el Guard sucesor del
+  PolicyRegistry; el worker y el signer vuelven a verificar ese material. Con el evento `RotationProposed` confirmado
+  la rotación queda PENDING_TIMELOCK (también las propuestas on-chain que no preparó el backend: origen ONCHAIN, con
+  email y notificación); a las 48 h (reloj de la cadena) READY_TO_EXECUTE y `POST /rotations/{id}/execute/prepare`
+  arma `swapOwner(prev, old, new)` (prev on-chain) o `setGuard`/`setModuleGuard`. Efectos al ejecutarse: U′ → su
+  registro OPAQUE ACTIVE; R′ → su enrollment CONFIRMED; S′ → ACTIVE y la anterior RETIRED (y retirada en su shard).
+- **Cancelación** (`POST /rotations/{id}/cancel`, pública): verifica la firma EIP-712 `CancelRotation` de la U o la R
+  vigentes y la propuesta pendiente, y el gas tank la retransmite (cola `gas-tank`, rate limit propio por propuesta).
+  Sin el backend: [runbook](../../docs/runbooks/rotation-cancellation.md).
+- **Perdí U** (`POST /recovery/u-replacement`, scope U_REPLACEMENT, sólo Wallet) y **perdí R** (enrollment con
+  OPERATIONS en Wallet → R′ desde Recovery con su KeyAcceptance): los dos terminan en una rotación de 48 h.
+- **Migración excepcional** (`POST /wallets/{id}/migration/prepare`, firma la credencial sana): casos de operadores
+  con doble aprobación por la CLI y autorización on-chain de la Governance Safe ([runbook](../../docs/runbooks/exceptional-migration.md)).
+- **Pérdida de S** y **upgrade del Guard**: [runbook de S](../../docs/runbooks/executor-key-loss.md) y
+  [runbook del Guard](../../docs/runbooks/guard-upgrade.md) (los sucesores se fijan en el snapshot de policy).
+- **Notificaciones**: `GET /notifications` (cursor, no leídas) y `POST /notifications/{id}/read`, en los dos listeners;
+  todos los eventos de [B-MAIL-03] llevan email y notificación in-app (la pausa de cooperación por integridad, con su
+  disparador en P20).
+
+CLI de operadores (con la configuración del backend; el TOTP del operador va por stdin):
+
+```bash
+pnpm operators operator:add --email <email> --name <nombre> --totp-uri-file <archivo 0600>
+pnpm operators migration:request|migration:approve|migration:cancel|migration:status …
+pnpm operators executor:prepare|executor:activate --wallet <id> --operator <email> [--out <dir>]
+```
 
 ## PlatformSession en local (`dev:session`)
 

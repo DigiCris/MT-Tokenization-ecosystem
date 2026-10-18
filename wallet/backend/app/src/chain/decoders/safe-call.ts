@@ -33,8 +33,15 @@ export type DecodedCall =
     }
   | { kind: 'WHITELIST_ADD'; destination: Address }
   | { kind: 'WHITELIST_REMOVE'; destination: Address }
-  | { kind: 'ROTATION_PROPOSE'; rotationKind: RotationKindValue; oldValue: Address; newValue: Address }
-  | { kind: 'ROTATION_CANCEL'; proposalId: Hex }
+  | {
+      kind: 'ROTATION_PROPOSE';
+      rotationKind: RotationKindValue;
+      oldValue: Address;
+      newValue: Address;
+      /** RotationTimelock destino (el del sistema o el de un Guard sucesor; la policy exige el de la Safe). */
+      timelock: Address;
+    }
+  | { kind: 'ROTATION_CANCEL'; proposalId: Hex; timelock: Address }
   | { kind: 'SWAP_OWNER'; prevOwner: Address; oldOwner: Address; newOwner: Address }
   | { kind: 'SET_GUARD'; guard: Address }
   | { kind: 'SET_MODULE_GUARD'; moduleGuard: Address };
@@ -139,12 +146,13 @@ export function decodeSafeCall(system: SystemAddresses, safe: Address, call: Saf
       : { kind: 'WHITELIST_REMOVE', destination };
   }
 
-  if (isAddressEqual(to, system.rotationTimelock)) {
+  const timelock = [system.rotationTimelock, ...(system.rotationTimelocks ?? [])].find((t) => isAddressEqual(to, t));
+  if (timelock !== undefined) {
     const { functionName, args } = strictDecode(rotationTimelockAbi, call.data, ['propose', 'cancel']);
-    if (functionName === 'cancel') return { kind: 'ROTATION_CANCEL', proposalId: (args as [Hex])[0] };
+    if (functionName === 'cancel') return { kind: 'ROTATION_CANCEL', proposalId: (args as [Hex])[0], timelock: to };
     const [kind, oldValue, newValue] = args as [number, Address, Address];
     if (!ROTATION_KINDS.has(kind)) throw new UndecodableCallError('INVALID_ROTATION_KIND');
-    return { kind: 'ROTATION_PROPOSE', rotationKind: kind as RotationKindValue, oldValue, newValue };
+    return { kind: 'ROTATION_PROPOSE', rotationKind: kind as RotationKindValue, oldValue, newValue, timelock: to };
   }
 
   throw new UndecodableCallError('UNKNOWN_TARGET');

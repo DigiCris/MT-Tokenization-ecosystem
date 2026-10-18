@@ -8,6 +8,11 @@
 //    ser una EOA (sin código o con designador EIP-7702), distinta de U y nunca usada por otra wallet.
 // 4. Wallet (ONBOARDING), ya con S asignada y la Safe esperada calculada, envía la WalletCreationAuthorization firmada
 //    por U: el backend la acepta sólo si cada campo coincide con lo registrado (R del enrollment, S, salt, Safe).
+//
+// Reemplazo de R (P15.T05, "perdí R"): con la wallet ACTIVE, Wallet (OPERATIONS, U desbloqueada) crea un enrollment de
+// propósito REPLACEMENT; Recovery (ENROLLMENT) registra su Enrollment Key y envía R' con la prueba de control y además
+// la KeyAcceptance de R' [W-01] (nonce = el del enrollment). No hay paso 4: U propone la rotación de R hacia R'
+// (rotations/service.ts) y, ejecutada on-chain, el enrollment queda CONFIRMED y el anterior RETIRED.
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
@@ -26,10 +31,14 @@ import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
 import { jwkThumbprint, verifyP256, type P256PublicJwk } from '../platform-session/keys.ts';
 import type { BackendPolicySnapshot } from '../policy/snapshot.ts';
+import { keyAcceptanceValid } from '../rotations/facts.ts';
 import {
   assertKeyUnused,
+  assertMigrationKey,
   liveEnrollment,
   liveKeys,
+  migrationReuse,
+  nextKeyVersion,
   walletForActor,
   type WalletActor,
 } from '../wallets/wallet-service.ts';
@@ -65,7 +74,8 @@ export type RecoveryEnrollment = z.infer<typeof RecoveryEnrollmentSchema>;
 export interface EnrollmentView {
   id: string;
   walletId: string;
-  status: 'REQUESTED' | 'SUBMITTED' | 'CONFIRMED' | 'EXPIRED' | 'REJECTED';
+  purpose: 'ONBOARDING' | 'REPLACEMENT';
+  status: 'REQUESTED' | 'SUBMITTED' | 'CONFIRMED' | 'EXPIRED' | 'REJECTED' | 'RETIRED';
   expiresAt: string;
   enrollmentKeyRegistered: boolean;
   recoveryKey: Address | null;
@@ -108,6 +118,7 @@ function view(row: EnrollmentRow, now: number): EnrollmentView {
   return {
     id: row.enrollment_id,
     walletId: row.wallet_id,
+    purpose: row.purpose,
     status: effectiveStatus(row, now),
     expiresAt: row.expires_at.toISOString(),
     enrollmentKeyRegistered: row.enrollment_key_jwk !== null,
@@ -162,11 +173,21 @@ export class EnrollmentService {
     if (status !== 'REQUESTED') throw new ApiError('CONFLICT', { detail: `el enrollment está ${status}` });
   }
 
-  /** POST /wallets/{id}/recovery/enrollments (Wallet, ONBOARDING). Un enrollment nuevo reemplaza a los anteriores. */
+  /**
+   * POST /wallets/{id}/recovery/enrollments (Wallet): ONBOARDING durante el onboarding u OPERATIONS (U desbloqueada)
+   * para el reemplazo de R de una wallet ACTIVE. Un enrollment nuevo reemplaza a los anteriores del mismo propósito.
+   */
   async request(
     actor: WalletActor,
     walletId: string,
-  ): Promise<{ enrollmentId: string; nonce: Hex; expiresAt: string; status: 'REQUESTED' }> {
+  ): Promise<{
+    enrollmentId: string;
+    nonce: Hex;
+    expiresAt: string;
+    status: 'REQUESTED';
+    purpose: 'ONBOARDING' | 'REPLACEMENT';
+  }> {
+    if (actor.platform.scope === 'OPERATIONS') return this.#requestReplacement(actor, walletId);
     const { db, platformId } = this.#d;
     const result = await withTransaction(
       db,
@@ -222,12 +243,83 @@ export class EnrollmentService {
           nonce: bufferToHex(nonce),
           expiresAt: expiresAt.toISOString(),
           status: 'REQUESTED' as const,
+          purpose: 'ONBOARDING' as const,
         };
       },
       { auditLock: true },
     );
     this.#d.metrics.walletOnboarding.inc({ step: 'enrollment', result: 'requested' });
     return result;
+  }
+
+  /** Enrollment de R' para el reemplazo de R (wallet ACTIVE, sin otra rotación de R en curso). */
+  async #requestReplacement(
+    actor: WalletActor,
+    walletId: string,
+  ): Promise<{ enrollmentId: string; nonce: Hex; expiresAt: string; status: 'REQUESTED'; purpose: 'REPLACEMENT' }> {
+    const { db, platformId } = this.#d;
+    return withTransaction(
+      db,
+      async (trx) => {
+        const wallet = await walletForActor(trx, platformId, actor, walletId, { forUpdate: true });
+        if (wallet.status !== 'ACTIVE' || wallet.safe_address === null) throw new ApiError('WALLET_NOT_ACTIVE');
+        const rotating = await trx
+          .selectFrom('rotation_requests')
+          .select('id')
+          .where('wallet_id', '=', walletId)
+          .where('role', '=', 'R')
+          .where('status', 'in', [
+            'AWAITING_SIGNATURE',
+            'PROPOSING',
+            'PENDING_TIMELOCK',
+            'READY_TO_EXECUTE',
+            'EXECUTING',
+          ])
+          .executeTakeFirst();
+        if (rotating) throw new ApiError('CONFLICT', { detail: 'ya hay una rotación de R en curso' });
+        // Los reemplazos anteriores sin proponer quedan rechazados y su R' deja de estar viva.
+        await trx
+          .updateTable('recovery_metadata')
+          .set({ status: 'REJECTED' })
+          .where('wallet_id', '=', walletId)
+          .where('purpose', '=', 'REPLACEMENT')
+          .where('status', 'in', ['REQUESTED', 'SUBMITTED'])
+          .execute();
+        await trx
+          .updateTable('wallet_keys_metadata')
+          .set({ status: 'REVOKED', deactivated_at: sql`now()` })
+          .where('wallet_id', '=', walletId)
+          .where('role', '=', 'R')
+          .where('status', '=', 'PENDING')
+          .execute();
+        const enrollmentId = randomUUID();
+        const nonce = randomBytes(32);
+        const expiresAt = new Date(this.#now() + ENROLLMENT_TTL_SECONDS * 1000);
+        await trx
+          .insertInto('recovery_metadata')
+          .values({
+            wallet_id: walletId,
+            enrollment_id: enrollmentId,
+            nonce,
+            status: 'REQUESTED',
+            purpose: 'REPLACEMENT',
+            expires_at: expiresAt,
+          })
+          .execute();
+        await this.#audit(trx, actor, walletId, enrollmentId, 'RECOVERY_ENROLLMENT_REQUESTED', {
+          purpose: 'REPLACEMENT',
+          expiresAt: expiresAt.toISOString(),
+        });
+        return {
+          enrollmentId,
+          nonce: bufferToHex(nonce),
+          expiresAt: expiresAt.toISOString(),
+          status: 'REQUESTED' as const,
+          purpose: 'REPLACEMENT' as const,
+        };
+      },
+      { auditLock: true },
+    );
   }
 
   /** GET /recovery/enrollments/{id} (ambas apps, sesión de cuenta). */
@@ -277,6 +369,8 @@ export class EnrollmentService {
       connectorId?: string | undefined;
       proofOfControl: Hex;
       storageFlags?: StorageFlags | undefined;
+      /** Sólo en el reemplazo de R: KeyAcceptance de R' con el nonce del enrollment. */
+      keyAcceptance?: { nonce: Hex; signature: Hex } | undefined;
     },
   ): Promise<EnrollmentView> {
     const { db, platformId, chainId } = this.#d;
@@ -291,6 +385,14 @@ export class EnrollmentService {
     }
     if (input.rType === 'INTERNAL' && input.storageFlags === undefined) {
       throw new ApiError('VALIDATION_FAILED', { detail: 'una R interna requiere sus backups (storageFlags)' });
+    }
+    const replacement = row.purpose === 'REPLACEMENT';
+    if (replacement !== (input.keyAcceptance !== undefined)) {
+      throw new ApiError('VALIDATION_FAILED', {
+        detail: replacement
+          ? "el reemplazo de R requiere la KeyAcceptance de R'"
+          : 'la KeyAcceptance sólo corresponde al reemplazo de R',
+      });
     }
 
     const e = input.enrollment;
@@ -333,6 +435,20 @@ export class EnrollmentService {
     if (!isAddressEqual(signer, recoveryKey)) {
       throw new ApiError('SIGNATURE_INVALID', { detail: 'la prueba de control no la firmó R' });
     }
+    if (input.keyAcceptance !== undefined) {
+      const ka = input.keyAcceptance;
+      if (row.nonce === null || ka.nonce.toLowerCase() !== bufferToHex(row.nonce)) {
+        throw new ApiError('CONFLICT', { detail: 'la KeyAcceptance no lleva el nonce de este enrollment' });
+      }
+      const accepted = await keyAcceptanceValid(snapshot, {
+        walletId: row.wallet_id,
+        role: 'R',
+        newKey: recoveryKey,
+        nonce: ka.nonce,
+        signature: ka.signature,
+      });
+      if (!accepted) throw new ApiError('SIGNATURE_INVALID', { detail: "KeyAcceptance inválida para R'" });
+    }
     // R tiene que ser una EOA ([F-KEY-09]): sin código o con un designador EIP-7702 (lectura con quórum).
     const { value: code } = await this.#d.rpc.getCode(recoveryKey);
     const normalized = (code ?? '0x').toLowerCase();
@@ -355,7 +471,9 @@ export class EnrollmentService {
         if (keys.U !== null && isAddressEqual(keys.U, recoveryKey)) {
           throw new ApiError('KEY_NOT_ALLOWED', { detail: 'R no puede ser la misma clave que U' });
         }
-        await assertKeyUnused(trx, recoveryKey, { walletId: current.wallet_id, role: 'R' });
+        const reuse = replacement ? null : await migrationReuse(trx, current.wallet_id);
+        assertMigrationKey(reuse, 'R', recoveryKey);
+        await assertKeyUnused(trx, recoveryKey, { walletId: current.wallet_id, role: 'R' }, reuse);
         const updated = await trx
           .updateTable('recovery_metadata')
           .set({
@@ -367,6 +485,8 @@ export class EnrollmentService {
             enrollment_key_signature: Buffer.from(input.enrollmentKeySignature, 'base64url'),
             r_proof_signature: Buffer.from(input.proofOfControl.slice(2), 'hex'),
             storage_flags: input.storageFlags === undefined ? null : JSON.stringify(input.storageFlags),
+            key_acceptance: input.keyAcceptance === undefined ? null : JSON.stringify(input.keyAcceptance),
+            reused_from_wallet_id: reuse?.role === 'R' ? reuse.fromWalletId : null,
             submitted_at: new Date(this.#now()),
           })
           .where('id', '=', current.id)
@@ -378,14 +498,16 @@ export class EnrollmentService {
             wallet_id: current.wallet_id,
             role: 'R',
             key_address: addressToBuffer(recoveryKey),
-            key_version: 1,
+            key_version: replacement ? await nextKeyVersion(trx, current.wallet_id, 'R') : 1,
             status: 'PENDING',
             source: input.rType === 'INTERNAL' ? 'INTERNAL' : 'EXTERNAL_WALLET',
             storage_flags: JSON.stringify(input.storageFlags ?? {}),
+            reused_from_wallet_id: reuse?.role === 'R' ? reuse.fromWalletId : null,
           })
           .execute();
         await this.#audit(trx, actor, current.wallet_id, enrollmentId, 'RECOVERY_ENROLLMENT_SUBMITTED', {
           recoveryKey,
+          purpose: current.purpose,
           rType: input.rType,
           ...(input.rType === 'EXTERNAL' ? { connectorId: input.connectorId } : {}),
         });

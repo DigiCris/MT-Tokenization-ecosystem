@@ -41,6 +41,7 @@ import { dailyOutflow } from './ledger.ts';
 import { discardUnqueuedPair, lockGroup, refreshGroupStatus } from './groups.ts';
 import { allocateNonces, lockWallet, refreshNextNonce } from './nonce-manager.ts';
 import { groupPartner, swapPairingFacts } from './pairing.ts';
+import { rotationFacts } from '../rotations/facts.ts';
 import {
   OPERATION_STATUSES,
   TransitionConflictError,
@@ -139,6 +140,9 @@ function selectOperation(db: Kysely<Database> | Transaction<Database>, id: strin
   return db.selectFrom('wallet_operations').selectAll().where('id', '=', id).executeTakeFirst();
 }
 
+/** Lo único que la plataforma co-firma en una wallet MIGRATING (migración excepcional aprobada). */
+export const MIGRATING_OPERATIONS: readonly OperationKind[] = ['MIGRATION_TRANSFER', 'NOOP_CANCEL'];
+
 export function roleForScope(scope: string): 'U' | 'R' {
   if (scope === 'OPERATIONS') return 'U';
   if (scope === 'RECOVERY') return 'R';
@@ -171,9 +175,14 @@ export class OperationService {
     return this.#d.now?.() ?? Date.now();
   }
 
-  /** Wallet del actor, ACTIVE y atada a la PlatformSession ([B-AUTHZ]: de otro usuario → 404). */
-  #walletFor(actor: OperationActor, walletId: string): Promise<ActorWallet> {
-    return walletForActor(this.#d.db, actor, walletId);
+  /**
+   * Wallet del actor, ACTIVE y atada a la PlatformSession ([B-AUTHZ]: de otro usuario → 404). Una wallet MIGRATING
+   * (migración excepcional aprobada, P15.T06) sólo admite la migración y la cancelación por NoOp.
+   */
+  #walletFor(actor: OperationActor, walletId: string, operationType?: OperationKind): Promise<ActorWallet> {
+    return walletForActor(this.#d.db, actor, walletId, {
+      allowMigrating: operationType !== undefined && MIGRATING_OPERATIONS.includes(operationType),
+    });
   }
 
   async #operationFor(userId: string, operationId: string): Promise<NonNullable<OperationRow>> {
@@ -235,7 +244,7 @@ export class OperationService {
   /** Prepara una operación CREATED con nonce asignado [B-NONCE-01]; la firma U/R llega después. */
   async prepare(actor: OperationActor, input: PrepareInput): Promise<PreparedOperation> {
     const role = roleForScope(actor.session.claims.scope);
-    const wallet = await this.#walletFor(actor, input.walletId);
+    const wallet = await this.#walletFor(actor, input.walletId, input.operationType);
     return this.#prepareFor(actor, wallet, role, input, null);
   }
 
@@ -277,7 +286,7 @@ export class OperationService {
         detail: `la llamada revertiría (${decodeRevertReason(ctx.precheck.callRevert)})`,
       });
     }
-    return { call, twoFactor, onchainNonce: BigInt(ctx.state.nonce) };
+    return { call, twoFactor, onchainNonce: BigInt(ctx.state.nonce), roles: ctx.state.roles };
   }
 
   async #prepareFor(
@@ -289,7 +298,7 @@ export class OperationService {
   ): Promise<PreparedOperation> {
     const snapshot = this.#d.snapshot();
     // El SWAP N+1 se prepara antes de que se ejecute su approve: el pre-check del Guard lo hace el worker.
-    const { call, twoFactor, onchainNonce } = await this.#check(
+    const { call, twoFactor, onchainNonce, roles } = await this.#check(
       actor,
       wallet,
       role,
@@ -304,7 +313,8 @@ export class OperationService {
       this.#d.db,
       async (trx) => {
         const locked = await lockWallet(trx, wallet.id);
-        if (locked.status !== 'ACTIVE') throw new ApiError('WALLET_NOT_ACTIVE');
+        const migrating = locked.status === 'MIGRATING' && MIGRATING_OPERATIONS.includes(input.operationType);
+        if (locked.status !== 'ACTIVE' && !migrating) throw new ApiError('WALLET_NOT_ACTIVE');
         await this.#expireStaleIn(trx, wallet.id);
         const nonce = cancels ? cancels.nonce : await allocateNonces(trx, wallet.id, onchainNonce, 1);
         const inserted = await this.#insertOperation(trx, {
@@ -317,6 +327,7 @@ export class OperationService {
           twoFactor,
           expiresAt,
           cancels: cancels?.operationId ?? null,
+          roles,
         });
         await input.afterInsert?.(trx, {
           operationId: inserted.id,
@@ -346,6 +357,7 @@ export class OperationService {
       twoFactor: boolean;
       expiresAt: Date;
       cancels: string | null;
+      roles?: { userKey: Address; recoveryKey: Address; executor: Address };
     },
   ): Promise<{ id: string; intent: CanonicalIntent; hash: Hex }> {
     const snapshot = this.#d.snapshot();
@@ -358,7 +370,7 @@ export class OperationService {
       operationType: p.input.operationType,
       ownerRole: p.role,
       safeTx: safeTxToJson(safeTx),
-      decoded: decodedView(p.call),
+      decoded: decodedView(p.call, p.roles),
     };
     const row = await trx
       .insertInto('wallet_operations')
@@ -619,6 +631,8 @@ export class OperationService {
     const challenge = await challengeFacts(this.#d.db, op, call);
     // Par de un swap: la otra mitad tiene que existir y estar viva; su firma puede llegar después.
     const pairing = await swapPairingFacts(this.#d.db, op, call, { mode: 'anticipate' });
+    // Rotación: KeyAcceptance de U'/R' o S' creada por el signer, desde el pedido de rotación de la operación.
+    const rotation = await rotationFacts(this.#d.db, snapshot, op, call);
     const { ctx, verdict } = await this.#evaluate({
       walletId: op.wallet_id,
       safe: intent.safe,
@@ -629,7 +643,7 @@ export class OperationService {
       declaredType: intent.operationType,
       precheck: false,
       excludeOperationId: op.id,
-      extraFacts: { ...challenge, ...pairing },
+      extraFacts: { ...challenge, ...pairing, ...rotation },
     });
     const roleKey = role === 'U' ? ctx.state.roles.userKey : ctx.state.roles.recoveryKey;
     if (!isAddressEqual(owner, roleKey)) {
@@ -773,7 +787,7 @@ export class OperationService {
   ): Promise<{ operation: OperationView; noop: PreparedOperation | null }> {
     const op = await this.#operationFor(actor.userId, operationId);
     const role = roleForScope(actor.session.claims.scope);
-    const wallet = await this.#walletFor(actor, op.wallet_id);
+    const wallet = await this.#walletFor(actor, op.wallet_id, 'NOOP_CANCEL');
     const groupId = op.group_id;
     if (groupId !== null && (op.status === 'CREATED' || op.status === 'USER_SIGNED') && op.s_signature === null) {
       // Par de swap que todavía no se encoló: se descarta entero sin NoOp (S nunca co-firmó ninguna de las mitades).

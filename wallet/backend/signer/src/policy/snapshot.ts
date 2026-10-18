@@ -95,6 +95,17 @@ export const PolicySnapshotSchema = z
         maxGasLimit: z.number().int().min(21_000),
       })
       .strict(),
+    /**
+     * Sucesores del Guard y del module guard ya registrados en el PolicyRegistry ([C-GRD-17], ADR-029): una Safe que
+     * instaló uno sigue en modo asistido. Cada Guard sucesor trae su propio RotationTimelock. Opcional.
+     */
+    successors: z
+      .object({
+        guards: z.array(z.object({ guard: address, rotationTimelock: address }).strict()).max(8),
+        moduleGuards: z.array(address).max(8),
+      })
+      .strict()
+      .default({ guards: [], moduleGuards: [] }),
   })
   .strict()
   .superRefine((s, ctx) => {

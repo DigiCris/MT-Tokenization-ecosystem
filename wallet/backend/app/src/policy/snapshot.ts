@@ -97,6 +97,17 @@ const SnapshotSchema = z.object({
   }),
   gas: z.object({ maxFeePerGasWei: amount, maxPriorityFeePerGasWei: amount, maxGasLimit: z.number().int() }),
   gasTank: z.object({ topupMaxWei: amount, dailyCapWei: amount, maxGasLimit: z.number().int() }),
+  /**
+   * Sucesores del Guard y del module guard ([C-GRD-17], ADR-029) ya registrados en el PolicyRegistry: una Safe que
+   * instaló uno sigue operando en modo asistido. Cada Guard sucesor trae su propio RotationTimelock. Opcional: un
+   * snapshot sin sucesores sólo acepta los contratos de `contracts`.
+   */
+  successors: z
+    .object({
+      guards: z.array(z.object({ guard: address, rotationTimelock: address })).max(8),
+      moduleGuards: z.array(address).max(8),
+    })
+    .default({ guards: [], moduleGuards: [] }),
 });
 
 type ParsedSnapshot = z.infer<typeof SnapshotSchema>;
@@ -114,6 +125,10 @@ export interface BackendPolicySnapshot {
   swap: ParsedSnapshot['swap'];
   session: ParsedSnapshot['session'];
   gas: ParsedSnapshot['gas'];
+  successors: {
+    guards: readonly { guard: Address; rotationTimelock: Address }[];
+    moduleGuards: readonly Address[];
+  };
   sha256: `0x${string}`;
 }
 
@@ -147,6 +162,7 @@ export function parsePolicySnapshot(json: unknown, sha256: `0x${string}`): Backe
     swap: data.swap,
     session: data.session,
     gas: data.gas,
+    successors: data.successors,
     sha256,
   };
 }

@@ -96,7 +96,17 @@ const SHARED_ONBOARDING_PATHS = [
   '/api/v1/operations/{id}/signatures',
   '/api/v1/operations/{id}/cancel',
   '/api/v1/wallets/{id}/whitelist',
+  // P15: rotaciones (U en Wallet, R en Recovery; GET y POST en la misma ruta), relay público de cancelación y la
+  // migración excepcional (firma la credencial sana).
+  '/api/v1/wallets/{id}/rotations',
+  '/api/v1/rotations/{id}/execute/prepare',
+  '/api/v1/rotations/{id}/cancel',
+  '/api/v1/wallets/{id}/migration/prepare',
 ];
+/** P15.T07: la bandeja in-app de la cuenta, en los dos listeners. */
+const NOTIFICATION_PATHS = ['/api/v1/notifications', '/api/v1/notifications/{id}/read'];
+/** Rutas compartidas con dos métodos: GET y POST /wallets/{id}/rotations. */
+const SHARED_EXTRA_OPERATIONS = 1;
 /**
  * Sólo en el listener de Wallet ([B-API], [B-AUTHZ] 3): desbloqueo con U (OPAQUE), el grupo `wallet` y, del grupo
  * `recovery`, crear el enrollment e incorporar la autorización de U.
@@ -114,6 +124,8 @@ const WALLET_ONLY_PATHS = [
   '/api/v1/wallets/{id}/deployment',
   '/api/v1/wallets/{id}/recovery/enrollments',
   '/api/v1/recovery/enrollments/{id}/incorporate',
+  // P15: registro de U' del flujo "perdí U" (scope U_REPLACEMENT, sólo Wallet).
+  '/api/v1/recovery/u-replacement',
   // P14: 2FA de alto valor, alta y baja de whitelist con U, send, swap y saldos.
   '/api/v1/operations/{id}/two-factor',
   '/api/v1/wallets/{id}/whitelist/requests',
@@ -190,7 +202,7 @@ describe('spec OpenAPI por listener', () => {
     expect(doc.openapi).toBe('3.1.0');
     expect(doc.info.title).toBe(client === 'WALLET' ? 'MTW API — Wallet' : 'MTW API — Recovery');
     const paths = Object.keys(doc.paths).sort();
-    const shared = [...ACCOUNT_PATHS, ...SHARED_ONBOARDING_PATHS];
+    const shared = [...ACCOUNT_PATHS, ...NOTIFICATION_PATHS, ...SHARED_ONBOARDING_PATHS];
     expect(paths).toEqual(
       client === 'WALLET'
         ? [...shared, ...WALLET_ONLY_PATHS, '/api/v1/test/wallet-only'].sort()
@@ -233,7 +245,8 @@ describe('spec OpenAPI por listener', () => {
     const api = listeners[client]!.app.apiRoutes.map(
       (route) => `${route.method} ${route.url.replace(/:([A-Za-z0-9_]+)/g, '{$1}')}`,
     );
-    const shared = ACCOUNT_OPERATIONS + SHARED_ONBOARDING_PATHS.length;
+    const shared =
+      ACCOUNT_OPERATIONS + NOTIFICATION_PATHS.length + SHARED_ONBOARDING_PATHS.length + SHARED_EXTRA_OPERATIONS;
     expect(api.length).toBe(
       client === 'WALLET' ? shared + WALLET_ONLY_PATHS.length + 1 : shared + RECOVERY_ONLY_PATHS.length,
     );

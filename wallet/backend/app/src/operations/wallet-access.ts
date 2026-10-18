@@ -1,7 +1,8 @@
 // Resolución de la wallet de un request crítico [B-AUTHZ]: la wallet tiene que ser del usuario de la sesión de cuenta
 // (si no, 404: no se revela que existe), la PlatformSession tiene que estar atada a esa wallet y a su Safe, y la wallet
-// tiene que estar ACTIVE (SOVEREIGN_MODIFIED tiene su propio error: la plataforma dejó de cooperar). La usan las
-// operaciones (P13) y los flujos de whitelist, send y swap (P14).
+// tiene que estar ACTIVE (SOVEREIGN_MODIFIED tiene su propio error: la plataforma dejó de cooperar; MIGRATING sólo si
+// quien llama lo habilita: la migración excepcional de P15). La usan las operaciones (P13), los flujos de whitelist,
+// send y swap (P14) y los de rotación y migración (P15).
 import type { Kysely } from 'kysely';
 import { isAddressEqual, type Address } from 'viem';
 import { ApiError } from '../api/errors.ts';
@@ -23,6 +24,7 @@ export async function walletForActor(
   db: Kysely<Database>,
   actor: { userId: string; session: VerifiedPlatformSession },
   walletId: string,
+  options: { allowMigrating?: boolean } = {},
 ): Promise<ActorWallet> {
   if (!isUuid(walletId)) throw new ApiError('NOT_FOUND');
   const wallet = await db
@@ -35,7 +37,9 @@ export async function walletForActor(
     throw new ApiError('SCOPE_NOT_ALLOWED', { detail: 'la PlatformSession es de otra wallet' });
   }
   if (wallet.status === 'SOVEREIGN_MODIFIED') throw new ApiError('SAFE_CONFIG_MODIFIED');
-  if (wallet.status !== 'ACTIVE' || wallet.safe_address === null) throw new ApiError('WALLET_NOT_ACTIVE');
+  // En migración excepcional (P15.T06) la wallet vieja sólo admite lo que habilita quien llama (la migración).
+  const usable = wallet.status === 'ACTIVE' || (wallet.status === 'MIGRATING' && options.allowMigrating === true);
+  if (!usable || wallet.safe_address === null) throw new ApiError('WALLET_NOT_ACTIVE');
   const safe = bufferToAddress(wallet.safe_address);
   const claimed = actor.session.claims.safe;
   if (claimed === null || !isAddressEqual(claimed, safe)) {

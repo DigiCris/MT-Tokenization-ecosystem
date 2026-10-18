@@ -8,9 +8,9 @@ import { sql } from 'kysely';
 import { isAddressEqual, type Address, type Hex } from 'viem';
 import { ApiError } from '../api/errors.ts';
 import type { AuditWriter } from '../audit/audit-writer.ts';
-import { securityGuardAbi } from '../chain/abis/index.ts';
 import { platformDigest } from '../chain/eip712.ts';
 import type { RpcQuorumClient } from '../chain/rpc-quorum.ts';
+import { readSafeState } from '../chain/safe-state.ts';
 import { InvalidSignatureError, recoverStrictSigner } from '../chain/signatures.ts';
 import type { Database } from '../db/schema.ts';
 import { withTransaction } from '../db/transaction.ts';
@@ -92,12 +92,11 @@ export class KeyRestoreService {
     if (!isAddressEqual(signer, input.keyAddress)) {
       throw new ApiError('SIGNATURE_INVALID', { detail: 'la firma KeyRestore no es de keyAddress' });
     }
-    const { value: roles } = await this.#d.rpc.readContract({
-      address: snapshot.contracts.securityGuard,
-      abi: securityGuardAbi,
-      functionName: 'rolesOf',
-      args: [active.safe],
-    });
+    // Los roles del Guard que gobierna la Safe (tras un upgrade, el sucesor: [C-GRD-17]).
+    const { value: state } = await this.#d.rpc.readSensitive('key-restore-roles', (client, blockNumber) =>
+      readSafeState(client, blockNumber, snapshot, active.safe),
+    );
+    const roles = state.roles;
     if (!isAddressEqual(roles.userKey, input.keyAddress) || !isAddressEqual(active.userKey, input.keyAddress)) {
       this.#d.metrics.walletOnboarding.inc({ step: 'key_restore', result: 'not_current_u' });
       throw new ApiError('KEY_NOT_ALLOWED', { detail: 'la clave no es la U vigente de la wallet' });

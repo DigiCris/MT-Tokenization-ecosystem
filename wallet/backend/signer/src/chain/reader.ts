@@ -66,6 +66,17 @@ export interface SafeState {
   moduleGuard: Address;
   fallbackHandler: Address;
   modules: Address[];
+  /**
+   * Guard aceptado que gobierna la Safe (el del sistema o un sucesor del snapshot, [C-GRD-17]) y su RotationTimelock;
+   * con un Guard no aceptado, los del sistema (y safeConfigProblems lo marca).
+   */
+  governingGuard: Address;
+  timelock: Address;
+}
+
+export interface AcceptedGuard {
+  guard: Address;
+  rotationTimelock: Address;
 }
 
 function slotAddress(word: Hex): Address {
@@ -76,11 +87,25 @@ export class OnChainReader {
   readonly rpc: SignerRpc;
   readonly #guard: Address;
   readonly #factory: Address;
+  readonly #guards: readonly AcceptedGuard[];
 
-  constructor(rpc: SignerRpc, contracts: { securityGuard: Address; walletFactory: Address }) {
+  constructor(
+    rpc: SignerRpc,
+    contracts: { securityGuard: Address; rotationTimelock: Address; walletFactory: Address },
+    successors: readonly AcceptedGuard[] = [],
+  ) {
     this.rpc = rpc;
     this.#guard = contracts.securityGuard;
     this.#factory = contracts.walletFactory;
+    this.#guards = [{ guard: contracts.securityGuard, rotationTimelock: contracts.rotationTimelock }, ...successors];
+  }
+
+  /** Guard aceptado instalado en la Safe (o el del sistema si el slot tiene otro: la deriva lo marca). */
+  async #governing(safe: Address, block: bigint): Promise<{ installed: Address; governing: AcceptedGuard }> {
+    const installed = slotAddress(await this.rpc.storageAt(safe, SAFE_SLOTS.guard, block));
+    const governing = this.#guards.find((g) => sameAddress(g.guard, installed)) ?? this.#guards[0];
+    if (governing === undefined) throw new Error('sin Guard del sistema');
+    return { installed, governing };
   }
 
   async #read(
@@ -99,8 +124,14 @@ export class OnChainReader {
     return this.rpc.snapshotBlock();
   }
 
+  /** Roles de la Safe en el Guard que la gobierna (tras un upgrade, el sucesor). */
   async roles(safe: Address, block: bigint): Promise<Roles> {
-    const r = (await this.#read(securityGuardAbi, this.#guard, 'rolesOf', [safe], block)) as {
+    const { governing } = await this.#governing(safe, block);
+    return this.#rolesFrom(governing.guard, safe, block);
+  }
+
+  async #rolesFrom(guard: Address, safe: Address, block: bigint): Promise<Roles> {
+    const r = (await this.#read(securityGuardAbi, guard, 'rolesOf', [safe], block)) as {
       userKey: Address;
       recoveryKey: Address;
       executor: Address;
@@ -114,35 +145,24 @@ export class OnChainReader {
     };
   }
 
-  /** Estado completo de la Safe a un bloque común. */
+  /** Estado completo de la Safe a un bloque común (roles y registro en el Guard que la gobierna). */
   async safeState(safe: Address, block: bigint): Promise<SafeState> {
-    const [
-      registered,
-      isWallet,
-      roles,
-      nonce,
-      threshold,
-      owners,
-      guardWord,
-      moduleGuardWord,
-      fallbackWord,
-      modules,
-      timestamp,
-    ] = await Promise.all([
-      this.#read(securityGuardAbi, this.#guard, 'isRegistered', [safe], block) as Promise<boolean>,
-      this.#read(walletFactoryAbi, this.#factory, 'isWallet', [safe], block) as Promise<boolean>,
-      this.roles(safe, block),
-      this.#read(iSafeAbi, safe, 'nonce', [], block) as Promise<bigint>,
-      this.#read(iSafeAbi, safe, 'getThreshold', [], block) as Promise<bigint>,
-      this.#read(iSafeAbi, safe, 'getOwners', [], block) as Promise<readonly Address[]>,
-      this.rpc.storageAt(safe, SAFE_SLOTS.guard, block),
-      this.rpc.storageAt(safe, SAFE_SLOTS.moduleGuard, block),
-      this.rpc.storageAt(safe, SAFE_SLOTS.fallbackHandler, block),
-      this.#read(iSafeAbi, safe, 'getModulesPaginated', [SENTINEL, 10n], block) as Promise<
-        readonly [readonly Address[], Address]
-      >,
-      this.rpc.blockTimestamp(block),
-    ]);
+    const { installed, governing } = await this.#governing(safe, block);
+    const [registered, isWallet, roles, nonce, threshold, owners, moduleGuardWord, fallbackWord, modules, timestamp] =
+      await Promise.all([
+        this.#read(securityGuardAbi, governing.guard, 'isRegistered', [safe], block) as Promise<boolean>,
+        this.#read(walletFactoryAbi, this.#factory, 'isWallet', [safe], block) as Promise<boolean>,
+        this.#rolesFrom(governing.guard, safe, block),
+        this.#read(iSafeAbi, safe, 'nonce', [], block) as Promise<bigint>,
+        this.#read(iSafeAbi, safe, 'getThreshold', [], block) as Promise<bigint>,
+        this.#read(iSafeAbi, safe, 'getOwners', [], block) as Promise<readonly Address[]>,
+        this.rpc.storageAt(safe, SAFE_SLOTS.moduleGuard, block),
+        this.rpc.storageAt(safe, SAFE_SLOTS.fallbackHandler, block),
+        this.#read(iSafeAbi, safe, 'getModulesPaginated', [SENTINEL, 10n], block) as Promise<
+          readonly [readonly Address[], Address]
+        >,
+        this.rpc.blockTimestamp(block),
+      ]);
     return {
       block,
       timestamp,
@@ -152,10 +172,12 @@ export class OnChainReader {
       nonce,
       threshold,
       owners: owners.map((o) => checksumAddress(o)),
-      guard: slotAddress(guardWord),
+      guard: installed,
       moduleGuard: slotAddress(moduleGuardWord),
       fallbackHandler: slotAddress(fallbackWord),
       modules: modules[0].map((m) => checksumAddress(m)),
+      governingGuard: governing.guard,
+      timelock: governing.rotationTimelock,
     };
   }
 
@@ -216,7 +238,7 @@ export class OnChainReader {
     return /^0x0{64}$/.test(id) ? null : id;
   }
 
-  /** Pre-check sin efectos del Guard [C-GRD-02]: role según el enum Role (1 = U, 2 = R). */
+  /** Pre-check sin efectos del Guard [C-GRD-02] (el que gobierna la Safe): role según el enum Role (1 = U, 2 = R). */
   async evaluateAssisted(
     safe: Address,
     role: number,
@@ -224,10 +246,11 @@ export class OnChainReader {
     value: bigint,
     data: Hex,
     block: bigint,
+    guard: Address = this.#guard,
   ): Promise<{ ok: boolean; reason: Hex }> {
     const [ok, reason] = (await this.#read(
       securityGuardAbi,
-      this.#guard,
+      guard,
       'evaluateAssisted',
       [safe, role, to, value, data],
       block,
@@ -246,12 +269,19 @@ export interface SafeConfigProblem {
  */
 export function safeConfigProblems(
   state: SafeState,
-  contracts: { securityGuard: Address; denyAllModuleGuard: Address },
+  snapshot: {
+    contracts: { securityGuard: Address; denyAllModuleGuard: Address };
+    successors: { guards: readonly { guard: Address }[]; moduleGuards: readonly Address[] };
+  },
 ): SafeConfigProblem['field'][] {
+  const { contracts, successors } = snapshot;
   const problems: SafeConfigProblem['field'][] = [];
   if (!state.registered || !state.roles.initialized) problems.push('registered');
-  if (!sameAddress(state.guard, contracts.securityGuard)) problems.push('guard');
-  if (!sameAddress(state.moduleGuard, contracts.denyAllModuleGuard)) problems.push('moduleGuard');
+  // [C-GRD-17]: el Guard y el module guard del sistema o un sucesor fijado en el snapshot.
+  const guards = [contracts.securityGuard, ...successors.guards.map((g) => g.guard)];
+  if (!guards.some((g) => sameAddress(state.guard, g))) problems.push('guard');
+  const moduleGuards = [contracts.denyAllModuleGuard, ...successors.moduleGuards];
+  if (!moduleGuards.some((m) => sameAddress(state.moduleGuard, m))) problems.push('moduleGuard');
   if (!sameAddress(state.fallbackHandler, ZERO)) problems.push('fallbackHandler');
   if (state.modules.length > 0) problems.push('modules');
   if (state.threshold !== 2n) problems.push('threshold');

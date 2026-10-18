@@ -80,7 +80,7 @@ export type TypedOperation =
   | { type: 'SWAP_APPROVE' | 'APPROVE_REVOKE'; token: Address; spender: Address; amount: bigint }
   | { type: 'SWAP'; executor: Address; tokenIn: Address; amountIn: bigint; minAmountOut: bigint; deadline: bigint }
   | { type: 'WHITELIST_ADD' | 'WHITELIST_REMOVE'; destination: Address }
-  | { type: 'ROTATION_PROPOSE'; kind: RotationKind; oldValue: Address; newValue: Address }
+  | { type: 'ROTATION_PROPOSE'; kind: RotationKind; oldValue: Address; newValue: Address; timelock: Address }
   | { type: 'ROTATION_EXECUTE'; prevOwner: Address; oldOwner: Address; newOwner: Address }
   | { type: 'GUARD_UPGRADE'; target: 'GUARD' | 'MODULE_GUARD'; newValue: Address };
 
@@ -91,7 +91,20 @@ function declaredMatches(declared: OperationType, op: TypedOperation): boolean {
 }
 
 export function systemAddresses(snapshot: PolicySnapshot): Address[] {
-  return [...Object.values(snapshot.contracts), ...snapshot.tokens.map((t) => t.address)] as Address[];
+  return [
+    ...Object.values(snapshot.contracts),
+    ...snapshot.tokens.map((t) => t.address),
+    ...snapshot.successors.guards.flatMap((g) => [g.guard, g.rotationTimelock]),
+    ...snapshot.successors.moduleGuards,
+  ] as Address[];
+}
+
+/** RotationTimelocks aceptados: el del sistema y los de los Guards sucesores del snapshot ([C-GRD-17]). */
+export function acceptedTimelocks(snapshot: PolicySnapshot): Address[] {
+  return [
+    snapshot.contracts.rotationTimelock,
+    ...snapshot.successors.guards.map((g) => g.rotationTimelock),
+  ] as Address[];
 }
 
 function isToken(snapshot: PolicySnapshot, address: Address): boolean {
@@ -174,12 +187,13 @@ export function classifySafeTx(snapshot: PolicySnapshot, safe: Address, tx: Safe
       }
       throw new StaticRuleViolation('SR-06', 'selector de la whitelist');
     }
-    if (sameAddress(tx.to, c.rotationTimelock)) {
+    if (acceptedTimelocks(snapshot).some((t) => sameAddress(tx.to, t))) {
       if (selector !== SELECTORS.propose) throw new StaticRuleViolation('SR-06', 'selector del timelock');
       const [kind, oldValue, newValue] = decodeStatic(data, SELECTORS.propose, ['uint8', 'address', 'address']);
       const name = ROTATION_KINDS[Number(kind) as keyof typeof ROTATION_KINDS] as RotationKind | undefined;
       if (name === undefined) throw new StaticRuleViolation('SR-07', 'tipo de rotación desconocido');
-      return { type: 'ROTATION_PROPOSE', kind: name, oldValue, newValue };
+      // Que sea el timelock del Guard que gobierna la Safe lo verifica la policy con el estado on-chain.
+      return { type: 'ROTATION_PROPOSE', kind: name, oldValue, newValue, timelock: tx.to };
     }
     throw new StaticRuleViolation('SR-06', 'destino fuera de la allowlist del sistema');
   } catch (error) {
@@ -298,7 +312,7 @@ export function checkPlatformTxStatic(
       }
     }
     case 'CANCEL_RELAY': {
-      if (!sameAddress(tx.to, snapshot.contracts.rotationTimelock) || tx.value !== 0n) {
+      if (!acceptedTimelocks(snapshot).some((t) => sameAddress(tx.to, t)) || tx.value !== 0n) {
         throw new StaticRuleViolation('GT-04');
       }
       return decodeCancelWithSignature(data);

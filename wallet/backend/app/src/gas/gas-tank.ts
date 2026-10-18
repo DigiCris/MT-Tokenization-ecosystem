@@ -17,6 +17,7 @@ import type { Database } from '../db/schema.ts';
 import { addressToBuffer, bufferToAddress, hexToBuffer } from '../lib/bytes.ts';
 import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
+import { timelocksOf } from '../policy/guards.ts';
 import type { BackendPolicySnapshot } from '../policy/snapshot.ts';
 import { SignerClientError, type SignerClient } from '../signer-client/client.ts';
 
@@ -143,15 +144,22 @@ export class GasTankService {
     });
   }
 
-  /** Retransmite una cancelación de rotación firmada por U o R ([C-RTL-03]); cualquiera podría transmitirla. */
-  async relayCancellation(input: { proposalId: Hex; signature: Hex }): Promise<GasTankTx> {
+  /**
+   * Retransmite una cancelación de rotación firmada por U o R ([C-RTL-03]); cualquiera podría transmitirla. El destino
+   * es el RotationTimelock de la propuesta: el del sistema o el de un Guard sucesor fijado en el snapshot.
+   */
+  async relayCancellation(input: { proposalId: Hex; signature: Hex; timelock?: Address }): Promise<GasTankTx> {
+    const timelock = input.timelock ?? this.#deps.policy().contracts.rotationTimelock;
+    if (!timelocksOf(this.#deps.policy()).some((t) => t.toLowerCase() === timelock.toLowerCase())) {
+      throw new GasTankError('el timelock de la cancelación no está en el snapshot de policy');
+    }
     const data = encodeFunctionData({
       abi: rotationTimelockAbi,
       functionName: 'cancelWithSignature',
       args: [input.proposalId, input.signature],
     });
     return this.#submit('CANCEL_RELAY', {
-      to: this.#deps.policy().contracts.rotationTimelock,
+      to: timelock,
       value: 0n,
       data,
       reference: input.proposalId,

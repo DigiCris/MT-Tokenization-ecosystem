@@ -172,6 +172,8 @@ export interface WalletKeysMetadataTable {
   created_at: GeneratedTimestamp;
   activated_at: Timestamp | null;
   deactivated_at: Timestamp | null;
+  /** P15: credencial sana reutilizada por la Safe nueva de una migración excepcional (viva en las dos wallets). */
+  reused_from_wallet_id: string | null;
 }
 
 export interface RecoveryMetadataTable {
@@ -186,7 +188,7 @@ export interface RecoveryMetadataTable {
   enrollment_key_signature: Bytes | null;
   r_proof_signature: Bytes | null;
   u_incorporation_signature: Bytes | null;
-  status: 'REQUESTED' | 'SUBMITTED' | 'CONFIRMED' | 'EXPIRED' | 'REJECTED';
+  status: 'REQUESTED' | 'SUBMITTED' | 'CONFIRMED' | 'EXPIRED' | 'REJECTED' | 'RETIRED';
   expires_at: Timestamp;
   created_at: GeneratedTimestamp;
   /** Nonce del enrollment (32 bytes): RecoveryEnrollment.nonce y WalletCreationAuthorization.enrollmentNonce. */
@@ -195,6 +197,19 @@ export interface RecoveryMetadataTable {
   storage_flags: Json | null;
   submitted_at: Timestamp | null;
   confirmed_at: Timestamp | null;
+  /** P15: ONBOARDING (R de la Safe nueva) o REPLACEMENT (R' de una wallet ACTIVE). */
+  purpose: Generated<'ONBOARDING' | 'REPLACEMENT'>;
+  /** P15: KeyAcceptance de R' ({nonce, signature}) para la rotación. */
+  key_acceptance: Json<KeyAcceptanceJson> | null;
+  retired_at: Timestamp | null;
+  /** P15: R sana reutilizada por la Safe nueva de una migración excepcional (viva también en la vieja). */
+  reused_from_wallet_id: string | null;
+}
+
+/** KeyAcceptance [W-01] firmada por la clave nueva (U' o R'). */
+export interface KeyAcceptanceJson {
+  nonce: string;
+  signature: string;
 }
 
 export interface SignerKeysTable {
@@ -208,6 +223,10 @@ export interface SignerKeysTable {
   /** SignerKeyAttestation (JWS) que emitió el shard al crear la clave [B-SIG-07]. */
   attestation: string | null;
   created_at: GeneratedTimestamp;
+  /** P15: la S dejó de ser la de la Safe (rotación o reemplazo soberano). */
+  retired_at: Timestamp | null;
+  /** P15: el shard confirmó el retiro ([B-SIG-08]: deja de firmar y destruye el keystore a los 30 días). */
+  signer_retired_at: Timestamp | null;
 }
 
 export interface SecurityChallengesTable {
@@ -401,14 +420,16 @@ export interface ChainTransactionsTable {
   updated_at: GeneratedTimestamp;
 }
 
+export type RotationRole = KeyRole | 'GUARD' | 'MODULE_GUARD';
+
 export interface RotationRequestsTable {
   id: Generated<string>;
   wallet_id: string;
-  role: KeyRole;
+  role: RotationRole;
   old_key: Bytes;
   new_key: Bytes;
   proposal_id: Bytes | null;
-  initiated_by: 'U' | 'R';
+  initiated_by: 'U' | 'R' | 'SAFE';
   status:
     | 'DRAFT'
     | 'AWAITING_SIGNATURE'
@@ -426,6 +447,58 @@ export interface RotationRequestsTable {
   cancel_tx_hash: Bytes | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
+  /** P15: PLATFORM (la preparó el backend) u ONCHAIN (propuesta detectada en la cadena que no originó el backend). */
+  origin: Generated<'PLATFORM' | 'ONCHAIN'>;
+  key_acceptance: Json<KeyAcceptanceJson> | null;
+  new_key_attestation: string | null;
+  opaque_record_id: string | null;
+  enrollment_id: string | null;
+  proposed_at: Timestamp | null;
+  executed_at: Timestamp | null;
+  propose_tx_hash: Bytes | null;
+  execute_tx_hash: Bytes | null;
+  failure_reason: string | null;
+  /** P15: RotationTimelock de la propuesta (null en filas anteriores: el del sistema). */
+  timelock: Bytes | null;
+}
+
+/** P15: eventos de RotationTimelock de las Safes de la plataforma (indexados con finalidad y reorgs). */
+export interface RotationEventsTable {
+  id: Generated<string>;
+  chain_id: number;
+  safe_address: Bytes;
+  timelock: Bytes;
+  proposal_id: Bytes;
+  kind: 'PROPOSED' | 'CANCELLED' | 'EXECUTED';
+  rotation_kind: number | null;
+  old_value: Bytes | null;
+  new_value: Bytes | null;
+  executable_at: Timestamp | null;
+  actor: Bytes | null;
+  tx_hash: Bytes;
+  log_index: number;
+  block_number: Int8;
+  block_hash: Bytes;
+  status: 'MINED' | 'CONFIRMED' | 'FINALIZED' | 'REORGED';
+  applied_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** P15: caso de migración excepcional (doble aprobación de operadores). */
+export interface MigrationCasesTable {
+  id: Generated<string>;
+  old_wallet_id: string;
+  new_wallet_id: string | null;
+  user_id: string;
+  healthy_role: 'U' | 'R';
+  reason: string;
+  status: 'REQUESTED' | 'APPROVED' | 'COMPLETED' | 'CANCELLED';
+  requested_by: string;
+  approval_action_id: string | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+  completed_at: Timestamp | null;
 }
 
 export interface TokenTransfersTable {
@@ -542,6 +615,8 @@ export interface OperatorUsersTable {
   totp_secret_ciphertext: Bytes;
   status: Generated<'ACTIVE' | 'DISABLED'>;
   created_at: GeneratedTimestamp;
+  /** P15: último paso TOTP aceptado (anti-replay). */
+  totp_last_used_step: Int8 | null;
 }
 
 export interface OperatorActionsTable {
@@ -598,6 +673,8 @@ export interface Database {
   wallet_operations: WalletOperationsTable;
   chain_transactions: ChainTransactionsTable;
   rotation_requests: RotationRequestsTable;
+  rotation_events: RotationEventsTable;
+  migration_cases: MigrationCasesTable;
   token_transfers: TokenTransfersTable;
   safe_executions: SafeExecutionsTable;
   chain_cursors: ChainCursorsTable;

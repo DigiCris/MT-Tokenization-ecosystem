@@ -104,15 +104,17 @@ export class StepUpService {
     this.#d = deps;
   }
 
-  async #liveWallet(db: Kysely<Database>, userId: string): Promise<LiveWallet | null> {
-    const row = await db
+  /** Wallet viva del usuario (la más reciente) o, con `walletId`, esa wallet si es del usuario y está viva. */
+  async #liveWallet(db: Kysely<Database>, userId: string, walletId?: string): Promise<LiveWallet | null> {
+    let query = db
       .selectFrom('wallets')
       .select(['id', 'status', 'safe_address'])
       .where('user_id', '=', userId)
       .where('platform_id', '=', this.#d.platformId)
-      .where('status', 'not in', LIVE_WALLET_EXCLUDED)
-      .orderBy('created_at', 'desc')
-      .executeTakeFirst();
+      .where('status', 'not in', LIVE_WALLET_EXCLUDED);
+    if (walletId !== undefined) query = query.where('id', '=', walletId);
+    const row = await query.orderBy('created_at', 'desc').executeTakeFirst();
+    if (walletId !== undefined && !row) throw new ApiError('NOT_FOUND');
     return row ? { id: row.id, status: row.status, safe: safeAddressOf(row.safe_address) } : null;
   }
 
@@ -123,10 +125,14 @@ export class StepUpService {
         if (wallet?.status === 'ACTIVE') {
           throw new ApiError('CONFLICT', { detail: 'la wallet ya está activa: desbloqueala con tu Password U' });
         }
-        return wallet;
+        // Migración excepcional aprobada (P15.T06): la sesión crea la wallet nueva, no se ata a la vieja.
+        return wallet?.status === 'MIGRATING' ? null : wallet;
       case 'U_REPLACEMENT':
-      case 'RECOVERY':
         if (wallet?.status !== 'ACTIVE') throw new ApiError('WALLET_NOT_ACTIVE');
+        return wallet;
+      case 'RECOVERY':
+        // R sana firma la migración desde la wallet vieja (MIGRATING); el backend sólo co-firma eso ahí.
+        if (wallet?.status !== 'ACTIVE' && wallet?.status !== 'MIGRATING') throw new ApiError('WALLET_NOT_ACTIVE');
         return wallet;
       case 'ENROLLMENT':
         if (!wallet) throw new ApiError('WALLET_NOT_ACTIVE', { detail: 'todavía no hay una wallet en curso' });
@@ -143,6 +149,7 @@ export class StepUpService {
     scope: StepUpScope;
     sessionPublicKey: P256PublicJwk;
     meta: RequestMeta;
+    walletId?: string | undefined;
   }): Promise<{ challengeId: string; expiresAt: Date; keyRestoreNonce?: Hex }> {
     if (STEP_UP_LISTENER[input.scope] !== input.meta.client) throw new ApiError('SCOPE_NOT_ALLOWED');
     if (input.scope === 'KEY_RESTORE' && this.#d.keyRestore === undefined) throw new ApiError('SCOPE_NOT_ALLOWED');
@@ -151,7 +158,7 @@ export class StepUpService {
     return withTransaction(
       this.#d.db,
       async (trx) => {
-        const wallet = this.#walletFor(input.scope, await this.#liveWallet(trx, input.session.userId));
+        const wallet = this.#walletFor(input.scope, await this.#liveWallet(trx, input.session.userId, input.walletId));
         const user = await trx
           .selectFrom('users')
           .select(['email', 'locale', 'time_zone'])
@@ -300,8 +307,12 @@ export class StepUpService {
         if (totpEnabled && !(await this.#d.account.verifySecondFactor(trx, userId, input))) {
           return { error: 'REAUTH_FAILED' as const };
         }
-        // La wallet pudo cambiar entre el pedido y la confirmación (p. ej. se activó): se reevalúa.
-        const wallet = this.#walletFor(binding.scope, await this.#liveWallet(trx, userId));
+        // La wallet pudo cambiar entre el pedido y la confirmación (p. ej. se activó): se reevalúa la misma wallet a la
+        // que se ató el pedido (o la viva, si el pedido no se ató a ninguna).
+        const wallet = this.#walletFor(
+          binding.scope,
+          await this.#liveWallet(trx, userId, binding.walletId ?? undefined),
+        );
         if ((wallet?.id ?? null) !== binding.walletId) return { error: 'INVALID_CODE' as const };
         // KEY_RESTORE: la prueba (verificada antes) tiene que ser de esta misma wallet.
         if (binding.scope === 'KEY_RESTORE' && provenWallet !== binding.walletId) {

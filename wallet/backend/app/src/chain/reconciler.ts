@@ -130,7 +130,7 @@ export class Reconciler {
         proposals: await Promise.all(
           Object.values(RotationKind).map(async (kind) => ({
             kind,
-            id: await read<Hex>(c.rotationTimelock, rotationTimelockAbi, 'activeProposal', [safe, kind]),
+            id: await read<Hex>(state.timelock, rotationTimelockAbi, 'activeProposal', [safe, kind]),
           })),
         ),
         balances: await Promise.all(

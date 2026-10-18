@@ -92,6 +92,7 @@ describe('health', () => {
             '0004_wallet_onboarding',
             '0005_operation_pipeline',
             '0006_whitelist_send_swap',
+            '0007_rotations_recovery_migration',
           ],
         },
       },

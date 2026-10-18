@@ -1,7 +1,7 @@
 // Intención canónica de una operación (columna `canonical_intent`) y vistas de la API [B-API-SCH]. La SafeTx se guarda
 // campo por campo (uint256 en decimal) y el worker la reconstruye desde acá para recalcular el SafeTxHash (paso 3 de
 // [B-Q-02]); `decoded` es sólo para mostrar (la policy siempre decodifica desde los bytes).
-import { getAddress, type Address, type Hex } from 'viem';
+import { getAddress, isAddressEqual, type Address, type Hex } from 'viem';
 import type { DecodedCall } from '../chain/decoders/safe-call.ts';
 import { SAFE_TX_TYPES, type SafeTx } from '../chain/safe-tx.ts';
 import type { OperationStatus } from '../db/schema.ts';
@@ -75,7 +75,11 @@ export function safeTxFromJson(json: SafeTxJson): SafeTx {
 
 const ROLE_OF_KIND = ['U', 'R', 'S', 'GUARD', 'MODULE_GUARD'] as const;
 
-export function decodedView(call: DecodedCall): DecodedView {
+/** Vista para mostrar; con los roles on-chain del prepare, `swapOwner` indica qué rol rota. */
+export function decodedView(
+  call: DecodedCall,
+  roles?: { userKey: Address; recoveryKey: Address; executor: Address },
+): DecodedView {
   switch (call.kind) {
     case 'ERC20_TRANSFER':
       return { token: call.token, amount: call.amount.toString(), destination: call.recipient };
@@ -94,8 +98,19 @@ export function decodedView(call: DecodedCall): DecodedView {
       return { destination: call.destination };
     case 'ROTATION_PROPOSE':
       return { role: ROLE_OF_KIND[call.rotationKind], oldKey: call.oldValue, newKey: call.newValue };
-    case 'SWAP_OWNER':
-      return { oldKey: call.oldOwner, newKey: call.newOwner };
+    case 'SWAP_OWNER': {
+      const role =
+        roles === undefined
+          ? undefined
+          : isAddressEqual(call.oldOwner, roles.userKey)
+            ? 'U'
+            : isAddressEqual(call.oldOwner, roles.recoveryKey)
+              ? 'R'
+              : isAddressEqual(call.oldOwner, roles.executor)
+                ? 'S'
+                : undefined;
+      return { ...(role === undefined ? {} : { role }), oldKey: call.oldOwner, newKey: call.newOwner };
+    }
     case 'SET_GUARD':
       return { role: 'GUARD', newKey: call.guard };
     case 'SET_MODULE_GUARD':

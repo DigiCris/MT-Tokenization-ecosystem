@@ -1,7 +1,8 @@
 // Indexer de la cadena (P13.T07, [B-FIN-03]): eventos de SafeL2 de las Safes de la plataforma (ejecuciones del backend
 // y soberanas, para que el historial sea completo), `Transfer` de USDC/USDT desde/hacia esas Safes (`token_transfers`)
 // y altas/bajas de DestinationWhitelist de esas Safes (`whitelist_events`, P14: las aplica la sincronización de whitelist
-// del worker, también las soberanas o las hechas con MultiSend).
+// del worker, también las soberanas o las hechas con MultiSend) y propuestas, cancelaciones y ejecuciones de rotación del
+// RotationTimelock (`rotation_events`, P15: también las que no originó el backend).
 // Lee por rangos de bloques con quórum (los dos proveedores tienen que devolver exactamente los mismos logs) hasta el
 // head común, guarda el cursor con el hash de su bloque y, si ese hash cambió, retrocede y marca REORGED lo indexado
 // después del punto de retroceso. Las filas avanzan MINED → CONFIRMED → FINALIZED con la misma política de finalidad
@@ -15,6 +16,7 @@ import { withTransaction } from '../db/transaction.ts';
 import { addressToBuffer, bufferToAddress, bufferToHex, hexToBuffer } from '../lib/bytes.ts';
 import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
+import { timelocksOf } from '../policy/guards.ts';
 import type { BackendPolicySnapshot } from '../policy/snapshot.ts';
 import { RpcQuorumError, type BaseClient, type RpcQuorumClient } from './rpc-quorum.ts';
 import type { ConfirmationPolicy } from './watcher.ts';
@@ -32,12 +34,32 @@ export const DESTINATION_REMOVED = parseAbiItem(
   'event DestinationRemoved(address indexed safe, address indexed destination)',
 );
 const ADDED_TOPIC = toEventSelector(DESTINATION_ADDED).toLowerCase();
+export const ROTATION_PROPOSED = parseAbiItem(
+  'event RotationProposed(bytes32 indexed id, address indexed safe, uint8 kind, address oldValue, address newValue, uint64 executableAt)',
+);
+export const ROTATION_CANCELLED = parseAbiItem(
+  'event RotationCancelled(bytes32 indexed id, address indexed safe, address indexed by)',
+);
+export const ROTATION_EXECUTED = parseAbiItem('event RotationExecuted(bytes32 indexed id, address indexed safe)');
+const PROPOSED_TOPIC = toEventSelector(ROTATION_PROPOSED).toLowerCase();
+const CANCELLED_TOPIC = toEventSelector(ROTATION_CANCELLED).toLowerCase();
 
 const MULTISIG_TOPIC = toEventSelector(SAFE_MULTISIG_TRANSACTION).toLowerCase();
 const SUCCESS_TOPIC = toEventSelector(EXECUTION_SUCCESS).toLowerCase();
 const FAILURE_TOPIC = toEventSelector(EXECUTION_FAILURE).toLowerCase();
 
 export const INDEXER_CURSOR = 'chain-indexer';
+const REORG_KIND = {
+  safe_executions: 'execution',
+  token_transfers: 'transfer',
+  whitelist_events: 'whitelist',
+  rotation_events: 'rotation',
+} as const;
+
+/** El RotationTimelock del Guard del sistema y los de sus sucesores fijados en el snapshot ([C-GRD-17]). */
+function rotationTimelocks(snapshot: BackendPolicySnapshot): Address[] {
+  return timelocksOf(snapshot);
+}
 /** Bloques que retrocede el cursor al detectar un reorg (más que cualquier reorg observado en Base). */
 const REWIND_BLOCKS = 64n;
 const ADDRESS_CHUNK = 200;
@@ -85,6 +107,7 @@ export interface IndexerResult {
   executions: number;
   transfers: number;
   whitelistEvents: number;
+  rotationEvents: number;
   rewound: boolean;
 }
 
@@ -132,6 +155,7 @@ export class ChainIndexer {
       executions: 0,
       transfers: 0,
       whitelistEvents: 0,
+      rotationEvents: 0,
       rewound: false,
     };
     const head = await this.#d.rpc.commonHead();
@@ -163,6 +187,7 @@ export class ChainIndexer {
           result.executions = counts.executions;
           result.transfers = counts.transfers;
           result.whitelistEvents = counts.whitelistEvents;
+          result.rotationEvents = counts.rotationEvents;
           break;
         } catch (error) {
           // Un proveedor que limita el rango de eth_getLogs (p. ej. un plan gratuito): se reintenta con la mitad.
@@ -213,12 +238,14 @@ export class ChainIndexer {
         .where('block_number', '>', target.toString())
         .where('status', 'in', ['MINED', 'CONFIRMED'])
         .execute();
-      await trx
-        .updateTable('whitelist_events')
-        .set({ status: 'REORGED' })
-        .where('block_number', '>', target.toString())
-        .where('status', 'in', ['MINED', 'CONFIRMED'])
-        .execute();
+      for (const table of ['whitelist_events', 'rotation_events'] as const) {
+        await trx
+          .updateTable(table)
+          .set({ status: 'REORGED' })
+          .where('block_number', '>', target.toString())
+          .where('status', 'in', ['MINED', 'CONFIRMED'])
+          .execute();
+      }
     });
     await this.#saveCursor(target, await this.#blockHash(target));
     this.#d.metrics.reorgsDetected.inc({ kind: 'indexer' });
@@ -247,13 +274,15 @@ export class ChainIndexer {
     safes: Address[],
     fromBlock: bigint,
     toBlock: bigint,
-  ): Promise<{ executions: number; transfers: number; whitelistEvents: number }> {
+  ): Promise<{ executions: number; transfers: number; whitelistEvents: number; rotationEvents: number }> {
     const snapshot = this.#d.snapshot();
     const tokens = [snapshot.tokens.USDC, snapshot.tokens.USDT];
     const whitelist = snapshot.contracts.destinationWhitelist;
+    const timelocks = rotationTimelocks(snapshot);
     const safeEvents: LogSummary[] = [];
     const transfers: LogSummary[] = [];
     const whitelistLogs: LogSummary[] = [];
+    const rotationLogs: LogSummary[] = [];
     for (let i = 0; i < safes.length; i += ADDRESS_CHUNK) {
       const chunk = safes.slice(i, i + ADDRESS_CHUNK);
       safeEvents.push(
@@ -283,10 +312,68 @@ export class ChainIndexer {
         )),
       );
     }
+    for (let i = 0; i < safes.length; i += ADDRESS_CHUNK) {
+      const chunk = safes.slice(i, i + ADDRESS_CHUNK);
+      for (const event of [ROTATION_PROPOSED, ROTATION_CANCELLED, ROTATION_EXECUTED]) {
+        rotationLogs.push(
+          ...(await this.#logs(`eth_getLogs:${event.name}`, (client) =>
+            client.getLogs({ address: timelocks, event, args: { safe: chunk }, fromBlock, toBlock }),
+          )),
+        );
+      }
+    }
     const executions = await this.#storeExecutions(safeEvents);
     const stored = await this.#storeTransfers(transfers, new Set(safes.map((s) => s.toLowerCase())));
     const whitelistEvents = await this.#storeWhitelistEvents(whitelistLogs);
-    return { executions, transfers: stored, whitelistEvents };
+    const rotationEvents = await this.#storeRotationEvents(rotationLogs);
+    return { executions, transfers: stored, whitelistEvents, rotationEvents };
+  }
+
+  /** Propuestas, cancelaciones y ejecuciones del RotationTimelock (las aplica la sincronización de rotaciones). */
+  async #storeRotationEvents(logs: LogSummary[]): Promise<number> {
+    const snapshot = this.#d.snapshot();
+    let stored = 0;
+    for (const log of logs) {
+      const topic0 = log.topics[0]?.toLowerCase();
+      const kind = topic0 === PROPOSED_TOPIC ? 'PROPOSED' : topic0 === CANCELLED_TOPIC ? 'CANCELLED' : 'EXECUTED';
+      const proposed =
+        kind === 'PROPOSED'
+          ? decodeAbiParameters(
+              [{ type: 'uint8' }, { type: 'address' }, { type: 'address' }, { type: 'uint64' }],
+              log.data,
+            )
+          : null;
+      const result = await this.#d.db
+        .insertInto('rotation_events')
+        .values({
+          chain_id: snapshot.chainId,
+          safe_address: addressToBuffer(addressOfTopic(log.topics[2])),
+          timelock: addressToBuffer(log.address),
+          proposal_id: hexToBuffer(log.topics[1] ?? '0x', 32),
+          kind,
+          rotation_kind: proposed ? proposed[0] : null,
+          old_value: proposed ? addressToBuffer(proposed[1]) : null,
+          new_value: proposed ? addressToBuffer(proposed[2]) : null,
+          executable_at: proposed ? new Date(Number(proposed[3]) * 1000) : null,
+          actor: kind === 'CANCELLED' ? addressToBuffer(addressOfTopic(log.topics[3])) : null,
+          tx_hash: hexToBuffer(log.transactionHash, 32),
+          log_index: log.logIndex,
+          block_number: log.blockNumber,
+          block_hash: hexToBuffer(log.blockHash, 32),
+          status: 'MINED',
+        })
+        .onConflict((oc) =>
+          oc.columns(['chain_id', 'tx_hash', 'log_index']).doUpdateSet({
+            block_number: log.blockNumber,
+            block_hash: hexToBuffer(log.blockHash, 32),
+            status: 'MINED',
+          }),
+        )
+        .returning(sql<boolean>`(xmax = 0)`.as('inserted'))
+        .executeTakeFirstOrThrow();
+      if (result.inserted) stored++;
+    }
+    return stored;
   }
 
   /** Altas y bajas de DestinationWhitelist (las aplica la sincronización de whitelist cuando están confirmadas). */
@@ -476,7 +563,7 @@ export class ChainIndexer {
   async #advanceFinality(head: bigint): Promise<void> {
     const c = this.#d.confirmations;
     const tags = c.policy === 'tags' ? await this.#d.rpc.headTags() : null;
-    for (const table of ['safe_executions', 'token_transfers', 'whitelist_events'] as const) {
+    for (const table of ['safe_executions', 'token_transfers', 'whitelist_events', 'rotation_events'] as const) {
       const blocks = await this.#d.db
         .selectFrom(table)
         .select(['block_number', 'block_hash'])
@@ -496,9 +583,7 @@ export class ChainIndexer {
             .where('block_hash', '=', block.block_hash)
             .where('status', 'in', ['MINED', 'CONFIRMED'])
             .execute();
-          this.#d.metrics.reorgsDetected.inc({
-            kind: table === 'safe_executions' ? 'execution' : table === 'token_transfers' ? 'transfer' : 'whitelist',
-          });
+          this.#d.metrics.reorgsDetected.inc({ kind: REORG_KIND[table] });
           continue;
         }
         const confirmed = tags ? number <= tags.safe : head - number + 1n >= BigInt(c.confirmationDepth);

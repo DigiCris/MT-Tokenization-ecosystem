@@ -30,6 +30,7 @@
     "opaque:setup": "node src/cli/opaque-setup.ts",
     "dev:session": "node src/cli/dev-session.ts",
     "signer:reassign": "node src/cli/signer-reassign.ts",
+    "operators": "node src/operators/cli.ts",
     "start:gas-tank": "node dist/main.js gas-tank",
     "dev:gas-tank": "node --watch src/main.ts gas-tank"
   },

@@ -55,12 +55,14 @@ const routes: RouteRegistrar = (app) => {
   );
 };
 
+// Sólo las filas que crea la ruta de prueba (el login agrega su propia notificación NEW_LOGIN, [B-MAIL-03]).
 const createdFor = async (userId: string) =>
   (
     await db.app
       .selectFrom('notifications')
       .select(sql<number>`count(*)::int`.as('n'))
       .where('user_id', '=', userId)
+      .where('type', '=', 'RESOURCE_CREATED')
       .executeTakeFirstOrThrow()
   ).n;
 
