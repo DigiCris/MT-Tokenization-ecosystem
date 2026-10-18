@@ -26,6 +26,8 @@ export interface Metrics {
   gasTankBalanceWei: Gauge;
   executorsBelowMinimum: Gauge;
   gasTankTransactions: Counter<'purpose' | 'result'>;
+  walletOnboarding: Counter<'step' | 'result'>;
+  walletVerificationFailures: Counter<'item'>;
 }
 
 export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metrics {
@@ -155,6 +157,18 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_gas_tank_transactions_total',
       help: 'Transacciones de la cuenta gas tank por propósito (TOPUP, DEPLOY, CANCEL_RELAY) y resultado',
       labelNames: ['purpose', 'result'],
+      registers,
+    }),
+    walletOnboarding: new Counter({
+      name: 'mtw_wallet_onboarding_total',
+      help: 'Pasos del onboarding de wallets (create, user_key, enrollment, executor, authorization, deploy, verify) por resultado',
+      labelNames: ['step', 'result'],
+      registers,
+    }),
+    walletVerificationFailures: new Counter({
+      name: 'mtw_wallet_verification_failures_total',
+      help: 'Ítems de la verificación post-deploy (V9 §16) que no coincidieron: la wallet queda FAILED (alerta)',
+      labelNames: ['item'],
       registers,
     }),
   };

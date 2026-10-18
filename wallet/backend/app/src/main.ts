@@ -19,10 +19,14 @@ import { createOutboxWorker } from './queue/outbox-consumer.ts';
 import { OutboxDispatcher } from './queue/outbox-dispatcher.ts';
 import { closeQueues, createQueues, queueCounts, QUEUES } from './queue/queues.ts';
 import { createRedis } from './queue/redis.ts';
+import { AuditWriter } from './audit/audit-writer.ts';
 import { GasTankService } from './gas/gas-tank.ts';
+import { OpaqueService } from './platform-session/opaque.ts';
 import { loadPolicySnapshot } from './policy/snapshot.ts';
-import { createAccountServices } from './services.ts';
+import { createAccountServices, createWalletServices } from './services.ts';
 import { readSignerTls, SignerClient } from './signer-client/client.ts';
+import { SignerKeyService } from './signer-client/sharding.ts';
+import { walletDeployJobHandler, WalletDeployer } from './wallets/deployer.ts';
 import { serviceVersion } from './version.ts';
 
 type Role = 'api' | 'worker' | 'gas-tank';
@@ -87,7 +91,32 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       outboxLagSeconds: () => outbox.oldestUndispatchedAgeSeconds(),
       operationsByStatus: () => operationsByStatus(db),
     });
-    const services = await createAccountServices({ config, db, redis, outbox, metrics, logger });
+    // Onboarding (P12): shards del signer por mTLS y snapshot de policy firmado (direcciones y codehashes).
+    const signer = loadSignerClientConfig();
+    const snapshot = loadPolicySnapshot(signer.policy.snapshotPath, signer.policy.publicKey, config.appEnv);
+    const tls = readSignerTls(signer.mtls);
+    const clients = new Map(
+      signer.shards.map((s) => [
+        s.id,
+        new SignerClient({ shardId: s.id, url: s.url, tls, timeoutMs: signer.timeoutMs }),
+      ]),
+    );
+    closers.push(() => {
+      for (const client of clients.values()) client.close();
+      return Promise.resolve();
+    });
+    const onchain = { rpc, snapshot: () => snapshot };
+    const services = await createAccountServices({ config, db, redis, outbox, metrics, logger, onchain });
+    const wallets = createWalletServices({
+      config,
+      db,
+      account: services,
+      onchain,
+      signerKeys: new SignerKeyService({ db, shards: signer.shards, clients }),
+      outbox,
+      metrics,
+      logger,
+    });
     const api = await startApi({
       config,
       logger,
@@ -97,6 +126,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       rpc,
       idempotency,
       services,
+      wallets,
       version: serviceVersion(),
     });
     closers.unshift(() => api.close());
@@ -145,6 +175,39 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
     });
     gasTank.start(signer.gasTank.intervalMs);
     closers.unshift(() => gasTank.stop());
+    // Deploys de Safes pedidos por la API (cola `gas-tank`, P12.T06–T07): createWallet, verificación y ACTIVE.
+    const deployer = new WalletDeployer({
+      db,
+      rpc,
+      gasTank,
+      snapshot: () => snapshot,
+      opaque: await OpaqueService.create({
+        db,
+        redis,
+        serverSetup: config.secrets.opaqueServerSetup,
+        platformId: config.platformId,
+      }),
+      audit: new AuditWriter(config.secrets.auditChainKey, metrics),
+      metrics,
+      logger: logger.child({ component: 'wallet-deployer' }),
+    });
+    const deployConnection = createRedis(
+      config.redis.url.reveal(),
+      'worker',
+      'mtw-gas-tank-deploys',
+      throttledWarn(logger, 'error de conexión con Valkey (cola gas-tank)'),
+    );
+    closers.push(() => deployConnection.quit());
+    const deployWorker = createOutboxWorker({
+      queue: QUEUES.gasTank,
+      connection: deployConnection,
+      outbox,
+      logger,
+      // Las txs de la cuenta gas tank van de a una (lock de la DB): sin concurrencia entre deploys.
+      concurrency: 1,
+      handler: walletDeployJobHandler(deployer),
+    });
+    closers.unshift(() => deployWorker.close());
     metricsServer = await startMetricsServer(metrics.registry, config.metrics.bindHost, config.metrics.gasTankPort);
     logger.info({ metricsPort: config.metrics.gasTankPort, policyVersion: snapshot.version }, 'gas tank iniciado');
   } else {

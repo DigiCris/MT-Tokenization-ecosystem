@@ -19,6 +19,7 @@ import {
 } from '../../../platform-session/step-up.ts';
 import { PLATFORM_SCOPES, type PlatformSessionClaims } from '../../../platform-session/token.ts';
 import type { WalletUnlockService } from '../../../platform-session/unlock.ts';
+import { AddressSchema, EcdsaSignatureSchema } from '../../../wallets/schemas.ts';
 import { ApiError, errorResponses } from '../../errors.ts';
 import { applySession, requestMeta } from './auth.ts';
 import type { Kysely } from 'kysely';
@@ -147,7 +148,14 @@ export const platformSessionsRoutes: FastifyPluginCallbackZod<PlatformSessionsRo
         security,
         body: z.object({ scope: z.enum(STEP_UP_SCOPES), sessionPublicKey: P256PublicJwkSchema }).strict(),
         response: {
-          202: z.object({ challengeId: z.uuid(), expiresAt: z.iso.datetime() }),
+          202: z.object({
+            challengeId: z.uuid(),
+            expiresAt: z.iso.datetime(),
+            keyRestoreNonce: z
+              .string()
+              .optional()
+              .describe('KEY_RESTORE: nonce (bytes32) que firma la U restaurada en KeyRestore [W-01]'),
+          }),
           ...errorResponses(401, 403, 409, 415),
         },
       },
@@ -160,7 +168,11 @@ export const platformSessionsRoutes: FastifyPluginCallbackZod<PlatformSessionsRo
       await app.enforceRateLimit(request, STEP_UP_RATE_POLICY[request.body.scope], { user: session.userId });
       await app.enforceRateLimit(request, 'otp-challenge', { user: session.userId, challengeType: 'STEP_UP' });
       const started = await options.stepUp.start({ session, ...request.body, meta: requestMeta(request) });
-      return reply.code(202).send({ challengeId: started.challengeId, expiresAt: started.expiresAt.toISOString() });
+      return reply.code(202).send({
+        challengeId: started.challengeId,
+        expiresAt: started.expiresAt.toISOString(),
+        ...(started.keyRestoreNonce === undefined ? {} : { keyRestoreNonce: started.keyRestoreNonce }),
+      });
     },
   );
 
@@ -179,6 +191,11 @@ export const platformSessionsRoutes: FastifyPluginCallbackZod<PlatformSessionsRo
             code: Otp,
             totp: TotpCode.optional(),
             recoveryCode: RecoveryCode.optional(),
+            keyRestore: z
+              .object({ keyAddress: AddressSchema, signature: EcdsaSignatureSchema })
+              .strict()
+              .optional()
+              .describe('KEY_RESTORE: prueba de posesión (firma EIP-712 KeyRestore de la U vigente on-chain)'),
           })
           .strict()
           .refine((b) => b.totp === undefined || b.recoveryCode === undefined, {
@@ -186,7 +203,7 @@ export const platformSessionsRoutes: FastifyPluginCallbackZod<PlatformSessionsRo
           }),
         response: {
           200: IssuedSchema.extend({ csrfToken: z.string().describe('Token CSRF de la sesión de cuenta rotada') }),
-          ...errorResponses(401, 403, 409, 415),
+          ...errorResponses(401, 403, 409, 415, 422),
         },
       },
     },

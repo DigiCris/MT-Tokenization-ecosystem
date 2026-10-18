@@ -4,9 +4,11 @@
 //
 // - Cada scope corresponde a una app ([W-07]): ONBOARDING y U_REPLACEMENT en Wallet; RECOVERY y ENROLLMENT en Recovery.
 // - El step-up rota la sesión de cuenta ([B-AUTH-04]) y la PlatformSession queda atada a la sesión nueva.
-// - KEY_RESTORE (prueba de posesión de U on-chain) se emite junto con su ruta `user-key/restore` (fase de wallets).
+// - KEY_RESTORE exige además la prueba de posesión de U: firma EIP-712 KeyRestore sobre el nonce del challenge de la
+//   U vigente on-chain (wallets/key-restore.ts), verificada antes de consumir el código.
+import { randomBytes } from 'node:crypto';
 import type { Kysely } from 'kysely';
-import type { Address } from 'viem';
+import type { Address, Hex } from 'viem';
 import { z } from 'zod';
 import { ApiError } from '../api/errors.ts';
 import type { AuditWriter } from '../audit/audit-writer.ts';
@@ -20,13 +22,14 @@ import type { Metrics } from '../observability/metrics.ts';
 import { jwkThumbprint, P256PublicJwkSchema, type P256PublicJwk } from './keys.ts';
 import { safeAddressOf, type IssuedPlatformSession, type PlatformSessionService } from './sessions.ts';
 
-export const STEP_UP_SCOPES = ['ONBOARDING', 'RECOVERY', 'U_REPLACEMENT', 'ENROLLMENT'] as const;
+export const STEP_UP_SCOPES = ['ONBOARDING', 'RECOVERY', 'U_REPLACEMENT', 'ENROLLMENT', 'KEY_RESTORE'] as const;
 export type StepUpScope = (typeof STEP_UP_SCOPES)[number];
 
 /** App ([W-07]) y listener de cada scope. */
 export const STEP_UP_LISTENER: Readonly<Record<StepUpScope, Client>> = {
   ONBOARDING: 'WALLET',
   U_REPLACEMENT: 'WALLET',
+  KEY_RESTORE: 'WALLET',
   RECOVERY: 'RECOVERY',
   ENROLLMENT: 'RECOVERY',
 };
@@ -37,6 +40,7 @@ const PURPOSE: Readonly<Record<StepUpScope, string>> = {
   U_REPLACEMENT: 'reemplazar tu clave de usuario (U)',
   RECOVERY: 'operar con tu clave de recuperación (R)',
   ENROLLMENT: 'vincular una clave de recuperación (R)',
+  KEY_RESTORE: 'restaurar tu clave de usuario (U) en este dispositivo',
 };
 
 /** Política de [B-RL] de cada scope. */
@@ -45,6 +49,7 @@ export const STEP_UP_RATE_POLICY = {
   ENROLLMENT: 'step-up-onboarding',
   RECOVERY: 'recovery-sensitive',
   U_REPLACEMENT: 'recovery-sensitive',
+  KEY_RESTORE: 'recovery-sensitive',
 } as const satisfies Record<StepUpScope, string>;
 
 const LIVE_WALLET_EXCLUDED: readonly WalletStatus[] = ['FAILED', 'ABANDONED', 'MIGRATED'];
@@ -55,7 +60,23 @@ const BindingSchema = z.object({
   walletId: z.uuid().nullable(),
   sessionPublicKey: P256PublicJwkSchema,
   sessionKeyThumbprint: z.string(),
+  /** KEY_RESTORE: nonce que firma la U restaurada (KeyRestore.nonce). */
+  keyRestoreNonce: z
+    .string()
+    .regex(/^0x[0-9a-f]{64}$/)
+    .optional(),
 });
+
+/** Verificador de la prueba de posesión de KEY_RESTORE (wallets/key-restore.ts). */
+export interface KeyRestoreVerifier {
+  verifyProof(input: {
+    userId: string;
+    walletId: string;
+    keyAddress: Address;
+    nonce: Hex;
+    signature: Hex;
+  }): Promise<void>;
+}
 
 interface LiveWallet {
   id: string;
@@ -72,6 +93,8 @@ export interface StepUpServiceDeps {
   emails: EmailOutbox;
   audit: AuditWriter;
   metrics: Metrics;
+  /** Sin verificador (procesos sin RPC ni snapshot) el scope KEY_RESTORE no se emite. */
+  keyRestore?: KeyRestoreVerifier;
 }
 
 export class StepUpService {
@@ -108,6 +131,9 @@ export class StepUpService {
       case 'ENROLLMENT':
         if (!wallet) throw new ApiError('WALLET_NOT_ACTIVE', { detail: 'todavía no hay una wallet en curso' });
         return wallet;
+      case 'KEY_RESTORE':
+        if (wallet?.status !== 'ACTIVE' || wallet.safe === null) throw new ApiError('WALLET_NOT_ACTIVE');
+        return wallet;
     }
   }
 
@@ -117,8 +143,11 @@ export class StepUpService {
     scope: StepUpScope;
     sessionPublicKey: P256PublicJwk;
     meta: RequestMeta;
-  }): Promise<{ challengeId: string; expiresAt: Date }> {
+  }): Promise<{ challengeId: string; expiresAt: Date; keyRestoreNonce?: Hex }> {
     if (STEP_UP_LISTENER[input.scope] !== input.meta.client) throw new ApiError('SCOPE_NOT_ALLOWED');
+    if (input.scope === 'KEY_RESTORE' && this.#d.keyRestore === undefined) throw new ApiError('SCOPE_NOT_ALLOWED');
+    const keyRestoreNonce: Hex | undefined =
+      input.scope === 'KEY_RESTORE' ? `0x${randomBytes(32).toString('hex')}` : undefined;
     return withTransaction(
       this.#d.db,
       async (trx) => {
@@ -139,6 +168,7 @@ export class StepUpService {
             walletId: wallet?.id ?? null,
             sessionPublicKey: input.sessionPublicKey,
             sessionKeyThumbprint: jwkThumbprint(input.sessionPublicKey),
+            ...(keyRestoreNonce === undefined ? {} : { keyRestoreNonce }),
           },
         });
         await this.#d.emails.enqueue(trx, {
@@ -166,10 +196,55 @@ export class StepUpService {
           ipPrefix: input.meta.ipPrefix,
           payload: { client: input.meta.client, scope: input.scope, challengeId: challenge.challengeId },
         });
-        return { challengeId: challenge.challengeId, expiresAt: challenge.expiresAt };
+        return {
+          challengeId: challenge.challengeId,
+          expiresAt: challenge.expiresAt,
+          ...(keyRestoreNonce === undefined ? {} : { keyRestoreNonce }),
+        };
       },
       { auditLock: true },
     );
+  }
+
+  /**
+   * KEY_RESTORE: la prueba de posesión se verifica antes de consumir el código (necesita leer el rol U on-chain, fuera
+   * de la transacción). Devuelve la wallet probada o null si el challenge no es de KEY_RESTORE.
+   */
+  async #keyRestoreProof(input: {
+    userId: string;
+    challengeId: string;
+    keyRestore?: { keyAddress: Address; signature: Hex } | undefined;
+  }): Promise<string | null> {
+    const row = await this.#d.db
+      .selectFrom('security_challenges')
+      .select('binding')
+      .where('id', '=', input.challengeId)
+      .where('user_id', '=', input.userId)
+      .where('type', '=', 'STEP_UP')
+      .executeTakeFirst();
+    const parsed = row ? BindingSchema.safeParse(row.binding) : undefined;
+    if (!parsed?.success || parsed.data.scope !== 'KEY_RESTORE') {
+      if (input.keyRestore !== undefined)
+        throw new ApiError('VALIDATION_FAILED', { detail: 'keyRestore sólo aplica a KEY_RESTORE' });
+      return null;
+    }
+    const binding = parsed.data;
+    if (input.keyRestore === undefined) {
+      throw new ApiError('VALIDATION_FAILED', {
+        detail: 'KEY_RESTORE requiere la prueba de posesión de U (keyRestore)',
+      });
+    }
+    if (this.#d.keyRestore === undefined || binding.walletId === null || binding.keyRestoreNonce === undefined) {
+      throw new ApiError('SCOPE_NOT_ALLOWED');
+    }
+    await this.#d.keyRestore.verifyProof({
+      userId: input.userId,
+      walletId: binding.walletId,
+      keyAddress: input.keyRestore.keyAddress,
+      nonce: binding.keyRestoreNonce as Hex,
+      signature: input.keyRestore.signature,
+    });
+    return binding.walletId;
   }
 
   /**
@@ -182,9 +257,15 @@ export class StepUpService {
     code: string;
     totp?: string | undefined;
     recoveryCode?: string | undefined;
+    keyRestore?: { keyAddress: Address; signature: Hex } | undefined;
     meta: RequestMeta;
   }): Promise<{ platform: IssuedPlatformSession; account: NewSession }> {
     const userId = input.session.userId;
+    const provenWallet = await this.#keyRestoreProof({
+      userId,
+      challengeId: input.challengeId,
+      keyRestore: input.keyRestore,
+    });
     const totpEnabled = (
       await this.#d.db.selectFrom('users').select('totp_enabled').where('id', '=', userId).executeTakeFirstOrThrow()
     ).totp_enabled;
@@ -222,6 +303,10 @@ export class StepUpService {
         // La wallet pudo cambiar entre el pedido y la confirmación (p. ej. se activó): se reevalúa.
         const wallet = this.#walletFor(binding.scope, await this.#liveWallet(trx, userId));
         if ((wallet?.id ?? null) !== binding.walletId) return { error: 'INVALID_CODE' as const };
+        // KEY_RESTORE: la prueba (verificada antes) tiene que ser de esta misma wallet.
+        if (binding.scope === 'KEY_RESTORE' && provenWallet !== binding.walletId) {
+          return { error: 'INVALID_CODE' as const };
+        }
         const account = await this.#d.account.rotateSession(trx, userId, input.meta, 'STEP_UP');
         const platform = await this.#d.platformSessions.issue(trx, {
           userId,

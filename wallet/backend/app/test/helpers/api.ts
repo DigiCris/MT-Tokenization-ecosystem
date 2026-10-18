@@ -10,7 +10,14 @@ import { OutboxRepository } from '../../src/db/repositories/outbox-repository.ts
 import type { Client } from '../../src/db/schema.ts';
 import { createLogger, type Logger } from '../../src/observability/logger.ts';
 import { createMetrics, type Metrics } from '../../src/observability/metrics.ts';
-import { createAccountServices, type AccountServices } from '../../src/services.ts';
+import {
+  createAccountServices,
+  createWalletServices,
+  type AccountServices,
+  type OnchainDeps,
+  type WalletServices,
+} from '../../src/services.ts';
+import type { SignerKeyService } from '../../src/signer-client/sharding.ts';
 import { TestClient } from './client.ts';
 import type { TestDatabase } from './db.ts';
 import { testConfig } from './config.ts';
@@ -25,6 +32,9 @@ export interface TestListenerOptions {
   redis?: Redis;
   rpc?: RpcQuorumClient;
   extraRoutes?: RouteRegistrar;
+  /** Onboarding de wallets (P12): lecturas on-chain + snapshot y shards del signer. */
+  onchain?: OnchainDeps;
+  signerKeys?: SignerKeyService;
 }
 
 export interface TestListener {
@@ -37,6 +47,7 @@ export interface TestListener {
   redis: Redis;
   rpc: RpcQuorumClient;
   services: AccountServices;
+  wallets: WalletServices | null;
   /** Cliente tipo navegador (cookies, Origin y CSRF) contra este listener. */
   newClient: (remoteAddress?: string) => TestClient;
   close: () => Promise<void>;
@@ -75,14 +86,29 @@ export async function buildTestListener(options: TestListenerOptions): Promise<T
   const ownRedis = options.redis === undefined;
   const redis = options.redis ?? testRedis();
   const rpc = options.rpc ?? unreachableRpc(logger, metrics);
+  const outbox = new OutboxRepository(options.db.app);
   const services = await createAccountServices({
     config,
     db: options.db.app,
     redis,
-    outbox: new OutboxRepository(options.db.app),
+    outbox,
     metrics,
     logger,
+    ...(options.onchain === undefined ? {} : { onchain: options.onchain }),
   });
+  const wallets =
+    options.onchain !== undefined && options.signerKeys !== undefined
+      ? createWalletServices({
+          config,
+          db: options.db.app,
+          account: services,
+          onchain: options.onchain,
+          signerKeys: options.signerKeys,
+          outbox,
+          metrics,
+          logger,
+        })
+      : null;
   const client = options.client ?? 'WALLET';
   const origin = client === 'WALLET' ? config.api.walletOrigin : config.api.recoveryOrigin;
   const app = await buildListener(
@@ -96,6 +122,7 @@ export async function buildTestListener(options: TestListenerOptions): Promise<T
       rpc,
       idempotency: new IdempotencyRepository(options.db.app),
       services,
+      ...(wallets === null ? {} : { wallets }),
       version: '0.0.0-test',
     },
     options.extraRoutes,
@@ -109,6 +136,7 @@ export async function buildTestListener(options: TestListenerOptions): Promise<T
     redis,
     rpc,
     services,
+    wallets,
     newClient: (remoteAddress?: string) => new TestClient(app, origin, remoteAddress),
     close: async () => {
       await app.close();

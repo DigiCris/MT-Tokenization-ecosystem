@@ -1,4 +1,5 @@
-// Armado de los servicios de cuenta (los usa el entrypoint `api` y los tests con las mismas dependencias reales).
+// Armado de los servicios de cuenta y de onboarding de wallets (los usa el entrypoint `api` y los tests con las mismas
+// dependencias reales).
 import type { Kysely } from 'kysely';
 import type { Redis } from 'ioredis';
 import { AuditWriter } from './audit/audit-writer.ts';
@@ -7,6 +8,7 @@ import { ChallengeService } from './auth/challenges.ts';
 import { PasswordHasher } from './auth/password.ts';
 import { LoginRisk } from './auth/risk.ts';
 import { SessionService } from './auth/sessions.ts';
+import type { RpcQuorumClient } from './chain/rpc-quorum.ts';
 import type { AppConfig } from './config/env.ts';
 import type { OutboxRepository } from './db/repositories/outbox-repository.ts';
 import type { Database } from './db/schema.ts';
@@ -19,6 +21,17 @@ import { PlatformSessionService } from './platform-session/sessions.ts';
 import { StepUpService } from './platform-session/step-up.ts';
 import { PlatformSessionIssuer } from './platform-session/token.ts';
 import { WalletUnlockService } from './platform-session/unlock.ts';
+import type { BackendPolicySnapshot } from './policy/snapshot.ts';
+import { EnrollmentService } from './recovery/enrollment.ts';
+import type { SignerKeyService } from './signer-client/sharding.ts';
+import { KeyRestoreService } from './wallets/key-restore.ts';
+import { WalletService } from './wallets/wallet-service.ts';
+
+/** Lecturas on-chain con quórum y snapshot de policy firmado (direcciones y codehashes del sistema). */
+export interface OnchainDeps {
+  rpc: RpcQuorumClient;
+  snapshot: () => BackendPolicySnapshot;
+}
 
 export interface AccountServices {
   sessions: SessionService;
@@ -31,6 +44,8 @@ export interface AccountServices {
   stepUp: StepUpService;
   unlock: WalletUnlockService;
   nonces: RequestNonceStore;
+  /** KEY_RESTORE (sólo con dependencias on-chain: el step-up verifica la U vigente). */
+  keyRestore: KeyRestoreService | null;
 }
 
 /** Cuenta [B-AUTH] y PlatformSession [B-PSES] (async: espera el WASM de OPAQUE y valida las claves al arrancar). */
@@ -41,6 +56,7 @@ export async function createAccountServices(input: {
   outbox: OutboxRepository;
   metrics: Metrics;
   logger: Logger;
+  onchain?: OnchainDeps;
 }): Promise<AccountServices> {
   const { config, db, redis, outbox, metrics, logger } = input;
   const sessions = new SessionService(db);
@@ -72,6 +88,18 @@ export async function createAccountServices(input: {
     platformId: config.platformId,
   });
   const platformSessions = new PlatformSessionService({ db, issuer, platformId: config.platformId });
+  const keyRestore = input.onchain
+    ? new KeyRestoreService({
+        db,
+        platformId: config.platformId,
+        chainId: config.chainId,
+        snapshot: input.onchain.snapshot,
+        rpc: input.onchain.rpc,
+        opaque,
+        audit,
+        metrics,
+      })
+    : null;
   const stepUp = new StepUpService({
     db,
     platformId: config.platformId,
@@ -81,6 +109,7 @@ export async function createAccountServices(input: {
     emails,
     audit,
     metrics,
+    ...(keyRestore === null ? {} : { keyRestore }),
   });
   const unlock = new WalletUnlockService({ db, opaque, platformSessions, audit, metrics });
   return {
@@ -94,5 +123,46 @@ export async function createAccountServices(input: {
     stepUp,
     unlock,
     nonces: new RequestNonceStore(redis),
+    keyRestore,
+  };
+}
+
+export interface WalletServices {
+  wallets: WalletService;
+  enrollments: EnrollmentService;
+  keyRestore: KeyRestoreService;
+}
+
+/** Onboarding de wallets (P12): requiere los servicios de cuenta armados con dependencias on-chain. */
+export function createWalletServices(input: {
+  config: AppConfig;
+  db: Kysely<Database>;
+  account: AccountServices;
+  onchain: OnchainDeps;
+  signerKeys: SignerKeyService;
+  outbox: OutboxRepository;
+  metrics: Metrics;
+  logger: Logger;
+}): WalletServices {
+  const { config, db, account, onchain, metrics, logger } = input;
+  if (account.keyRestore === null) throw new Error('los servicios de cuenta no tienen dependencias on-chain');
+  const common = { db, platformId: config.platformId, chainId: config.chainId, snapshot: onchain.snapshot, metrics };
+  return {
+    wallets: new WalletService({
+      ...common,
+      signerKeys: input.signerKeys,
+      opaque: account.opaque,
+      rpc: onchain.rpc,
+      outbox: input.outbox,
+      audit: account.audit,
+      logger: logger.child({ component: 'wallets' }),
+    }),
+    enrollments: new EnrollmentService({
+      ...common,
+      rpc: onchain.rpc,
+      audit: account.audit,
+      logger: logger.child({ component: 'recovery-enrollment' }),
+    }),
+    keyRestore: account.keyRestore,
   };
 }

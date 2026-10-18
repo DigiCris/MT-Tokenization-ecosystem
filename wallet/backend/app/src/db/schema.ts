@@ -149,6 +149,11 @@ export interface WalletsTable {
   created_at: GeneratedTimestamp;
   activated_at: Timestamp | null;
   updated_at: GeneratedTimestamp;
+  /** Safe esperada (CREATE2) hasta que el deploy se mina; `safe_address` sólo existe con la Safe desplegada. */
+  expected_safe: Bytes | null;
+  /** Motivo de un FAILED (p. ej. el ítem de la verificación post-deploy que no coincidió). */
+  failure_reason: string | null;
+  deploy_requested_at: Timestamp | null;
 }
 
 export interface WalletKeysMetadataTable {
@@ -181,6 +186,12 @@ export interface RecoveryMetadataTable {
   status: 'REQUESTED' | 'SUBMITTED' | 'CONFIRMED' | 'EXPIRED' | 'REJECTED';
   expires_at: Timestamp;
   created_at: GeneratedTimestamp;
+  /** Nonce del enrollment (32 bytes): RecoveryEnrollment.nonce y WalletCreationAuthorization.enrollmentNonce. */
+  nonce: Bytes | null;
+  /** Backups de una R interna (los mismos flags que U). */
+  storage_flags: Json | null;
+  submitted_at: Timestamp | null;
+  confirmed_at: Timestamp | null;
 }
 
 export interface SignerKeysTable {

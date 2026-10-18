@@ -56,7 +56,7 @@ src/
   config/        env.ts (Zod por APP_ENV, <VAR>_FILE, calidad de secretos), dotenv.ts, secret.ts
   db/            kysely.ts, schema.ts, migrator.ts, transaction.ts (withTransaction), backup.ts
     migrations/  0001_initial_schema.ts (todas las tablas de [B-DB]), 0002_account_preferences.ts,
-                 0003_signer_key_attestation.ts, grants.ts
+                 0003_signer_key_attestation.ts, 0004_wallet_onboarding.ts, grants.ts
     repositories/ outbox, idempotency
   audit/         audit-writer.ts (cadena HMAC, verificación)
   auth/          account-service.ts (reglas de cuenta), password.ts, common-passwords.ts, otp.ts, challenges.ts,
@@ -66,16 +66,22 @@ src/
                  (JWS EdDSA), sessions.ts (filas y revocación), request-signature.ts (requests críticos y envelope de
                  envío), plugin.ts (Fastify), keys.ts (session keys P-256), auth-secret.ts (derivación del cliente)
   queue/         queues.ts, outbox-dispatcher.ts, outbox-consumer.ts, redis.ts
-  chain/         rpc-quorum.ts, safe-tx.ts, eip712.ts, signatures.ts, create2.ts, decoders/, abis/ (generados)
+  chain/         rpc-quorum.ts, safe-tx.ts, eip712.ts, signatures.ts, create2.ts, safe-proxy.ts (creation code del
+                 proxy de Safe fijado), decoders/, abis/ (generados)
   signer-client/ client.ts (mTLS hacia los shards, errores tipificados), sharding.ts (asignación por hash guardada en
                  signer_keys, S de onboarding y de rotación, reasignación tras una migración)
   gas/           gas-tank.ts (recargas de S, deploy de Safes y relay de cancelaciones por el shard `platform`)
-  policy/        snapshot.ts (snapshot de policy firmado: firma, entorno y versión que se envía al signer)
+  policy/        snapshot.ts (snapshot de policy firmado: firma, entorno, versión, direcciones y codehashes)
+  wallets/       wallet-service.ts (onboarding: alta, U, asignación de S, Safe esperada, pedido de deploy),
+                 deployer.ts (deploy y activación en el proceso gas-tank), verification.ts (V9 §16), salt.ts,
+                 key-restore.ts (KEY_RESTORE), schemas.ts
+  recovery/      enrollment.ts (enrollment de R y autorización de creación firmada por U)
   observability/ logger.ts, redaction.ts, metrics.ts
   api/           server.ts (dos listeners), errors.ts (RFC 9457), health.ts, routes/ (health, v1/auth, v1/users,
-                 v1/sessions), plugins/ (auth y CSRF, rate limit, idempotencia, OpenAPI, seguridad)
+                 v1/sessions, v1/platform-sessions, v1/wallets, v1/recovery), plugins/ (auth y CSRF, rate limit,
+                 idempotencia, OpenAPI, seguridad)
   cli/           db.ts, audit-verify.ts, opaque-setup.ts, dev-session.ts, signer-reassign.ts
-  services.ts    armado de los servicios de cuenta (proceso `api` y tests)
+  services.ts    armado de los servicios de cuenta y de onboarding (proceso `api` y tests)
   main.ts        entrypoint `api` | `worker` | `gas-tank`
 data/            lista vendorizada de passwords comunes (SecLists, SHA-256 fijado)
 test/            unit, integración (Testcontainers + Anvil), API (inject), seguridad, email; vectors/ (copia de
@@ -158,6 +164,31 @@ bajo `GAS_TOPUP_MIN_WEI` a `GAS_TOPUP_TARGET_WEI` sin superar `GAS_TANK_DAILY_CA
 tope del snapshot), despliega Safes por la `WalletFactory` (sólo con una S atestada por un signer) y retransmite
 cancelaciones de rotación firmadas por U o R. Cada tx queda en `chain_transactions` (y las recargas en `gas_topups`).
 
+## Onboarding de la wallet (P12)
+
+Todo por la API del listener de Wallet con la PlatformSession ONBOARDING (step-up), salvo lo que hace Recovery:
+
+1. `POST /wallets` → CREATING (o la wallet en curso). `POST /wallets/{id}/user-key/opaque-registration` y
+   `POST /wallets/{id}/user-key`: dirección de U, KDF público, backups confirmados (al menos uno que no dependa de la
+   plataforma) y registro OPAQUE PENDING.
+2. `POST /wallets/{id}/recovery/enrollments` (nonce de 32 bytes, 15 min). En Recovery, con la sesión ENROLLMENT:
+   `POST /recovery/enrollments/{id}/enrollment-key` (P-256, una vez) y `.../submit` con `RecoveryEnrollment` firmado por
+   la Enrollment Key y la prueba de control EIP-712 de R (EOA, distinta de U, nunca usada por otra wallet).
+3. `POST /wallets/{id}/executor`: el shard asignado crea S con su `SignerKeyAttestation` y el backend fija la Safe
+   esperada — cálculo local (initializer + CREATE2 con el creation code fijado y
+   `saltNonce = uint256(keccak256(abi.encode("MTW_SALT_V1", platformId, walletId)))`) igual a
+   `WalletFactory.predictWalletAddress` — y devuelve el typed data de `WalletCreationAuthorization`.
+4. `POST /recovery/enrollments/{id}/incorporate`: la autorización firmada por U, aceptada sólo si cada campo coincide.
+5. `POST /wallets/{id}/deploy` → DEPLOYING y evento `WALLET_DEPLOY_REQUESTED` (cola `gas-tank`). El proceso `gas-tank`
+   llama `WalletFactory.createWallet(U, R, S, salt)` (o registra la Safe si un tercero ya la desplegó) → VERIFYING →
+   verificación V9 §16 por quórum contra las direcciones y codehashes del snapshot firmado → ACTIVE (claves y registro
+   OPAQUE ACTIVE, S fondeada) o FAILED con el ítem que falló. `GET /wallets/{id}/deployment` expone todo lo necesario
+   para la verificación propia del frontend; la Safe operativa sólo aparece en `GET /wallets/me` con la wallet ACTIVE.
+
+KEY_RESTORE (U restaurada desde las 17 palabras o rotación de `OPAQUE_SERVER_SETUP`): step-up con la prueba de posesión
+(firma EIP-712 `KeyRestore` de la U vigente on-chain) → `POST /wallets/{id}/user-key/restore` reemplaza el registro
+OPAQUE de esa misma U.
+
 ## PlatformSession en local (`dev:session`)
 
 Sin frontend, `pnpm dev:session` hace lo mismo que el navegador contra la API local: la primera vez crea el usuario de
@@ -175,9 +206,11 @@ operación; la firma vale 60 s y una sola vez. Con `APP_ENV` distinto de `local`
 tests de cadena levantan Anvil sobre el fork de Base (`BASE_RPC_URL` o `FORK_RPC_URL`; en local se lee de
 `wallet/.env`) y el cliente de quórum se prueba con dos Anvil y un proxy de inyección de fallas. Cobertura: ≥ 90 % de
 líneas en `src/chain/` (§10); `main.ts` y las CLIs se prueban como procesos reales. Los flujos de cuenta usan el
-pipeline de email real (outbox → BullMQ → worker → SMTP de Mailpit) y leen los códigos de Mailpit. Los tests del
-cliente del signer y del gas tank levantan shards reales del signer (procesos de `backend/signer`, que necesita sus
-dependencias instaladas) y despliegan el sistema en el fork con los scripts del repo.
+pipeline de email real (outbox → BullMQ → worker → SMTP de Mailpit) y leen los códigos de Mailpit. El global setup
+despliega el sistema una vez en el fork con los scripts del repo y vuelca el estado: los tests que lo usan levantan su
+propio Anvil con `--load-state`. Los tests del cliente del signer, del gas tank y del onboarding levantan shards reales
+del signer (procesos de `backend/signer`, que necesita sus dependencias instaladas); el onboarding se prueba de punta a
+punta por la API (OPAQUE, firmas EIP-712 y P-256 reales) hasta ACTIVE, incluido el proceso `gas-tank` real.
 
 `pnpm test:live` envía por la API real de Mailgun (dominio sandbox) a `EMAIL_TEST_ADDRESS` y lee los códigos con la
 Gmail API (credenciales `EMAIL_PROVIDER_*` y `EMAIL_TEST_*` del entorno o de `wallet/.env`). El sandbox firma DKIM y

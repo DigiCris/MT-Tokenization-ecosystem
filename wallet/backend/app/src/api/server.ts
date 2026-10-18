@@ -13,7 +13,7 @@ import type { Client, Database } from '../db/schema.ts';
 import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
 import { registerPlatformSessions } from '../platform-session/plugin.ts';
-import type { AccountServices } from '../services.ts';
+import type { AccountServices, WalletServices } from '../services.ts';
 import { registerAuth } from './plugins/auth.ts';
 import { registerErrorHandling } from './plugins/error-handler.ts';
 import { registerIdempotency } from './plugins/idempotency.ts';
@@ -24,8 +24,10 @@ import { registerSecurity } from './plugins/security.ts';
 import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/v1/auth.ts';
 import { platformSessionsRoutes } from './routes/v1/platform-sessions.ts';
+import { recoveryRoutes } from './routes/v1/recovery.ts';
 import { sessionsRoutes } from './routes/v1/sessions.ts';
 import { usersRoutes } from './routes/v1/users.ts';
+import { walletRoutes } from './routes/v1/wallets.ts';
 import type { AppInstance } from './types.ts';
 
 export const API_PREFIX = '/api/v1';
@@ -40,6 +42,8 @@ export interface ApiDeps {
   idempotency: IdempotencyRepository;
   /** Cuenta y PlatformSession (src/services.ts). */
   services: AccountServices;
+  /** Onboarding de wallets (P12); sin ellos los grupos `wallet` y `recovery` no se registran. */
+  wallets?: WalletServices;
   version: string;
 }
 
@@ -131,6 +135,17 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
     unlock: isWallet ? deps.services.unlock : null,
     csrfForSession,
   });
+  if (deps.wallets) {
+    // [B-AUTHZ] 3: el grupo `wallet` existe sólo en el listener de Wallet; `recovery` reparte sus rutas por listener.
+    if (isWallet) {
+      await app.register(walletRoutes, {
+        prefix: API_PREFIX,
+        wallets: deps.wallets.wallets,
+        keyRestore: deps.wallets.keyRestore,
+      });
+    }
+    await app.register(recoveryRoutes, { prefix: API_PREFIX, client, enrollments: deps.wallets.enrollments });
+  }
   if (extraRoutes) {
     await app.register(
       async (scope) => {

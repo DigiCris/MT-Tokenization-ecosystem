@@ -1,13 +1,21 @@
 // P08.T09 / P08.SEC: OpenAPI 3.1 generado desde Zod, una spec por listener con sólo sus rutas, ninguna ruta sin
 // schema de request/response/errores, y Swagger UI con "Try it out" sólo fuera de producción.
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { errorResponses } from '../../src/api/errors.ts';
 import { REQUIRED_ERROR_STATUSES } from '../../src/api/plugins/openapi.ts';
 import type { RouteRegistrar } from '../../src/api/server.ts';
-import { buildTestListener, type TestListener } from '../helpers/api.ts';
+import { createLogger } from '../../src/observability/logger.ts';
+import { createMetrics } from '../../src/observability/metrics.ts';
+import { loadPolicySnapshot } from '../../src/policy/snapshot.ts';
+import { SignerKeyService } from '../../src/signer-client/sharding.ts';
+import { buildTestListener, unreachableRpc, type TestListener } from '../helpers/api.ts';
 import { testConfig } from '../helpers/config.ts';
 import { createTestDatabase, type TestDatabase } from '../helpers/db.ts';
+import { edKey, vectorSystem, writePolicySnapshot } from '../helpers/signer-shard.ts';
 
 interface Spec {
   openapi: string;
@@ -76,21 +84,66 @@ const ACCOUNT_PATHS = [
   '/api/v1/platform-sessions/check',
   '/api/v1/platform-sessions/{id}',
 ];
-/** El desbloqueo con U (OPAQUE) existe sólo en el listener de Wallet ([B-API]). */
-const WALLET_ONLY_PATHS = ['/api/v1/platform-sessions/opaque/start', '/api/v1/platform-sessions/opaque/finish'];
+/** El estado del enrollment de R lo consultan las dos apps (P12). */
+const SHARED_ONBOARDING_PATHS = ['/api/v1/recovery/enrollments/{id}'];
+/**
+ * Sólo en el listener de Wallet ([B-API], [B-AUTHZ] 3): desbloqueo con U (OPAQUE), el grupo `wallet` y, del grupo
+ * `recovery`, crear el enrollment e incorporar la autorización de U.
+ */
+const WALLET_ONLY_PATHS = [
+  '/api/v1/platform-sessions/opaque/start',
+  '/api/v1/platform-sessions/opaque/finish',
+  '/api/v1/wallets',
+  '/api/v1/wallets/me',
+  '/api/v1/wallets/{id}/user-key/opaque-registration',
+  '/api/v1/wallets/{id}/user-key',
+  '/api/v1/wallets/{id}/user-key/restore',
+  '/api/v1/wallets/{id}/executor',
+  '/api/v1/wallets/{id}/deploy',
+  '/api/v1/wallets/{id}/deployment',
+  '/api/v1/wallets/{id}/recovery/enrollments',
+  '/api/v1/recovery/enrollments/{id}/incorporate',
+];
+/** Sólo en el listener de Recovery: Enrollment Key y envío de R. */
+const RECOVERY_ONLY_PATHS = [
+  '/api/v1/recovery/enrollments/{id}/enrollment-key',
+  '/api/v1/recovery/enrollments/{id}/submit',
+];
 /** Operaciones (método + ruta): GET y PATCH /users/me, GET y DELETE /sessions. */
 const ACCOUNT_OPERATIONS = ACCOUNT_PATHS.length + 2;
 
 let db: TestDatabase;
+let snapshotDir: string;
 const listeners: Record<'WALLET' | 'RECOVERY', TestListener | undefined> = { WALLET: undefined, RECOVERY: undefined };
 
 beforeAll(async () => {
   db = await createTestDatabase();
+  // Con los servicios de wallets (P12) se registran sus grupos; armar las rutas no consulta la cadena ni al signer.
+  snapshotDir = mkdtempSync(join(tmpdir(), 'mtw-openapi-'));
+  const key = edKey();
+  const snapshot = loadPolicySnapshot(writePolicySnapshot(snapshotDir, key, vectorSystem()), key.publicKey, 'local');
+  const rpc = unreachableRpc(
+    createLogger({ level: 'silent', service: 'test' }),
+    createMetrics({ defaultMetrics: false }),
+  );
+  const signerKeys = new SignerKeyService({
+    db: db.app,
+    shards: [{ id: 'dev-1', url: 'https://127.0.0.1:9', active: true }],
+    clients: new Map(),
+  });
   for (const client of ['WALLET', 'RECOVERY'] as const) {
-    listeners[client] = await buildTestListener({ db, client, extraRoutes: walletOnly });
+    listeners[client] = await buildTestListener({
+      db,
+      client,
+      extraRoutes: walletOnly,
+      rpc,
+      onchain: { rpc, snapshot: () => snapshot },
+      signerKeys,
+    });
   }
 });
 afterAll(async () => {
+  rmSync(snapshotDir, { recursive: true, force: true });
   await Promise.all(
     Object.values(listeners)
       .filter((l): l is TestListener => l !== undefined)
@@ -111,9 +164,11 @@ describe('spec OpenAPI por listener', () => {
     expect(doc.openapi).toBe('3.1.0');
     expect(doc.info.title).toBe(client === 'WALLET' ? 'MTW API — Wallet' : 'MTW API — Recovery');
     const paths = Object.keys(doc.paths).sort();
-    const expected = [...ACCOUNT_PATHS].sort();
+    const shared = [...ACCOUNT_PATHS, ...SHARED_ONBOARDING_PATHS];
     expect(paths).toEqual(
-      client === 'WALLET' ? [...expected, ...WALLET_ONLY_PATHS, '/api/v1/test/wallet-only'].sort() : expected,
+      client === 'WALLET'
+        ? [...shared, ...WALLET_ONLY_PATHS, '/api/v1/test/wallet-only'].sort()
+        : [...shared, ...RECOVERY_ONLY_PATHS].sort(),
     );
   });
 
@@ -152,8 +207,9 @@ describe('spec OpenAPI por listener', () => {
     const api = listeners[client]!.app.apiRoutes.map(
       (route) => `${route.method} ${route.url.replace(/:([A-Za-z0-9_]+)/g, '{$1}')}`,
     );
+    const shared = ACCOUNT_OPERATIONS + SHARED_ONBOARDING_PATHS.length;
     expect(api.length).toBe(
-      client === 'WALLET' ? ACCOUNT_OPERATIONS + WALLET_ONLY_PATHS.length + 1 : ACCOUNT_OPERATIONS,
+      client === 'WALLET' ? shared + WALLET_ONLY_PATHS.length + 1 : shared + RECOVERY_ONLY_PATHS.length,
     );
     for (const entry of api) expect(documented.has(entry), entry).toBe(true);
   });

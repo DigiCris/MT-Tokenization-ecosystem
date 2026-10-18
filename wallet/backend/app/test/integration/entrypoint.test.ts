@@ -3,7 +3,9 @@
 // ordenado con SIGTERM. La salida del proceso no contiene secretos.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { OutboxRepository } from '../../src/db/repositories/outbox-repository.ts';
@@ -16,6 +18,7 @@ import { localEnv } from '../helpers/config.ts';
 import { createTestDatabase, type TestDatabase } from '../helpers/db.ts';
 import { freePort, startAnvil, type AnvilInstance } from '../helpers/fork.ts';
 import { REDIS_DBS } from '../helpers/redis-dbs.ts';
+import { createPki, edKey, vectorSystem, writePolicySnapshot, type Pki } from '../helpers/signer-shard.ts';
 
 const APP = resolve(import.meta.dirname, '../..');
 const REDIS_DB = REDIS_DBS.entrypoint;
@@ -68,9 +71,15 @@ let anvil: AnvilInstance;
 let db: TestDatabase;
 let env: Record<string, string | undefined>;
 let ports: { wallet: number; recovery: number; metrics: number; workerMetrics: number };
+let pki: Pki;
+let snapshotDir: string;
 
 beforeAll(async () => {
   [anvil, db] = await Promise.all([startAnvil(), createTestDatabase()]);
+  // Onboarding (P12): el proceso api conoce los shards del signer (mTLS, sin conectarse al arrancar) y el snapshot.
+  pki = createPki();
+  snapshotDir = mkdtempSync(join(tmpdir(), 'mtw-entrypoint-'));
+  const policyKey = edKey();
   ports = {
     wallet: await freePort(),
     recovery: await freePort(),
@@ -92,11 +101,22 @@ beforeAll(async () => {
     RPC_PRIMARY_URL: anvil.url,
     RPC_SECONDARY_URL: anvil.url,
     OUTBOX_POLL_INTERVAL_MS: '100',
+    SIGNER_SHARDS: JSON.stringify([{ id: 'dev-1', url: 'https://127.0.0.1:9' }]),
+    MTLS_CA_CERT_PATH: pki.ca,
+    MTLS_BACKEND_CLIENT_CERT_PATH: pki.client.cert,
+    MTLS_BACKEND_CLIENT_KEY_PATH: pki.client.key,
+    POLICY_SNAPSHOT_PATH: writePolicySnapshot(snapshotDir, policyKey, vectorSystem()),
+    POLICY_SIGNING_PUBLIC_KEY: policyKey.publicBase64,
+    GAS_TOPUP_MIN_WEI: '200000000000000',
+    GAS_TOPUP_TARGET_WEI: '1000000000000000',
+    GAS_TANK_DAILY_CAP_WEI: '50000000000000000',
   });
 }, 180_000);
 
 afterAll(async () => {
   await Promise.all([anvil.stop(), db.close()]);
+  (pki as Pki | undefined)?.cleanup();
+  rmSync(snapshotDir, { recursive: true, force: true });
 });
 
 function expectNoSecrets(output: string): void {

@@ -85,7 +85,12 @@ describe('health', () => {
       checks: {
         migrations: {
           ok: false,
-          pending: ['0001_initial_schema', '0002_account_preferences', '0003_signer_key_attestation'],
+          pending: [
+            '0001_initial_schema',
+            '0002_account_preferences',
+            '0003_signer_key_attestation',
+            '0004_wallet_onboarding',
+          ],
         },
       },
     });

@@ -9,6 +9,8 @@ export const QUEUES = {
   walletOperations: 'wallet-operations',
   email: 'email',
   notifications: 'notifications',
+  /** Transacciones de la cuenta gas tank que pide la API (deploy de Safes): las consume el proceso gas-tank. */
+  gasTank: 'gas-tank',
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
@@ -17,6 +19,7 @@ export const EVENT_ROUTES: Readonly<Record<string, QueueName>> = {
   OPERATION_QUEUED: QUEUES.walletOperations,
   EMAIL_REQUESTED: QUEUES.email,
   NOTIFICATION_REQUESTED: QUEUES.notifications,
+  WALLET_DEPLOY_REQUESTED: QUEUES.gasTank,
 };
 
 export function queueForEvent(eventType: string): QueueName | undefined {
@@ -47,6 +50,8 @@ export const QUEUE_JOB_OPTIONS: Readonly<Record<QueueName, JobsOptions>> = {
   [QUEUES.walletOperations]: DEFAULT_JOB_OPTIONS,
   [QUEUES.email]: { ...DEFAULT_JOB_OPTIONS, attempts: 8, backoff: { type: 'exponential', delay: 5_000 } },
   [QUEUES.notifications]: DEFAULT_JOB_OPTIONS,
+  // Deploy: el RPC o el signer pueden estar caídos un rato; ~17 min de reintentos antes de quedar fallido (alerta).
+  [QUEUES.gasTank]: { ...DEFAULT_JOB_OPTIONS, attempts: 10, backoff: { type: 'exponential', delay: 2_000 } },
 };
 
 export type Queues = Readonly<Record<QueueName, Queue<OutboxJobData>>>;
@@ -69,6 +74,7 @@ export function createQueues(connection: Redis, onError: (error: Error) => void)
     [QUEUES.walletOperations]: make(QUEUES.walletOperations),
     [QUEUES.email]: make(QUEUES.email),
     [QUEUES.notifications]: make(QUEUES.notifications),
+    [QUEUES.gasTank]: make(QUEUES.gasTank),
   } as Queues;
 }
 

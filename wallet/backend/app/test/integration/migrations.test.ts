@@ -1,14 +1,19 @@
 // P08.T03: migraciones sobre PostgreSQL 18 real (roles de infra/local/postgres/init-db.sh). Verifica idempotencia,
 // todas las tablas de [B-DB], FKs ON DELETE RESTRICT de [B-DB-FK], audit_events append-only, índices únicos parciales,
 // CHECKs y GRANTs por rol.
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateToLatest, migrationStatus, pendingMigrations } from '../../src/db/migrator.ts';
 import { createTestDatabase, insertUser, type TestDatabase } from '../helpers/db.ts';
 
 const addr = () => randomBytes(20);
-const ALL_MIGRATIONS = ['0001_initial_schema', '0002_account_preferences', '0003_signer_key_attestation'];
+const ALL_MIGRATIONS = [
+  '0001_initial_schema',
+  '0002_account_preferences',
+  '0003_signer_key_attestation',
+  '0004_wallet_onboarding',
+];
 const hash = () => randomBytes(32);
 const sig = () => randomBytes(65);
 
@@ -493,6 +498,61 @@ describe('esquema [B-DB]', () => {
     } finally {
       await db.admin.query('ROLLBACK');
     }
+  });
+
+  it('0004: Safe esperada única por cadena; enrollment completo por estado y uno vivo por wallet y por R', async () => {
+    const expected = addr();
+    const w1 = await insertWallet('CREATING', await insertUser(db.app));
+    const w2 = await insertWallet('CREATING', await insertUser(db.app));
+    await db.app.updateTable('wallets').set({ expected_safe: expected }).where('id', '=', w1.id).execute();
+    expect(
+      await sqlStateOf(
+        db.app.updateTable('wallets').set({ expected_safe: expected }).where('id', '=', w2.id).execute(),
+      ),
+    ).toBe('23505');
+    expect(
+      await sqlStateOf(
+        db.app
+          .updateTable('wallets')
+          .set({ failure_reason: 'x'.repeat(201) })
+          .where('id', '=', w1.id)
+          .execute(),
+      ),
+    ).toBe('23514');
+
+    const enrollment = (walletId: string, values: Record<string, unknown>) =>
+      db.app
+        .insertInto('recovery_metadata')
+        .values({
+          wallet_id: walletId,
+          enrollment_id: randomUUID(),
+          status: 'REQUESTED',
+          expires_at: new Date(Date.now() + 60_000),
+          nonce: hash(),
+          ...values,
+        })
+        .execute();
+    const r = addr();
+    const submitted = {
+      status: 'SUBMITTED',
+      r_address: r,
+      r_type: 'INTERNAL',
+      enrollment_key_jwk: JSON.stringify({ kty: 'EC' }),
+      enrollment_payload: JSON.stringify({}),
+      enrollment_key_signature: randomBytes(64),
+      r_proof_signature: sig(),
+      submitted_at: new Date(),
+    };
+    // SUBMITTED sin la prueba de control, CONFIRMED sin la firma de U y EXTERNAL sin conector se rechazan.
+    expect(await sqlStateOf(enrollment(w1.id, { ...submitted, r_proof_signature: null }))).toBe('23514');
+    expect(await sqlStateOf(enrollment(w1.id, { ...submitted, status: 'CONFIRMED' }))).toBe('23514');
+    expect(await sqlStateOf(enrollment(w1.id, { ...submitted, r_type: 'EXTERNAL' }))).toBe('23514');
+    expect(await sqlStateOf(enrollment(w1.id, submitted))).toBeUndefined();
+    // Otra inscripción viva para la misma wallet o la misma R en otra wallet: no.
+    expect(await sqlStateOf(enrollment(w1.id, { ...submitted, r_address: addr() }))).toBe('23505');
+    expect(await sqlStateOf(enrollment(w2.id, submitted))).toBe('23505');
+    // Las REQUESTED no cuentan como vivas.
+    expect(await sqlStateOf(enrollment(w1.id, {}))).toBeUndefined();
   });
 
   it('mtw_readonly lee todo salvo hashes y secretos cifrados, y no escribe', async () => {

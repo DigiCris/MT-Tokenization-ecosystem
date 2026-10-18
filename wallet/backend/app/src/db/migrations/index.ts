@@ -4,9 +4,11 @@ import type { Migration } from 'kysely/migration';
 import * as initialSchema from './0001_initial_schema.ts';
 import * as accountPreferences from './0002_account_preferences.ts';
 import * as signerKeyAttestation from './0003_signer_key_attestation.ts';
+import * as walletOnboarding from './0004_wallet_onboarding.ts';
 
 export const MIGRATIONS: Readonly<Record<string, Migration>> = {
   '0001_initial_schema': initialSchema,
   '0002_account_preferences': accountPreferences,
   '0003_signer_key_attestation': signerKeyAttestation,
+  '0004_wallet_onboarding': walletOnboarding,
 };

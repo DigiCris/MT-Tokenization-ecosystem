@@ -113,12 +113,15 @@ describe('step-up', () => {
     ).toBe(200);
   });
 
-  it('nunca OPERATIONS ni KEY_RESTORE por step-up; U_REPLACEMENT y RECOVERY exigen la wallet ACTIVE', async () => {
+  it('nunca OPERATIONS por step-up; KEY_RESTORE sólo con verificación on-chain; U_REPLACEMENT exige la wallet ACTIVE', async () => {
     const { client: browser } = await signedInClient(env.wallet, env.db);
-    for (const scope of ['OPERATIONS', 'KEY_RESTORE']) {
-      const { response } = await startStepUp(browser, scope);
-      expect(response.statusCode, scope).toBe(400);
-    }
+    const { response } = await startStepUp(browser, 'OPERATIONS');
+    expect(response.statusCode).toBe(400);
+    // Este listener no tiene RPC ni snapshot: sin poder verificar la prueba de posesión de U, KEY_RESTORE no se emite.
+    // Con ellos exige además la wallet ACTIVE y la firma KeyRestore de la U vigente (test/wallets/key-restore.test.ts).
+    const keyRestore = await startStepUp(browser, 'KEY_RESTORE');
+    expect(keyRestore.response.statusCode).toBe(403);
+    expect(keyRestore.response.json()).toMatchObject({ code: 'SCOPE_NOT_ALLOWED' });
     const replacement = await startStepUp(browser, 'U_REPLACEMENT');
     expect(replacement.response.statusCode).toBe(409);
     expect(replacement.response.json()).toMatchObject({ code: 'WALLET_NOT_ACTIVE' });
