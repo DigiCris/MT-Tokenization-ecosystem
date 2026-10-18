@@ -5,7 +5,14 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeSync } f
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { TransactionReceiptNotFoundError, type Hex, type PublicClient, type TransactionReceipt } from 'viem';
+import {
+  HttpRequestError,
+  TimeoutError,
+  TransactionReceiptNotFoundError,
+  type Hex,
+  type PublicClient,
+  type TransactionReceipt,
+} from 'viem';
 import { parseDotenv } from '../../src/config/dotenv.ts';
 
 const WALLET_ROOT = resolve(import.meta.dirname, '../../../..');
@@ -203,7 +210,8 @@ async function launchAnvil(options: AnvilOptions): Promise<AnvilInstance> {
 /**
  * Espera el receipt de una tx consultando `eth_getTransactionReceipt` cada 250 ms. No usa `waitForTransactionReceipt` de
  * viem: con Anvil bajo carga en CI, su watcher de bloques llegó a no volver a pedir el receipt de una tx ya minada y
- * vencía (logs de Anvil de la corrida).
+ * vencía (logs de Anvil de la corrida). Una consulta que vence o falla por HTTP mientras Anvil mina una tx que trae
+ * mucho estado del fork (p. ej. un swap grande) se reintenta: lo que acota la espera es el plazo total.
  */
 export async function waitForReceipt(
   client: Pick<PublicClient, 'getTransactionReceipt'>,
@@ -214,6 +222,7 @@ export async function waitForReceipt(
   for (;;) {
     const receipt = await client.getTransactionReceipt({ hash }).catch((error: unknown) => {
       if (error instanceof TransactionReceiptNotFoundError) return null;
+      if (error instanceof TimeoutError || error instanceof HttpRequestError) return null;
       throw error;
     });
     if (receipt) return receipt;

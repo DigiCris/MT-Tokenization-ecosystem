@@ -6,6 +6,8 @@ import {
   createWalletClient,
   encodeFunctionData,
   http,
+  HttpRequestError,
+  TimeoutError,
   TransactionReceiptNotFoundError,
   type Hex as ViemHex,
   type PublicClient,
@@ -24,7 +26,8 @@ import type { AnvilInstance } from './anvil.ts';
 
 /**
  * Espera el receipt de una tx consultando `eth_getTransactionReceipt` cada 250 ms. No usa `waitForTransactionReceipt` de
- * viem: con Anvil bajo carga en CI, su watcher de bloques llegó a no volver a pedir el receipt de una tx ya minada.
+ * viem: con Anvil bajo carga en CI, su watcher de bloques llegó a no volver a pedir el receipt de una tx ya minada. Una
+ * consulta que vence o falla por HTTP mientras Anvil trae estado del fork se reintenta dentro del plazo total.
  */
 async function waitForReceipt(
   client: Pick<PublicClient, 'getTransactionReceipt'>,
@@ -35,6 +38,7 @@ async function waitForReceipt(
   for (;;) {
     const receipt = await client.getTransactionReceipt({ hash }).catch((error: unknown) => {
       if (error instanceof TransactionReceiptNotFoundError) return null;
+      if (error instanceof TimeoutError || error instanceof HttpRequestError) return null;
       throw error;
     });
     if (receipt) return receipt;
