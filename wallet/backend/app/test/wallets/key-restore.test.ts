@@ -21,6 +21,7 @@ import {
   stepUp,
   type OnboardedWallet,
   type OnboardingEnv,
+  type Session,
 } from '../helpers/onboarding.ts';
 import { newAuthSecret, newSessionKey, unlockWallet } from '../helpers/platform.ts';
 import { REDIS_DBS } from '../helpers/redis-dbs.ts';
@@ -182,5 +183,151 @@ describe('KEY_RESTORE', () => {
       },
     );
     expect(userKey.statusCode).toBe(403);
+  });
+});
+
+describe('cambio de Password U [F-KEY-08]', () => {
+  let wallet: OnboardedWallet;
+  let secret: string;
+  /** Desbloqueo OPAQUE → PlatformSession OPERATIONS en la forma de los helpers de requests críticos. */
+  const operations = async (authSecretHex: string): Promise<Session> => {
+    const unlocked = await unlockWallet(wallet.user.wallet, authSecretHex);
+    return {
+      token: unlocked.token,
+      sessionId: unlocked.sessionId,
+      key: unlocked.key,
+      walletId: unlocked.session.walletId,
+    };
+  };
+  const kdfParams = (salt: string) => ({
+    alg: 'argon2id',
+    version: 19,
+    memoryKiB: 65536,
+    iterations: 3,
+    parallelism: 4,
+    salt,
+  });
+  const metadata = (o: OnboardedWallet) =>
+    env.db.app
+      .selectFrom('wallet_keys_metadata')
+      .select(['kdf_params', 'storage_flags'])
+      .where('wallet_id', '=', o.walletId)
+      .where('role', '=', 'U')
+      .where('status', '=', 'ACTIVE')
+      .executeTakeFirstOrThrow();
+
+  beforeAll(async () => {
+    await resetRateLimits(env.redis);
+    wallet = await onboard(env);
+    expect(await deploy(env, wallet)).toBe('ACTIVE');
+    secret = wallet.userKey.authSecretHex;
+  }, 900_000);
+
+  it('con OPERATIONS: registro OPAQUE nuevo con los metadatos del sobre nuevo; la Password U vieja ya no desbloquea y sólo sigue la sesión del pedido', async () => {
+    const other = await operations(secret);
+    const current = await operations(secret);
+    const newSecret = newAuthSecret();
+    const registrationRecord = await opaqueRecord(wallet.user.wallet, current, wallet.walletId, newSecret);
+    const body = {
+      registrationRecord,
+      kdfParams: kdfParams('AAECAwQFBgcICQoLDA0ODw'),
+      storageFlags: { drive: true, file: true, qr: false, words: false },
+    };
+    const path = `/wallets/${wallet.walletId}/user-key/password`;
+    expect((await critical(wallet.user.wallet, current, path, body)).json()).toMatchObject({
+      code: 'IDEMPOTENCY_KEY_REQUIRED',
+    });
+    const changed = await critical(wallet.user.wallet, current, path, body, { idempotencyKey: idempotencyKey() });
+    expect(changed.statusCode, changed.body).toBe(200);
+    expect(changed.json()).toEqual({ userKey: wallet.userKey.account.address, keyVersion: 1, status: 'ACTIVE' });
+
+    const records = await env.db.app
+      .selectFrom('opaque_records')
+      .select('status')
+      .where('wallet_id', '=', wallet.walletId)
+      .orderBy('created_at')
+      .execute();
+    expect(records.map((r) => r.status)).toEqual(['RETIRED', 'ACTIVE']);
+    expect(await metadata(wallet)).toEqual({ kdf_params: body.kdfParams, storage_flags: body.storageFlags });
+    await expect(unlockWallet(wallet.user.wallet, secret)).rejects.toThrow();
+    const reopened = await unlockWallet(wallet.user.wallet, newSecret);
+    expect(reopened.session).toMatchObject({ scope: 'OPERATIONS', walletId: wallet.walletId });
+    secret = newSecret;
+    const check = (session: Session) => critical(wallet.user.wallet, session, '/platform-sessions/check', {});
+    expect((await check(current)).statusCode).toBe(200);
+    expect((await check(other)).json()).toMatchObject({ code: 'PLATFORM_SESSION_INVALID' });
+    const audit = await env.db.app
+      .selectFrom('audit_events')
+      .select(['event_type', 'payload'])
+      .where('wallet_id', '=', wallet.walletId)
+      .where('event_type', '=', 'USER_KEY_PASSWORD_CHANGED')
+      .execute();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.payload).toMatchObject({ keyVersion: 1, revokedPlatformSessions: 1, kdfMemoryKiB: 65536 });
+  });
+
+  it('sin OPERATIONS (KEY_RESTORE) o con un registro inválido no cambia nada', async () => {
+    await resetRateLimits(env.redis);
+    const restoreSession = await stepUp(
+      wallet.user.wallet,
+      wallet.user.account.email,
+      'KEY_RESTORE',
+      proof(wallet, wallet.userKey.account),
+    );
+    const registrationRecord = await opaqueRecord(wallet.user.wallet, restoreSession, wallet.walletId, newAuthSecret());
+    const body = {
+      registrationRecord,
+      kdfParams: kdfParams('ICEiIyQlJicoKSorLC0uLw'),
+      storageFlags: { drive: false, file: true, qr: true, words: false },
+    };
+    const path = `/wallets/${wallet.walletId}/user-key/password`;
+    const wrongScope = await critical(wallet.user.wallet, restoreSession, path, body, {
+      idempotencyKey: idempotencyKey(),
+    });
+    expect(wrongScope.statusCode).toBe(403);
+    expect(wrongScope.json()).toMatchObject({ code: 'SCOPE_NOT_ALLOWED' });
+    const unlocked = await operations(secret);
+    const invalid = await critical(
+      wallet.user.wallet,
+      unlocked,
+      path,
+      { ...body, registrationRecord: 'A'.repeat(64) },
+      { idempotencyKey: idempotencyKey() },
+    );
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect((await metadata(wallet)).storage_flags).toEqual({ drive: true, file: true, qr: false, words: false });
+    expect((await unlockWallet(wallet.user.wallet, secret)).session.scope).toBe('OPERATIONS');
+  });
+
+  it('KEY_RESTORE con el sobre nuevo actualiza KDF y backups; uno sin el otro es 400', async () => {
+    await resetRateLimits(env.redis);
+    const session = await stepUp(
+      wallet.user.wallet,
+      wallet.user.account.email,
+      'KEY_RESTORE',
+      proof(wallet, wallet.userKey.account),
+    );
+    const newSecret = newAuthSecret();
+    const registrationRecord = await opaqueRecord(wallet.user.wallet, session, wallet.walletId, newSecret);
+    const path = `/wallets/${wallet.walletId}/user-key/restore`;
+    const half = await critical(
+      wallet.user.wallet,
+      session,
+      path,
+      { registrationRecord, kdfParams: kdfParams('MDEyMzQ1Njc4OTo7PD0-Pw') },
+      { idempotencyKey: idempotencyKey() },
+    );
+    expect(half.statusCode).toBe(400);
+    const body = {
+      registrationRecord,
+      kdfParams: kdfParams('MDEyMzQ1Njc4OTo7PD0-Pw'),
+      storageFlags: { drive: true, file: false, qr: false, words: true },
+    };
+    const restored = await critical(wallet.user.wallet, session, path, body, { idempotencyKey: idempotencyKey() });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(await metadata(wallet)).toEqual({ kdf_params: body.kdfParams, storage_flags: body.storageFlags });
+    expect((await unlockWallet(wallet.user.wallet, newSecret)).session.scope).toBe('OPERATIONS');
+    secret = newSecret;
   });
 });

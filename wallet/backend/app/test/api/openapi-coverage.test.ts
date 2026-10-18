@@ -121,6 +121,8 @@ const WALLET_ONLY_PATHS = [
   '/api/v1/wallets/{id}/user-key/opaque-registration',
   '/api/v1/wallets/{id}/user-key',
   '/api/v1/wallets/{id}/user-key/restore',
+  // P17.T07: cambio de Password U con OPERATIONS [F-KEY-08].
+  '/api/v1/wallets/{id}/user-key/password',
   '/api/v1/wallets/{id}/executor',
   '/api/v1/wallets/{id}/deploy',
   '/api/v1/wallets/{id}/deployment',

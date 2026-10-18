@@ -384,7 +384,8 @@ export class WalletService {
 
   /**
    * Registro OPAQUE, paso 1 (sin estado en el servidor): respuesta al pedido del cliente para la clave U de la wallet.
-   * ONBOARDING: U todavía no autorizó la creación; KEY_RESTORE: la wallet ACTIVE y su U vigente.
+   * ONBOARDING: U todavía no autorizó la creación; KEY_RESTORE y OPERATIONS (cambio de Password U): la wallet ACTIVE y
+   * su U vigente; U_REPLACEMENT: la versión siguiente.
    */
   async opaqueRegistration(
     actor: WalletActor,
@@ -414,7 +415,8 @@ export class WalletService {
       if (wallet.status !== 'ACTIVE') throw new ApiError('WALLET_NOT_ACTIVE');
       return nextKeyVersion(db, wallet.id, 'U');
     }
-    if (actor.platform.scope === 'KEY_RESTORE') {
+    if (actor.platform.scope === 'KEY_RESTORE' || actor.platform.scope === 'OPERATIONS') {
+      // KEY_RESTORE y cambio de Password U [F-KEY-08]: la misma U vigente con un registro nuevo.
       if (wallet.status !== 'ACTIVE') throw new ApiError('WALLET_NOT_ACTIVE');
       const u = await db
         .selectFrom('wallet_keys_metadata')

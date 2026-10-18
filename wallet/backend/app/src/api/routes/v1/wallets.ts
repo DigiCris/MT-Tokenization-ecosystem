@@ -133,7 +133,7 @@ export const walletRoutes: FastifyPluginCallbackZod<WalletRoutesOptions> = (app,
     {
       config: {
         auth: 'account',
-        platformSession: { scopes: ['ONBOARDING', 'KEY_RESTORE', 'U_REPLACEMENT'], critical: true },
+        platformSession: { scopes: ['ONBOARDING', 'KEY_RESTORE', 'U_REPLACEMENT', 'OPERATIONS'], critical: true },
       },
       schema: {
         operationId: 'startUserKeyOpaqueRegistration',
@@ -199,7 +199,13 @@ export const walletRoutes: FastifyPluginCallbackZod<WalletRoutesOptions> = (app,
         security: criticalSecurity,
         headers: CriticalRequestHeadersSchema,
         params: WalletIdParams,
-        body: z.object({ registrationRecord: OpaqueMessageSchema }).strict(),
+        body: z
+          .object({
+            registrationRecord: OpaqueMessageSchema,
+            kdfParams: KdfParamsSchema.optional().describe('KDF del sobre nuevo (restaurada desde las 17 palabras)'),
+            storageFlags: StorageFlagsSchema.optional().describe('Backups confirmados del sobre nuevo'),
+          })
+          .strict(),
         response: {
           200: z.object({ userKey: z.string(), keyVersion: z.number().int(), status: z.literal('ACTIVE') }),
           ...errorResponses(401, 403, 404, 409, 415, 422),
@@ -209,7 +215,39 @@ export const walletRoutes: FastifyPluginCallbackZod<WalletRoutesOptions> = (app,
     async (request) => {
       const actor = walletActor(request);
       await app.enforceRateLimit(request, 'recovery-sensitive', { user: actor.userId });
-      return options.keyRestore.restore(actor, request.params.id, request.body.registrationRecord);
+      return options.keyRestore.restore(actor, request.params.id, request.body);
+    },
+  );
+
+  app.post(
+    '/wallets/:id/user-key/password',
+    {
+      config: { auth: 'account', idempotency: true, platformSession: { scopes: ['OPERATIONS'], critical: true } },
+      schema: {
+        operationId: 'changeUserKeyPassword',
+        tags,
+        summary:
+          'Cambio de Password U [F-KEY-08]: la misma U con un sobre nuevo → registro OPAQUE nuevo (el anterior se retira)',
+        security: criticalSecurity,
+        headers: CriticalRequestHeadersSchema,
+        params: WalletIdParams,
+        body: z
+          .object({
+            registrationRecord: OpaqueMessageSchema,
+            kdfParams: KdfParamsSchema,
+            storageFlags: StorageFlagsSchema,
+          })
+          .strict(),
+        response: {
+          200: z.object({ userKey: z.string(), keyVersion: z.number().int(), status: z.literal('ACTIVE') }),
+          ...errorResponses(401, 403, 404, 409, 415, 422),
+        },
+      },
+    },
+    async (request) => {
+      const actor = walletActor(request);
+      await app.enforceRateLimit(request, 'recovery-sensitive', { user: actor.userId });
+      return options.keyRestore.changePassword(actor, request.params.id, request.body);
     },
   );
 
