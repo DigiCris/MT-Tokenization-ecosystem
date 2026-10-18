@@ -71,7 +71,7 @@ for (const [title, field, tamper] of TAMPERED) {
       await expect(page.getByText(`no coincide con la que armó esta app (${field}): no se firma.`)).toBeVisible();
       await expect(page.getByRole('button', { name: 'Firmar con tu clave U' })).toHaveCount(0);
     } finally {
-      await page.unroute(PREPARE);
+      await page.unrouteAll({ behavior: 'wait' });
     }
   });
 }

@@ -63,7 +63,7 @@ test('saldos de la cadena; si el backend informa otro, se avisa y manda el de la
     await expect(usdc).toHaveAttribute('data-balance', '11340000');
     await expect(usdc).toContainText('(la plataforma informa 99,00)');
   } finally {
-    await page.unroute('**/api/v1/wallets/*/balances');
+    await page.unrouteAll({ behavior: 'wait' });
   }
 });
 

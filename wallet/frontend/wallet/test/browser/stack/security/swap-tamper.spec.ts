@@ -58,7 +58,7 @@ test('approve ilimitado en lugar del monto exacto: no se firma', async () => {
     await expect(page.getByText(/no coincide con la que armó esta app \(data\)/)).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole('button', { name: 'Firmar con tu clave U' })).toHaveCount(0);
   } finally {
-    await page.unroute(PREPARE);
+    await page.unrouteAll({ behavior: 'wait' });
   }
 });
 
@@ -85,7 +85,7 @@ test('swap con un mínimo de salida que no respeta el slippage (1 unidad): no se
     });
     await expect(page.getByRole('button', { name: 'Firmar con tu clave U' })).toHaveCount(0);
   } finally {
-    await page.unroute(PREPARE);
+    await page.unrouteAll({ behavior: 'wait' });
   }
 });
 

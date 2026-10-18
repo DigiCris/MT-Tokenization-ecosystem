@@ -105,7 +105,8 @@ test('decimales on-chain distintos de los fijados: error bloqueante en Activos, 
     await expect(blocked).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole('button', { name: 'Revisar el envío' })).toHaveCount(0);
   } finally {
-    await page.unroute(matcher, usdtWith18Decimals);
+    // Espera a que termine un handler en vuelo (si no, su fulfill choca con la ruta ya quitada).
+    await page.unrouteAll({ behavior: 'wait' });
   }
   await goHome(page);
   await expect(page.locator('ul.balances [data-token="USDT"]')).toHaveAttribute('data-balance', '3250000');
