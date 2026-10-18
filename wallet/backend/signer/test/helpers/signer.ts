@@ -80,6 +80,9 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Signer
     SIGNER_RPC_PRIMARY_URL: anvil.url,
     SIGNER_RPC_SECONDARY_URL: anvil.url,
     SIGNER_RPC_QUORUM_MODE: 'local-single',
+    // Anvil trae el estado del fork bajo demanda desde un RPC remoto con límite de ritmo (en CI, varios forks a la
+    // vez): una lectura en frío puede tardar más que el timeout por defecto (5 s) de un nodo real.
+    RPC_TIMEOUT_MS: '30000',
     MTLS_CA_CERT_PATH: pki.caPath,
     MTLS_SIGNER_SERVER_CERT_PATH: pki.server.certPath,
     MTLS_SIGNER_SERVER_KEY_PATH: pki.server.keyPath,
