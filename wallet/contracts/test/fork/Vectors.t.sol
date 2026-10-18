@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.37;
 
+import {VmSafe} from "forge-std/Vm.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SystemFixture} from "../utils/SystemFixture.sol";
 import {SafeOwners} from "../utils/SafeOwners.sol";
@@ -45,6 +46,9 @@ contract VectorsTest is SystemFixture {
     }
 
     function test_vectorsAreUpToDate() public {
+        // Bajo `forge coverage` el optimizador está apagado: el bytecode (y los codehashes de system.json) cambia a
+        // propósito. Los vectores se comparan en las corridas normales de los dos modos de policy.
+        if (vm.isContext(VmSafe.ForgeContext.Coverage)) vm.skip(true);
         // Propuesta real de rotación (para el typed data de CancelRotation); deja la Safe en nonce 1.
         assertTrue(
             _exec(
