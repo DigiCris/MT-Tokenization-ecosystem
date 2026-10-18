@@ -4,7 +4,10 @@
 // `chain_transactions` (y la recarga en `gas_topups`) y espera el receipt:
 //
 // - recarga: si una S tiene menos de GAS_TOPUP_MIN_WEI se la lleva a GAS_TOPUP_TARGET_WEI, sin superar el tope diario
-//   GAS_TANK_DAILY_CAP_WEI (el signer aplica además su propio tope del snapshot);
+//   GAS_TANK_DAILY_CAP_WEI (el signer aplica además su propio tope del snapshot). Una S sobre el mínimo puede igual no
+//   alcanzar para la próxima tx (el signer exige gasLimit · maxFeePerGas con los fees del momento): si una operación de
+//   su wallet quedó FAILED_RETRYABLE por INSUFFICIENT_GAS_FUNDS después de la última recarga, la pasada le suma un
+//   objetivo completo (una vez por falla) y el worker la reintenta;
 // - deploy de Safes y retransmisión de cancelaciones firmadas por U o R.
 //
 // Una sola tx en vuelo de la cuenta gas tank (lock de la DB + espera del receipt): el signer exige el nonce confirmado.
@@ -85,12 +88,17 @@ export class GasTankService {
     return BigInt(row.total);
   }
 
-  /** Recarga la S vigente de una Safe si está bajo el mínimo (hasta el objetivo), dentro del tope diario. */
-  async topUp(input: { safe: Address; executor: Address; reason?: string }): Promise<TopUpResult> {
+  /**
+   * Recarga la S vigente de una Safe si está bajo el mínimo (hasta el objetivo), dentro del tope diario. Con `starving`
+   * (una operación suya no se pudo enviar por falta de gas) le suma un objetivo completo aunque esté sobre el mínimo.
+   */
+  async topUp(input: { safe: Address; executor: Address; reason?: string; starving?: boolean }): Promise<TopUpResult> {
     const { config } = this.#deps;
     const { value: balance } = await this.#deps.rpc.getBalance(input.executor);
-    if (balance >= config.topupMinWei) return { toppedUp: false, reason: 'ABOVE_MINIMUM' };
-    const amount = config.topupTargetWei - balance;
+    let amount: bigint;
+    if (balance < config.topupMinWei) amount = config.topupTargetWei - balance;
+    else if (input.starving === true) amount = config.topupTargetWei;
+    else return { toppedUp: false, reason: 'ABOVE_MINIMUM' };
     if ((await this.toppedUpLastDay()) + amount > config.dailyCapWei) {
       this.#deps.metrics.gasTankTransactions.inc({ purpose: 'TOPUP', result: 'DAILY_CAP' });
       this.#deps.logger.warn(
@@ -166,15 +174,40 @@ export class GasTankService {
     });
   }
 
-  /** Una pasada: recarga las S vigentes de las wallets activas que estén bajo el mínimo. */
+  /** Wallets con una operación trabada por falta de gas de su S después de la última recarga de esa S. */
+  async #starvingWallets(): Promise<Set<string>> {
+    const rows = await this.#deps.db
+      .selectFrom('wallet_operations as o')
+      .innerJoin('signer_keys as k', (j) => j.onRef('k.wallet_id', '=', 'o.wallet_id').on('k.status', '=', 'ACTIVE'))
+      .select('o.wallet_id')
+      .where('o.status', '=', 'FAILED_RETRYABLE')
+      .where('o.last_error_code', '=', 'INSUFFICIENT_GAS_FUNDS')
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('gas_topups as t')
+              .select('t.id')
+              .whereRef('t.executor_address', '=', 'k.address')
+              .whereRef('t.created_at', '>', 'o.updated_at'),
+          ),
+        ),
+      )
+      .distinct()
+      .execute();
+    return new Set(rows.map((row) => row.wallet_id));
+  }
+
+  /** Una pasada: recarga las S vigentes de las wallets activas bajo el mínimo o con una operación trabada por gas. */
   async runOnce(): Promise<{ checked: number; belowMinimum: number; toppedUp: number }> {
     const rows = await this.#deps.db
       .selectFrom('wallets as w')
       .innerJoin('signer_keys as k', (j) => j.onRef('k.wallet_id', '=', 'w.id').on('k.status', '=', 'ACTIVE'))
-      .select(['w.safe_address', 'k.address'])
+      .select(['w.id', 'w.safe_address', 'k.address'])
       .where('w.status', '=', 'ACTIVE')
       .where('w.safe_address', 'is not', null)
       .execute();
+    const starving = await this.#starvingWallets();
     let below = 0;
     let topped = 0;
     for (const row of rows) {
@@ -183,7 +216,8 @@ export class GasTankService {
       const result = await this.topUp({
         safe: bufferToAddress(row.safe_address),
         executor,
-        reason: 'pasada periódica',
+        reason: starving.has(row.id) ? 'operación trabada por falta de gas' : 'pasada periódica',
+        starving: starving.has(row.id),
       });
       if (result.toppedUp || result.reason === 'DAILY_CAP') below++;
       if (result.toppedUp) topped++;

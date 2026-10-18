@@ -53,6 +53,7 @@ let system: DeployedSystem;
 let snapshot: BackendPolicySnapshot;
 let rpc: RpcQuorumClient;
 let dir: string;
+let snapshotPath: string;
 const metrics = createMetrics({ defaultMetrics: false });
 const logger = createLogger({ level: 'silent', service: 'test-gas' });
 const keys = { attestation: edKey(), policy: edKey(), issuer: edKey() };
@@ -75,7 +76,7 @@ beforeAll(async () => {
   system = chain.system;
   [anvil, db] = await Promise.all([startAnvil({ loadState: chain.statePath }), createTestDatabase()]);
   pki = createPki();
-  const snapshotPath = writePolicySnapshot(dir, keys.policy, system);
+  snapshotPath = writePolicySnapshot(dir, keys.policy, system);
   snapshot = loadPolicySnapshot(snapshotPath, keys.policy.publicKey, 'local');
   const started = await Promise.all([
     startSignerShard({ shardId: 'platform', anvilUrl: anvil.url, pki, keys, snapshotPath }),
@@ -259,6 +260,102 @@ describe('recargas de S', () => {
     expect(report).toMatchObject({ checked: 1, belowMinimum: 0, toppedUp: 0 });
     expect((await metrics.executorsBelowMinimum.get()).values[0]?.value).toBe(0);
     expect((await metrics.gasTankBalanceWei.get()).values[0]?.value).toBeGreaterThan(0);
+  });
+
+  it('una S sobre el mínimo con una operación trabada por falta de gas recibe un objetivo completo, una vez por falla', async () => {
+    // El signer exige gasLimit · maxFeePerGas con los fees del momento: puede no alcanzar aunque S esté sobre el mínimo.
+    // Con un shard `platform` nuevo (los tests anteriores agotaron el tope diario del primero) y sin tope de backend.
+    const fresh = await startSignerShard({ shardId: 'platform', anvilUrl: anvil.url, pki, keys, snapshotPath });
+    try {
+      await anvil.rpc('anvil_setBalance', [fresh.created.gasTank, '0x2386f26fc10000']);
+      const tank = new GasTankService({
+        db: db.app,
+        rpc,
+        platform: fresh.client,
+        policy: () => snapshot,
+        config: { topupMinWei: MIN, topupTargetWei: TARGET, dailyCapWei: 10n ** 18n },
+        logger,
+        metrics,
+      });
+      const owner = await db.app
+        .selectFrom('wallets')
+        .select('user_id')
+        .where('id', '=', walletId)
+        .executeTakeFirstOrThrow();
+      const session = await db.app
+        .insertInto('sessions')
+        .values({
+          user_id: owner.user_id,
+          client: 'WALLET',
+          token_hash: Buffer.alloc(32, 7),
+          idle_expires_at: sql`now() + interval '1 hour'`,
+          absolute_expires_at: sql`now() + interval '1 day'`,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      const platformSession = await db.app
+        .insertInto('platform_sessions')
+        .values({
+          account_session_id: session.id,
+          user_id: owner.user_id,
+          wallet_id: walletId,
+          scope: 'OPERATIONS',
+          auth_method: 'OPAQUE_U',
+          session_public_key_jwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: 'x', y: 'y' }),
+          issued_at: sql`now()`,
+          expires_at: sql`now() + interval '10 minutes'`,
+        })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      /** Una operación firmada que el signer no quiso enviar porque S no alcanzaba para el gas. */
+      const stuck = (tag: number) =>
+        db.app
+          .insertInto('wallet_operations')
+          .values({
+            user_id: owner.user_id,
+            wallet_id: walletId,
+            safe_address: addressToBuffer(safe),
+            chain_id: 8453,
+            safe_nonce: String(tag),
+            operation_type: 'SEND',
+            group_id: null,
+            safe_tx_hash: Buffer.alloc(32, tag),
+            target: addressToBuffer(safe),
+            calldata: Buffer.alloc(0),
+            canonical_intent: JSON.stringify({ test: tag }),
+            owner_signature: Buffer.alloc(65, 1),
+            owner_role: 'U',
+            platform_session_id: platformSession.id,
+            // Con forma de JWS compacto (lo exige el CHECK de la tabla); armado acá para que no parezca una credencial.
+            platform_session_token: ['encabezado', 'carga', 'firma']
+              .map((part) => Buffer.from(part).toString('base64url'))
+              .join('.'),
+            submission_envelope: JSON.stringify({ test: tag }),
+            submission_envelope_signature: 'A'.repeat(86),
+            signed_at: sql`now()`,
+            status: 'FAILED_RETRYABLE',
+            last_error_code: 'INSUFFICIENT_GAS_FUNDS',
+          })
+          .execute();
+      await anvil.rpc('anvil_setBalance', [S, `0x${(MIN * 2n).toString(16)}`]);
+      await stuck(1);
+      expect(await tank.runOnce()).toMatchObject({ checked: 1, toppedUp: 1 });
+      expect(await balance(S)).toBe(MIN * 2n + TARGET);
+      const last = await db.app
+        .selectFrom('gas_topups')
+        .select('reason')
+        .where('executor_address', '=', addressToBuffer(S))
+        .orderBy('created_at', 'desc')
+        .executeTakeFirstOrThrow();
+      expect(last.reason).toBe('operación trabada por falta de gas');
+      // Hasta que no haya otra falla posterior a esa recarga, no se vuelve a recargar.
+      expect(await tank.runOnce()).toMatchObject({ toppedUp: 0 });
+      await stuck(2);
+      expect(await tank.runOnce()).toMatchObject({ toppedUp: 1 });
+      expect(await balance(S)).toBe(MIN * 2n + 2n * TARGET);
+    } finally {
+      await fresh.stop();
+    }
   });
 });
 
