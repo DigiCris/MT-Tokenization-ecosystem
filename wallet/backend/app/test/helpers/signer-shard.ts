@@ -249,6 +249,9 @@ export interface SignerShard {
   client: SignerClient;
   /** Salida JSON de `shard:create` (fingerprint y, en `platform`, la dirección del gas tank). */
   created: { credentialFingerprint: string; gasTank?: string };
+  /** Keystores y credencial de desbloqueo del shard (sólo para simular un host del signer comprometido). */
+  keystoreDir: string;
+  credentialFile: string;
   stop: () => Promise<void>;
   logs: () => string;
 }
@@ -363,6 +366,8 @@ export async function startSignerShard(options: ShardOptions): Promise<SignerSha
     url,
     client,
     created,
+    keystoreDir,
+    credentialFile: env.SIGNER_UNLOCK_CREDENTIAL_FILE ?? '',
     logs: () => output,
     stop: async () => {
       client.close();

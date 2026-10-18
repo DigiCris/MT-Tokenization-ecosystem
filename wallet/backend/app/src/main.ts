@@ -36,6 +36,7 @@ import { OperationStateMachine } from './operations/state-machine.ts';
 import { PlatformSessionIssuer } from './platform-session/token.ts';
 import { SafeLease } from './worker/lease.ts';
 import { HighValueNotifier } from './send/notifications.ts';
+import { SwapCoordinator } from './swap/coordinator.ts';
 import { OperationEffects } from './worker/effects.ts';
 import { startOperationsWorker } from './worker/main.ts';
 import { WhitelistSync } from './whitelist/sync.ts';
@@ -363,7 +364,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
         retry: config.worker.retry,
       },
     });
-    // Efectos de P14: whitelist desde los eventos on-chain y avisos de alto valor.
+    // Efectos de P14: whitelist desde los eventos on-chain, grupos de swap y avisos de alto valor.
     const whitelistSync = new WhitelistSync({
       db,
       rpc,
@@ -373,10 +374,20 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       logger: logger.child({ component: 'whitelist-sync' }),
       metrics,
     });
+    const swapCoordinator = new SwapCoordinator({
+      db,
+      machine,
+      audit,
+      rpc,
+      snapshot: () => snapshot,
+      logger: logger.child({ component: 'swap-coordinator' }),
+      metrics,
+    });
     const highValue = new HighValueNotifier({ db, emails, metrics });
     const effects = new OperationEffects(
       [
         { name: 'whitelist', runOnce: () => whitelistSync.runOnce() },
+        { name: 'swap-groups', runOnce: () => swapCoordinator.runOnce() },
         { name: 'high-value', runOnce: () => highValue.runOnce() },
       ],
       logger.child({ component: 'operation-effects' }),

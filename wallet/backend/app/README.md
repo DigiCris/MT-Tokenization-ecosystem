@@ -58,38 +58,49 @@ src/
   config/        env.ts (Zod por APP_ENV, <VAR>_FILE, calidad de secretos), dotenv.ts, secret.ts
   db/            kysely.ts, schema.ts, migrator.ts, transaction.ts (withTransaction), backup.ts
     migrations/  0001_initial_schema.ts (todas las tablas de [B-DB]), 0002_account_preferences.ts,
-                 0003_signer_key_attestation.ts, 0004_wallet_onboarding.ts, 0005_operation_pipeline.ts, grants.ts
+                 0003_signer_key_attestation.ts, 0004_wallet_onboarding.ts, 0005_operation_pipeline.ts,
+                 0006_whitelist_send_swap.ts, grants.ts
     repositories/ outbox, idempotency
   audit/         audit-writer.ts (cadena HMAC, verificación)
   auth/          account-service.ts (reglas de cuenta), password.ts, common-passwords.ts, otp.ts, challenges.ts,
                  sessions.ts, csrf.ts, risk.ts (fuerza bruta y señales), totp.ts
   email/         provider.ts, mailgun.ts, smtp.ts, templates.ts (20 plantillas), format.ts, email-outbox.ts
   platform-session/ opaque.ts (registro y login OPAQUE), unlock.ts (desbloqueo → OPERATIONS), step-up.ts, token.ts
-                 (JWS EdDSA), sessions.ts (filas y revocación), request-signature.ts (requests críticos y envelope de
+                 (JWS EdDSA de PlatformSession y ChallengeCompletion), sessions.ts (filas y revocación),
+                 request-signature.ts (requests críticos y envelope de
                  envío), plugin.ts (Fastify), keys.ts (session keys P-256), auth-secret.ts (derivación del cliente)
   queue/         queues.ts, outbox-dispatcher.ts, outbox-consumer.ts, redis.ts
   chain/         rpc-quorum.ts, safe-tx.ts, eip712.ts, signatures.ts, create2.ts, safe-proxy.ts (creation code del
                  proxy de Safe fijado), safe-state.ts (estado y deriva de configuración de una Safe), watcher.ts
-                 (finalidad y reorgs), indexer.ts (eventos de SafeL2 y Transfer), reconciler.ts (DB ↔ cadena),
+                 (finalidad y reorgs), indexer.ts (eventos de SafeL2, Transfer y DestinationWhitelist),
+                 reconciler.ts (DB ↔ cadena),
                  decoders/, abis/ (generados)
   signer-client/ client.ts (mTLS hacia los shards, errores tipificados), sharding.ts (asignación por hash guardada en
                  signer_keys, S de onboarding y de rotación, reasignación tras una migración)
   gas/           gas-tank.ts (recargas de S, deploy de Safes y relay de cancelaciones por el shard `platform`)
   policy/        snapshot.ts (snapshot de policy firmado completo), store.ts (anti-rollback en policy_snapshots),
                  evaluate.ts (policy del backend, contrastada con los vectores compartidos)
-  operations/    state-machine.ts (transiciones auditadas), nonce-manager.ts, service.ts (prepare, firmas,
+  operations/    state-machine.ts (transiciones auditadas), nonce-manager.ts, service.ts (prepare, par de swap, firmas,
                  cancelación por NoOp, lecturas, vencimientos), chain-context.ts, challenges.ts, ledger.ts (24 h),
-                 intent.ts (intención canónica y vistas de la API)
+                 intent.ts (intención canónica y vistas de la API), pairing.ts (approve/swap), groups.ts (estado
+                 del grupo de un swap), two-factor.ts (2FA de alto valor), wallet-access.ts ([B-AUTHZ])
+  whitelist/     validation.ts (destinos), service.ts (pedido, challenge, confirmación, baja, lectura), sync.ts
+                 (eventos on-chain → altas, bajas y activación)
+  send/          service.ts (prepare de transfer), notifications.ts (aviso de alto valor ejecutado)
+  swap/          quote.ts (QuoterV2), prepare.ts (par approve/swap, re-cotización, revocación, grupo), coordinator.ts
+                 (pares incompletos, estado del grupo, allowances residuales)
+  notifications/ notify.ts (notificaciones in-app con deduplicación)
   worker/        main.ts (cola wallet-operations y lazos periódicos), pipeline.ts (12 pasos), lease.ts (lease por
-                 Safe con fencing), fees.ts (EIP-1559 con topes y reemplazo)
+                 Safe con fencing), fees.ts (EIP-1559 con topes y reemplazo), effects.ts (efectos de P14)
   wallets/       wallet-service.ts (onboarding: alta, U, asignación de S, Safe esperada, pedido de deploy),
                  deployer.ts (deploy y activación en el proceso gas-tank), verification.ts (V9 §16), salt.ts,
-                 key-restore.ts (KEY_RESTORE), sovereign.ts (SOVEREIGN_MODIFIED), schemas.ts
+                 key-restore.ts (KEY_RESTORE), sovereign.ts (SOVEREIGN_MODIFIED), balances.ts, schemas.ts
   recovery/      enrollment.ts (enrollment de R y autorización de creación firmada por U)
   observability/ logger.ts, redaction.ts, metrics.ts
   api/           server.ts (dos listeners), errors.ts (RFC 9457), health.ts, routes/ (health, v1/auth, v1/users,
-                 v1/sessions, v1/platform-sessions, v1/wallets, v1/recovery, v1/operations), plugins/ (auth y CSRF, rate limit,
-                 idempotencia, OpenAPI, seguridad)
+                 v1/sessions, v1/platform-sessions, v1/wallets, v1/recovery, v1/operations, v1/whitelist, v1/send,
+                 v1/swap, v1/balances, v1/emergency), plugins/ (auth y CSRF, rate limit, idempotencia, OpenAPI,
+                 seguridad)
   cli/           db.ts, audit-verify.ts, opaque-setup.ts, dev-session.ts, signer-reassign.ts
   services.ts    armado de los servicios de cuenta y de onboarding (proceso `api` y tests)
   main.ts        entrypoint `api` | `worker` | `gas-tank`
@@ -258,6 +269,45 @@ Alertas en logs (campo `alert`): `REORG_DETECTED`, `TX_REVERTED`, `TX_STUCK`, `F
 `mtw_executor_transactions_total`, `mtw_reorgs_detected_total`, `mtw_reconciler_discrepancies_total`,
 `mtw_indexer_head_block`. Cada proceso registra al arrancar el snapshot de policy que cargó (anti-rollback,
 `policy_snapshots`).
+
+## Whitelist, send y swap (P14)
+
+- **Whitelist** (`src/whitelist/`): `POST /wallets/{id}/whitelist/requests` valida el destino (EIP-55 o minúsculas;
+  ≠ dirección cero, la propia Safe, los contratos del sistema y de Safe y los tokens), rechaza duplicados y crea el
+  challenge `WHITELIST_ADD` ligado a {userId, Safe, chainId, destino, acción, nonce, vencimiento} (15 min, 5 intentos,
+  un solo uso): el email muestra la acción, la dirección completa en grupos de 4, la red, la Safe y la expiración. Un
+  pedido nuevo del mismo destino reemplaza al que esperaba el código. `POST /whitelist/requests/{id}/confirm` verifica
+  el código y devuelve la SafeTx `addDestination` para firmar con U, con la atestación `ChallengeCompletion` (JWS del
+  emisor de sesiones, ligada a la SafeTx exacta) guardada en la operación: el signer la exige antes de co-firmar. La
+  sincronización del worker aplica los eventos confirmados de `DestinationWhitelist` (también las altas U+R por fuera,
+  que quedan `SOVEREIGN`): ACTIVATING con el `activatesAt` del evento y ACTIVE cuando `isWhitelisted` es true on-chain
+  (24 h, reloj de la cadena), con email y notificación. Baja: `POST /wallets/{id}/whitelist/{destination}/remove` (U)
+  o `POST /wallets/{id}/emergency/whitelist-remove` (R, listener de Recovery), inmediata on-chain, con email.
+- **Send** (`POST /wallets/{id}/send/prepare`): la SafeTx `transfer` de USDC o USDT se arma en el backend; la policy
+  exige el destino activo on-chain (quórum), el saldo, los límites (por operación y 24 h) y el mínimo. Con monto ≥ el
+  umbral la operación vuelve `requiresTwoFactor`: `POST /operations/{id}/two-factor` sin código crea el challenge
+  `HIGH_VALUE_TX` (TOTP si está activo; si no, OTP por email con monto, token, destino y nonce) y con código lo
+  verifica y guarda la `ChallengeCompletion`; recién entonces se acepta la firma de U. Al confirmarse se avisa
+  (notificación + email `high-value-executed`, una sola vez).
+- **Swap** (`src/swap/`): `GET /wallets/{id}/swap/quote` cotiza con QuoterV2 (`eth_call`, quórum, codehash fijado)
+  sobre el pool canónico del SwapExecutor: `expectedOut`, `minOut` = expectedOut · (1 − slippage ≤ 50 bps) acotado al
+  piso on-chain (amountIn · 0,995), impacto de precio contra el precio medio del pool y `deadline` = bloque + 10 min;
+  si el pool se desvía de 1:1 más de 50 bps, `SWAP_PRICE_OUT_OF_RANGE`. `POST /wallets/{id}/swap/prepare` crea el
+  grupo y el par `approve(SwapExecutor, amountIn)` exacto (nonce N) + `swap` (N+1); la firma de U de una mitad no
+  encola nada hasta que llega la otra, y el worker y el signer exigen la pareja real ([B-SIG-02]). Un par sin encolar
+  cuya otra mitad vence o se cancela se descarta (la mitad firmada queda FAILED_FINAL `PAIR_INCOMPLETE`, nonce
+  liberado). Si el swap falla en forma definitiva con el approve ejecutado, el grupo queda FAILED con
+  `nextActions: [REQUOTE, REVOKE_APPROVAL]`, la allowance residual se notifica una vez y se puede
+  `POST /operation-groups/{id}/requote` (par nuevo en los nonces siguientes) o `POST /operation-groups/{id}/revoke-approval`
+  (`approve(SwapExecutor, 0)`; con R, `POST /wallets/{id}/emergency/revoke-approval`). `GET /operation-groups/{id}`
+  muestra el grupo con sus operaciones.
+- **Lecturas**: `GET /wallets/{id}/balances` (USDC/USDT y allowance hacia el SwapExecutor, quórum),
+  `GET /wallets/{id}/whitelist` (ambos listeners) y `GET /operation-groups/{id}`; todo recurso de otro usuario es 404.
+- **Efectos** (`EFFECTS_INTERVAL_MS`, worker): sincronización de whitelist, coordinación de grupos de swap y avisos
+  de alto valor, idempotentes y separados del pipeline.
+
+Métricas: `mtw_whitelist_events_total{event}`, `mtw_two_factor_challenges_total{method,result}`,
+`mtw_swap_quotes_total{result}`, `mtw_notifications_created_total{type}`.
 
 ## PlatformSession en local (`dev:session`)
 

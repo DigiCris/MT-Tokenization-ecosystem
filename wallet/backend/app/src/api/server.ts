@@ -23,12 +23,14 @@ import { registerRequestContext } from './plugins/request-context.ts';
 import { registerSecurity } from './plugins/security.ts';
 import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/v1/auth.ts';
+import { balanceRoutes } from './routes/v1/balances.ts';
 import { emergencyRoutes } from './routes/v1/emergency.ts';
 import { platformSessionsRoutes } from './routes/v1/platform-sessions.ts';
 import { operationRoutes } from './routes/v1/operations.ts';
 import { recoveryRoutes } from './routes/v1/recovery.ts';
 import { sendRoutes } from './routes/v1/send.ts';
 import { sessionsRoutes } from './routes/v1/sessions.ts';
+import { swapRoutes } from './routes/v1/swap.ts';
 import { usersRoutes } from './routes/v1/users.ts';
 import { walletRoutes } from './routes/v1/wallets.ts';
 import { whitelistRoutes } from './routes/v1/whitelist.ts';
@@ -157,16 +159,19 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
       operations: deps.wallets.operations,
       ...(isWallet ? { twoFactor: deps.wallets.twoFactor } : {}),
     });
-    // P14: whitelist (lectura en los dos; alta y baja con U sólo en Wallet), send en Wallet y el grupo de emergencia
-    // (R) en Recovery.
+    // P14: whitelist (lectura en los dos; alta y baja con U sólo en Wallet), send, swap y saldos en Wallet, y el grupo
+    // de emergencia (R) en Recovery.
     await app.register(whitelistRoutes, { prefix: API_PREFIX, client, whitelist: deps.wallets.whitelist });
     if (isWallet) {
       await app.register(sendRoutes, { prefix: API_PREFIX, send: deps.wallets.send });
+      await app.register(swapRoutes, { prefix: API_PREFIX, swaps: deps.wallets.swaps });
+      await app.register(balanceRoutes, { prefix: API_PREFIX, balances: deps.wallets.balances });
     } else {
       await app.register(emergencyRoutes, {
         prefix: API_PREFIX,
         operations: deps.wallets.operations,
         whitelist: deps.wallets.whitelist,
+        swaps: deps.wallets.swaps,
       });
     }
   }

@@ -36,6 +36,7 @@ import { SignerKeyService } from '../../src/signer-client/sharding.ts';
 import { SovereignModification } from '../../src/wallets/sovereign.ts';
 import { createRedis } from '../../src/queue/redis.ts';
 import { HighValueNotifier } from '../../src/send/notifications.ts';
+import { SwapCoordinator } from '../../src/swap/coordinator.ts';
 import { WhitelistSync } from '../../src/whitelist/sync.ts';
 import { SafeLease } from '../../src/worker/lease.ts';
 import { startOperationsWorker, type OperationsWorker } from '../../src/worker/main.ts';
@@ -82,8 +83,9 @@ export interface OperationsEnv {
   watcher: (confirmations?: ConfirmationPolicy, rpc?: RpcQuorumClient) => FinalityWatcher;
   indexer: () => ChainIndexer;
   reconciler: () => Reconciler;
-  /** P14: efectos del worker (whitelist desde los eventos on-chain, avisos de alto valor). */
+  /** P14: efectos del worker (whitelist desde los eventos, grupos de swap, avisos de alto valor). */
   whitelistSync: () => WhitelistSync;
+  swapCoordinator: () => SwapCoordinator;
   highValue: () => HighValueNotifier;
   close: () => Promise<void>;
 }
@@ -192,6 +194,16 @@ export async function startOperationsEnv(options: { redisDb: number; logger?: Lo
         rpc: base.rpc,
         audit,
         emails,
+        snapshot: () => base.snapshot,
+        logger,
+        metrics: base.metrics,
+      }),
+    swapCoordinator: () =>
+      new SwapCoordinator({
+        db,
+        machine,
+        audit,
+        rpc: base.rpc,
         snapshot: () => base.snapshot,
         logger,
         metrics: base.metrics,

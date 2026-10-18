@@ -114,12 +114,18 @@ const WALLET_ONLY_PATHS = [
   '/api/v1/wallets/{id}/deployment',
   '/api/v1/wallets/{id}/recovery/enrollments',
   '/api/v1/recovery/enrollments/{id}/incorporate',
-  // P14: 2FA de alto valor, alta y baja de whitelist con U y send.
+  // P14: 2FA de alto valor, alta y baja de whitelist con U, send, swap y saldos.
   '/api/v1/operations/{id}/two-factor',
   '/api/v1/wallets/{id}/whitelist/requests',
   '/api/v1/whitelist/requests/{id}/confirm',
   '/api/v1/wallets/{id}/whitelist/{destination}/remove',
   '/api/v1/wallets/{id}/send/prepare',
+  '/api/v1/wallets/{id}/swap/quote',
+  '/api/v1/wallets/{id}/swap/prepare',
+  '/api/v1/operation-groups/{id}',
+  '/api/v1/operation-groups/{id}/requote',
+  '/api/v1/operation-groups/{id}/revoke-approval',
+  '/api/v1/wallets/{id}/balances',
 ];
 /** Sólo en el listener de Recovery: Enrollment Key y envío de R, y el grupo de emergencia (R) de P14. */
 const RECOVERY_ONLY_PATHS = [
@@ -127,6 +133,7 @@ const RECOVERY_ONLY_PATHS = [
   '/api/v1/recovery/enrollments/{id}/submit',
   '/api/v1/wallets/{id}/emergency/whitelist-remove',
   '/api/v1/wallets/{id}/emergency/noop',
+  '/api/v1/wallets/{id}/emergency/revoke-approval',
 ];
 /** Operaciones (método + ruta): GET y PATCH /users/me, GET y DELETE /sessions. */
 const ACCOUNT_OPERATIONS = ACCOUNT_PATHS.length + 2;

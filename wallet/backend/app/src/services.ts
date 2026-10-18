@@ -28,6 +28,9 @@ import { OperationService } from './operations/service.ts';
 import { OperationStateMachine } from './operations/state-machine.ts';
 import { TwoFactorService } from './operations/two-factor.ts';
 import { SendService } from './send/service.ts';
+import { SwapService } from './swap/prepare.ts';
+import { QuoteService } from './swap/quote.ts';
+import { BalanceService } from './wallets/balances.ts';
 import { WhitelistService } from './whitelist/service.ts';
 import { KeyRestoreService } from './wallets/key-restore.ts';
 import { SovereignModification } from './wallets/sovereign.ts';
@@ -142,10 +145,12 @@ export interface WalletServices {
   keyRestore: KeyRestoreService;
   /** Operaciones de la Safe (P13): prepare interno, firmas, cancelación y lecturas. */
   operations: OperationService;
-  /** P14: whitelist, 2FA de alto valor y send. */
+  /** P14: whitelist, 2FA de alto valor, send, swap y saldos. */
   whitelist: WhitelistService;
   twoFactor: TwoFactorService;
   send: SendService;
+  swaps: SwapService;
+  balances: BalanceService;
 }
 
 /** Onboarding de wallets (P12): requiere los servicios de cuenta armados con dependencias on-chain. */
@@ -177,6 +182,7 @@ export function createWalletServices(input: {
     logger: logger.child({ component: 'operations' }),
     metrics,
   });
+  const quotes = new QuoteService({ rpc: onchain.rpc, snapshot: onchain.snapshot, metrics });
   return {
     wallets: new WalletService({
       ...common,
@@ -218,5 +224,7 @@ export function createWalletServices(input: {
       metrics,
     }),
     send: new SendService({ db, operations, snapshot: onchain.snapshot }),
+    swaps: new SwapService({ db, operations, quotes, snapshot: onchain.snapshot }),
+    balances: new BalanceService({ db, rpc: onchain.rpc, snapshot: onchain.snapshot }),
   };
 }
