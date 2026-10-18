@@ -35,14 +35,22 @@ Método: `pnpm --dir frontend/wallet test:browser -- perf/argon2` (`scripts/perf
 build deriva 12 veces con los parámetros de los sobres (64 MiB, t=3, p=4) en el worker real de la app, cargado por la
 política de Trusted Types, dentro de la imagen fijada de Playwright 1.64.0 con `--cpus 0.25`: Chromium con emulación de
 Pixel 7 y WebKit con emulación de iPhone 14. La CPU 4× la pone la cuota de Docker, verificada antes de medir con un
-bucle de un hilo (4812 ms sin límite, 19455 ms con el límite: 4,04×). El throttling de CPU de DevTools no alcanza a los
+bucle de un hilo (columna "Calibración": sin límite → con el límite). El throttling de CPU de DevTools no alcanza a los
 workers dedicados y WebKit no tiene uno propio; Docker rootless sin cgroups ignora la cuota, por eso la medición válida
 es la de CI (en local el script lo informa y no mide).
 
-| Implementación | Navegador (perfil) | Mediana | p95 | Presupuesto (3 s p95) |
-|---|---|---|---|---|
-| `@noble/hashes` 2.4.0 (JS puro) | Chromium (Pixel 7) | 4,52 s | 4,90 s | excedido |
-| `@noble/hashes` 2.4.0 (JS puro) | WebKit (iPhone 14) | 8,11 s | 8,72 s | excedido |
+| Implementación (commit) | Navegador (perfil) | Calibración | Mediana | p95 | Presupuesto (3 s p95) |
+|---|---|---|---|---|---|
+| `@noble/hashes` 2.4.0, JS puro (`d66f125`) | Chromium (Pixel 7) | 4812 → 19455 ms (4,04×) | 4,52 s | 4,90 s | excedido |
+| `@noble/hashes` 2.4.0, JS puro (`d66f125`) | WebKit (iPhone 14) | 4812 → 19455 ms (4,04×) | 8,11 s | 8,72 s | excedido |
+| `hash-wasm` 4.12.0, WASM (`a0f6ad9`) | Chromium (Pixel 7) | 3461 → 13759 ms (3,98×) | 0,92 s | 1,11 s | cumple |
+| `hash-wasm` 4.12.0, WASM (`a0f6ad9`) | WebKit (iPhone 14) | 3461 → 13759 ms (3,98×) | 2,62 s | 2,81 s | cumple |
+
+Los runners compartidos de GitHub no son todos iguales (el bucle de calibración tardó 4812 ms en una corrida y 3461 ms
+en la otra): escalado a la corrida más lenta, `@noble/hashes` sigue fuera del presupuesto en los dos navegadores y
+`hash-wasm` queda holgado en Chromium y cerca del límite en WebKit (≈ 3,9 s). No hay otra palanca dentro de este ADR
+(64 MiB, t=3, p=4 es el baseline de V9): el test registra el p95 en cada corrida de CI (línea `argon2id-perf` de la
+salida del job) sin fallar por el presupuesto.
 
 Decisión aplicada (regla de fallback de este ADR): el worker de Wallet usa `hash-wasm` 4.12.0 (MIT, sin dependencias ni
 scripts de instalación; integridad en docs/VERSIONS.md). Revisión: sólo usa `WebAssembly.compile`/`instantiate` sobre
