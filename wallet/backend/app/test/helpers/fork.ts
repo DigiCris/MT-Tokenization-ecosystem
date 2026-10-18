@@ -65,8 +65,27 @@ export interface AnvilOptions {
   loadState?: string;
 }
 
-/** Anvil forkeando Base en el bloque fijado (chainId 8453), sin minado automático por tiempo. */
+/**
+ * Anvil forkeando Base en el bloque fijado (chainId 8453), sin minado automático por tiempo. Si el proceso termina
+ * al arrancar (el RPC remoto del fork, compartido en CI, falló o limitó el ritmo justo en ese momento), se reintenta
+ * con espera creciente.
+ */
 export async function startAnvil(options: AnvilOptions = {}): Promise<AnvilInstance> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await launchAnvil(options);
+    } catch (error) {
+      if (!(error instanceof AnvilExitedError) || attempt >= 4) throw error;
+      await sleep(attempt * 3_000);
+    }
+  }
+}
+
+class AnvilExitedError extends Error {
+  override name = 'AnvilExitedError';
+}
+
+async function launchAnvil(options: AnvilOptions): Promise<AnvilInstance> {
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   const child: ChildProcess = spawn(
@@ -81,6 +100,9 @@ export async function startAnvil(options: AnvilOptions = {}): Promise<AnvilInsta
       '--fork-block-number',
       String(forkBlockNumber()),
       '--chain-id',
+      '8453',
+      // El chain id del fork se conoce: no se le pide al RPC remoto al arrancar.
+      '--fork-chain-id',
       '8453',
       // El RPC remoto limita el ritmo (429): más reintentos con backoff y un tope de unidades de cómputo por instancia.
       '--retries',
@@ -103,7 +125,7 @@ export async function startAnvil(options: AnvilOptions = {}): Promise<AnvilInsta
   // Cargar el estado del sistema (--load-state) con varios forks arrancando a la vez puede tardar.
   const deadline = Date.now() + 180_000;
   for (;;) {
-    if (child.exitCode !== null) throw new Error(`anvil terminó al arrancar: ${stderr.slice(-300)}`);
+    if (child.exitCode !== null) throw new AnvilExitedError(`anvil terminó al arrancar: ${stderr.slice(-300)}`);
     try {
       await rpcCall(url, 'eth_chainId');
       break;
