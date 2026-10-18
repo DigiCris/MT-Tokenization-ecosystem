@@ -11,9 +11,30 @@ if [ -z "${FORK_RPC_URL:-}" ] && [ -f "$WALLET_ROOT/.env" ]; then
   export FORK_RPC_URL
 fi
 cd "$WALLET_ROOT/contracts"
-# El RPC del fork es compartido con los jobs de backend y signer: ante un 429 forge reintenta con backoff exponencial
-# (flags de EVM de forge; no tienen clave equivalente en foundry.toml).
-FORK_RETRY_FLAGS=(--fork-retries 12 --fork-retry-backoff 2000)
+# El RPC del fork es compartido con los jobs de backend y signer: si la corrida falla por un límite de ritmo del
+# proveedor (429 en vm.createSelectFork), se vuelven a correr sólo los tests fallidos (`--rerun`) tras una espera, hasta
+# 3 veces. Cualquier otra falla no se reintenta. (Los flags de reintento de forge exigen --rpc-url, que forkearía todas
+# las suites, y no tienen clave en foundry.toml.)
+RATE_LIMITED='HTTP error 429|error code 429|429 Too Many|too many requests|compute units per second|rate limit'
+forge_test_with_rerun() { # <POLICY_MODE>
+  local log attempt
+  log="$(mktemp)"
+  if POLICY_MODE="$1" forge test --profile ci 2>&1 | tee "$log"; then
+    rm -f "$log"
+    return 0
+  fi
+  for attempt in 1 2 3; do
+    grep -qiE "$RATE_LIMITED" "$log" || break
+    echo "falla por límite de ritmo del RPC del fork: se vuelven a correr los tests fallidos ($attempt/3)"
+    sleep $((attempt * 30))
+    if POLICY_MODE="$1" forge test --profile ci --rerun 2>&1 | tee "$log"; then
+      rm -f "$log"
+      return 0
+    fi
+  done
+  rm -f "$log"
+  return 1
+}
 section "dependencias (soldeer.lock)"
 [ -d dependencies ] || forge soldeer install
 bash script/verify-deps.sh
@@ -22,9 +43,9 @@ forge build --sizes
 # P07.T09: la suite completa en los dos modos de policy (las suites adversarial e invariantes toman POLICY_MODE;
 # las de integración fijan su modo).
 section "forge test --profile ci (POLICY_MODE=restricted, igual que producción)"
-POLICY_MODE=restricted forge test --profile ci "${FORK_RETRY_FLAGS[@]}"
+forge_test_with_rerun restricted
 section "forge test --profile ci (POLICY_MODE=bootstrap)"
-POLICY_MODE=bootstrap forge test --profile ci "${FORK_RETRY_FLAGS[@]}"
+forge_test_with_rerun bootstrap
 if [ -z "$(find src -name '*.sol' 2>/dev/null | head -1)" ]; then
   echo "SKIP: cobertura y Slither: todavía no hay contratos en src/ (fase P04)"
   exit 0

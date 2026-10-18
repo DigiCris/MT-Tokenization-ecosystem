@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { summarize, THRESHOLDS } from '../scripts/coverage-gate.mjs';
+import { RATE_LIMITED, summarize, THRESHOLDS } from '../scripts/coverage-gate.mjs';
 import { compareBaseline, suppressedFindings } from '../scripts/slither-baseline.mjs';
 
 const CI = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -21,6 +21,18 @@ test('coverage-gate suma sólo src/ (sin interfaces) y calcula porcentajes', () 
   assert.equal(s.lines, 98);
   assert.equal(s.branches, 95);
   assert.deepEqual(THRESHOLDS, { lines: 95, branches: 90 });
+});
+
+test('coverage-gate y ci-contracts sólo reintentan ante un límite de ritmo del RPC del fork', () => {
+  for (const out of [
+    'Error: Failed to create fork: HTTP error 429 with body: {"code":429,"message":"Your app has exceeded its compute units per second capacity"}',
+    'server returned an error response: error code 429: Too Many Requests',
+  ]) assert.ok(RATE_LIMITED.test(out), out);
+  for (const out of ['[FAIL: InsufficientOutput()] test_swap() (gas: 42934)', 'assertion failed: 1429 != 1430']) {
+    assert.ok(!RATE_LIMITED.test(out), out);
+  }
+  const script = spawnSync('bash', ['-c', `grep -o "RATE_LIMITED='[^']*'" ${join(CI, 'scripts/ci-contracts.sh')}`], { encoding: 'utf8' }).stdout.trim();
+  assert.equal(script, `RATE_LIMITED='${RATE_LIMITED.source}'`);
 });
 
 test('match-areas respeta la semántica de * y ** de GitHub Actions', () => {

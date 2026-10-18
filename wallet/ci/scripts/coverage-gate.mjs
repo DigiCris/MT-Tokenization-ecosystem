@@ -9,6 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 export const THRESHOLDS = { lines: 95, branches: 90 };
 const WALLET_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+/** Falla por límite de ritmo del RPC del fork (compartido con otros jobs de CI): se reintenta la corrida. */
+export const RATE_LIMITED = /HTTP error 429|error code 429|429 Too Many|too many requests|compute units per second|rate limit/i;
+const COVERAGE_ATTEMPTS = 3;
 
 /** Agrega un reporte lcov por archivo (sólo `src/`, sin `src/interfaces/`). */
 export function summarize(lcov) {
@@ -43,11 +46,18 @@ function main() {
   let lcovPath = flag === '--lcov' ? resolve(lcovArg) : join(dir, 'coverage/lcov.info');
   if (flag !== '--lcov') {
     mkdirSync(join(dir, 'coverage'), { recursive: true });
-    // Reintentos con backoff ante un 429 del RPC del fork (compartido con otros jobs de CI).
-    const r = spawnSync('forge', ['coverage', '--report', 'lcov', '--report-file', lcovPath, '--no-match-coverage', '(test|script|dependencies)/', '--fork-retries', '12', '--fork-retry-backoff', '2000'], { cwd: dir, stdio: 'inherit', env: process.env });
-    if (r.status !== 0) {
-      console.error('forge coverage falló');
-      process.exit(1);
+    for (let attempt = 1; ; attempt++) {
+      const r = spawnSync('forge', ['coverage', '--report', 'lcov', '--report-file', lcovPath, '--no-match-coverage', '(test|script|dependencies)/'], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], env: process.env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+      process.stdout.write(r.stdout ?? '');
+      process.stderr.write(r.stderr ?? '');
+      if (r.status === 0) break;
+      // Sólo un 429 del RPC del fork se reintenta (con espera creciente); cualquier otra falla corta.
+      if (attempt >= COVERAGE_ATTEMPTS || !RATE_LIMITED.test(`${r.stdout ?? ''}${r.stderr ?? ''}`)) {
+        console.error('forge coverage falló');
+        process.exit(1);
+      }
+      console.error(`forge coverage: límite de ritmo del RPC del fork, reintento ${attempt}/${COVERAGE_ATTEMPTS - 1}`);
+      spawnSync('sleep', [String(attempt * 30)]);
     }
   }
   const s = summarize(readFileSync(lcovPath, 'utf8'));
