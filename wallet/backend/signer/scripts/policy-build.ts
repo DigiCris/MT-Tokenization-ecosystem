@@ -1,7 +1,7 @@
-// pnpm policy:build [--env local] [--out <ruta>] [--successors <archivo JSON>]
+// pnpm policy:build [--env local] [--out <ruta>] [--successors <archivo JSON>] [--deployment <archivo>]
 // Arma el snapshot de policy [B-POL-01] desde las direcciones y codehashes del deploy (local:
-// contracts/deployments/local.json;
-// ensayos: contracts/deployments/fork/<entorno>.json, P25.T07) y config/chains/base-mainnet.json, con los valores V1
+// contracts/deployments/local.json; ensayos: contracts/deployments/fork/<entorno>.json, P25.T07; `--deployment` lo
+// fija, p. ej. el deploy del stack aislado de los tests de navegador) y config/chains/base-mainnet.json, con los valores V1
 // (ADR-025) y los topes del gas tank del entorno (GAS_TOPUP_TARGET_WEI, GAS_TANK_DAILY_CAP_WEI). Si el contenido no
 // cambió conserva el archivo (y su firma); si cambió, versión + 1 y hay que volver a firmar (`pnpm policy:sign`).
 // `--successors` fija los Guards/module guards sucesores ya activos en el PolicyRegistry ([C-GRD-17]):
@@ -19,6 +19,7 @@ await run(() => {
     env: { type: 'string', default: 'local' },
     out: { type: 'string' },
     successors: { type: 'string' },
+    deployment: { type: 'string' },
   });
   const environment = values.env;
   if (environment !== 'local' && environment !== 'staging' && environment !== 'production')
@@ -30,10 +31,17 @@ await run(() => {
       : isAbsolute(values.out)
         ? values.out
         : resolve(base, values.out);
-  const deploymentFile = resolve(
-    WALLET_ROOT,
-    environment === 'local' ? 'contracts/deployments/local.json' : `contracts/deployments/fork/${environment}.json`,
-  );
+  const deploymentFile =
+    values.deployment === undefined
+      ? resolve(
+          WALLET_ROOT,
+          environment === 'local'
+            ? 'contracts/deployments/local.json'
+            : `contracts/deployments/fork/${environment}.json`,
+        )
+      : isAbsolute(values.deployment)
+        ? values.deployment
+        : resolve(base, values.deployment);
   if (!existsSync(deploymentFile)) fail(`falta ${deploymentFile} (local: pnpm deploy-local)`);
   const deployment = JSON.parse(readFileSync(deploymentFile, 'utf8')) as {
     contracts: Record<string, { address: string; codehash: string }>;
