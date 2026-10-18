@@ -26,6 +26,8 @@ import { EnrollmentService } from './recovery/enrollment.ts';
 import type { SignerKeyService } from './signer-client/sharding.ts';
 import { OperationService } from './operations/service.ts';
 import { OperationStateMachine } from './operations/state-machine.ts';
+import { TwoFactorService } from './operations/two-factor.ts';
+import { SendService } from './send/service.ts';
 import { WhitelistService } from './whitelist/service.ts';
 import { KeyRestoreService } from './wallets/key-restore.ts';
 import { SovereignModification } from './wallets/sovereign.ts';
@@ -140,8 +142,10 @@ export interface WalletServices {
   keyRestore: KeyRestoreService;
   /** Operaciones de la Safe (P13): prepare interno, firmas, cancelación y lecturas. */
   operations: OperationService;
-  /** P14: whitelist. */
+  /** P14: whitelist, 2FA de alto valor y send. */
   whitelist: WhitelistService;
+  twoFactor: TwoFactorService;
+  send: SendService;
 }
 
 /** Onboarding de wallets (P12): requiere los servicios de cuenta armados con dependencias on-chain. */
@@ -203,5 +207,16 @@ export function createWalletServices(input: {
       logger: logger.child({ component: 'whitelist' }),
       metrics,
     }),
+    twoFactor: new TwoFactorService({
+      db,
+      challenges: account.challenges,
+      issuer: account.issuer,
+      emails: account.emails,
+      audit: account.audit,
+      fieldKey: config.secrets.fieldEncryptionKey,
+      snapshot: onchain.snapshot,
+      metrics,
+    }),
+    send: new SendService({ db, operations, snapshot: onchain.snapshot }),
   };
 }

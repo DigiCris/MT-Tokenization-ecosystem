@@ -35,6 +35,7 @@ import { OperationService } from './operations/service.ts';
 import { OperationStateMachine } from './operations/state-machine.ts';
 import { PlatformSessionIssuer } from './platform-session/token.ts';
 import { SafeLease } from './worker/lease.ts';
+import { HighValueNotifier } from './send/notifications.ts';
 import { OperationEffects } from './worker/effects.ts';
 import { startOperationsWorker } from './worker/main.ts';
 import { WhitelistSync } from './whitelist/sync.ts';
@@ -362,7 +363,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
         retry: config.worker.retry,
       },
     });
-    // Efectos de P14: whitelist desde los eventos on-chain.
+    // Efectos de P14: whitelist desde los eventos on-chain y avisos de alto valor.
     const whitelistSync = new WhitelistSync({
       db,
       rpc,
@@ -372,8 +373,12 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       logger: logger.child({ component: 'whitelist-sync' }),
       metrics,
     });
+    const highValue = new HighValueNotifier({ db, emails, metrics });
     const effects = new OperationEffects(
-      [{ name: 'whitelist', runOnce: () => whitelistSync.runOnce() }],
+      [
+        { name: 'whitelist', runOnce: () => whitelistSync.runOnce() },
+        { name: 'high-value', runOnce: () => highValue.runOnce() },
+      ],
       logger.child({ component: 'operation-effects' }),
     );
     const operationsConnection = createRedis(

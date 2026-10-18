@@ -1,6 +1,7 @@
-// Grupo `operations` de [B-API] (P13.T03/T08): lectura de operaciones con su historial, envío de la firma U/R y
-// cancelación (NoOp con el mismo nonce). Las escrituras son críticas (PlatformSession + firma del request) e
-// idempotentes; en el listener de Wallet firma U (scope OPERATIONS) y en el de Recovery firma R (scope RECOVERY).
+// Grupo `operations` de [B-API] (P13.T03/T08, P14.T03): lectura de operaciones con su historial, envío de la firma
+// U/R, cancelación (NoOp con el mismo nonce) y 2FA de operaciones de alto valor. Las escrituras son críticas
+// (PlatformSession + firma del request) e idempotentes; en el listener de Wallet firma U (scope OPERATIONS) y en el de
+// Recovery firma R (scope RECOVERY). El 2FA existe sólo en Wallet (lo exige un SEND de U).
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -8,6 +9,7 @@ import type { Client } from '../../../db/schema.ts';
 import { OPERATION_TYPES } from '../../../policy/snapshot.ts';
 import { OPERATION_STATUSES } from '../../../operations/state-machine.ts';
 import type { OperationActor, OperationService } from '../../../operations/service.ts';
+import type { TwoFactorService } from '../../../operations/two-factor.ts';
 import { CriticalRequestHeadersSchema, SubmissionEnvelopeSchema } from '../../../platform-session/request-signature.ts';
 import { errorResponses } from '../../errors.ts';
 import { requestMeta } from './auth.ts';
@@ -105,9 +107,19 @@ export const SubmitSignatureRequestSchema = z
   .strict()
   .meta({ id: 'SubmitSignatureRequest' });
 
+export const TwoFactorChallengeSchema = z
+  .object({
+    method: z.enum(['TOTP', 'EMAIL']).describe('TOTP si el usuario lo tiene activo; si no, código por email'),
+    challengeId: z.uuid(),
+    expiresAt: z.iso.datetime(),
+  })
+  .meta({ id: 'TwoFactorChallenge' });
+
 export interface OperationRoutesOptions {
   client: Client;
   operations: OperationService;
+  /** 2FA de alto valor (sólo en el listener de Wallet). */
+  twoFactor?: TwoFactorService;
 }
 
 export function operationActor(request: FastifyRequest): OperationActor {
@@ -230,6 +242,50 @@ export const operationRoutes: FastifyPluginCallbackZod<OperationRoutesOptions> =
       return operations.cancel(actor, request.params.id);
     },
   );
+
+  const twoFactor = options.twoFactor;
+  if (options.client === 'WALLET' && twoFactor) {
+    app.post(
+      '/operations/:id/two-factor',
+      {
+        config: { auth: 'account', idempotency: true, platformSession: { scopes: ['OPERATIONS'], critical: true } },
+        schema: {
+          operationId: 'operationTwoFactor',
+          tags,
+          summary:
+            '2FA de una operación de alto valor: sin código crea el challenge (TOTP o email); con código lo verifica y liga la atestación a la operación',
+          security: criticalSecurity,
+          headers: CriticalRequestHeadersSchema,
+          params: IdParams,
+          body: z
+            .object({
+              code: z
+                .string()
+                .regex(/^\d{6}(\d{2})?$/, { error: 'TOTP de 6 dígitos o código del email de 8' })
+                .optional(),
+            })
+            .strict(),
+          response: {
+            200: OperationStatusSchema,
+            202: TwoFactorChallengeSchema,
+            ...errorResponses(401, 403, 404, 409, 415, 422),
+          },
+        },
+      },
+      async (request, reply) => {
+        const actor = operationActor(request);
+        if (request.body.code === undefined) {
+          await app.enforceRateLimit(request, 'otp-challenge', { user: actor.userId, challengeType: 'HIGH_VALUE_TX' });
+          const started = await twoFactor.start(actor, request.params.id, {
+            userAgent: requestMeta(request).userAgent,
+          });
+          return reply.code(202).send(started);
+        }
+        await twoFactor.verify(actor, request.params.id, request.body.code);
+        return reply.code(200).send(await operations.get(actor.userId, request.params.id));
+      },
+    );
+  }
 
   done();
 };

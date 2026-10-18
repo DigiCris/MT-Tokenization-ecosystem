@@ -27,6 +27,7 @@ import { emergencyRoutes } from './routes/v1/emergency.ts';
 import { platformSessionsRoutes } from './routes/v1/platform-sessions.ts';
 import { operationRoutes } from './routes/v1/operations.ts';
 import { recoveryRoutes } from './routes/v1/recovery.ts';
+import { sendRoutes } from './routes/v1/send.ts';
 import { sessionsRoutes } from './routes/v1/sessions.ts';
 import { usersRoutes } from './routes/v1/users.ts';
 import { walletRoutes } from './routes/v1/wallets.ts';
@@ -148,11 +149,20 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
       });
     }
     await app.register(recoveryRoutes, { prefix: API_PREFIX, client, enrollments: deps.wallets.enrollments });
-    // Operaciones (P13): en Wallet firma U (OPERATIONS) y en Recovery firma R (RECOVERY).
-    await app.register(operationRoutes, { prefix: API_PREFIX, client, operations: deps.wallets.operations });
-    // P14: whitelist (lectura en los dos; alta y baja con U sólo en Wallet) y el grupo de emergencia (R) en Recovery.
+    // Operaciones (P13): en Wallet firma U (OPERATIONS) y en Recovery firma R (RECOVERY); el 2FA de alto valor (P14)
+    // sólo en Wallet.
+    await app.register(operationRoutes, {
+      prefix: API_PREFIX,
+      client,
+      operations: deps.wallets.operations,
+      ...(isWallet ? { twoFactor: deps.wallets.twoFactor } : {}),
+    });
+    // P14: whitelist (lectura en los dos; alta y baja con U sólo en Wallet), send en Wallet y el grupo de emergencia
+    // (R) en Recovery.
     await app.register(whitelistRoutes, { prefix: API_PREFIX, client, whitelist: deps.wallets.whitelist });
-    if (!isWallet) {
+    if (isWallet) {
+      await app.register(sendRoutes, { prefix: API_PREFIX, send: deps.wallets.send });
+    } else {
       await app.register(emergencyRoutes, {
         prefix: API_PREFIX,
         operations: deps.wallets.operations,
