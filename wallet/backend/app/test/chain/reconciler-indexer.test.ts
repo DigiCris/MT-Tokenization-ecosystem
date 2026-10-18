@@ -300,5 +300,6 @@ describe('reconciliación', () => {
     await env.chain.rpc('anvil_reorg', [Number(head - BigInt(row.block_number ?? '0') + 1n), []]);
     const result = await env.reconciler().runOnce('active');
     expect(result.discrepancies).toContainEqual(expect.objectContaining({ walletId: fresh.walletId, kind: 'nonce' }));
-  });
+    // Crea su propia wallet (onboarding + deploy): con el fork remoto de CI tarda más que el timeout por defecto.
+  }, 300_000);
 });
