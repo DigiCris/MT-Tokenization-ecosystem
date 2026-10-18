@@ -174,11 +174,12 @@ fecha de elegibilidad (en las dos apps, respetando la regla de 72 h entre ambas 
 | `typescript-eslint` | 8.71.2 (2026-10-12) | 2026-10-19 | 8.71.1 (2026-10-05) | `sha512-oiNVPC3/NbV1FpaHU07l8O6ynqG9v4PAiW2WvTrAmZdR0f2HI/gE668ElMLCK7Xbsu5k2fK5C4fXNiq05j7/nQ==` |
 
 Con la versión exacta de la tabla: `react-router` 8.4.0, `@noble/hashes` 2.4.0, `vite` 8.3.4, `typescript` 6.0.3,
+`@noble/curves` 2.4.0 y `@scure/base` 2.4.0 (sólo Wallet desde P17: firma secp256k1 de U y base64url de los sobres),
 `prettier` 3.9.10 y, sólo en Recovery, `wagmi` 3.7.7, `@wagmi/core` 3.6.5, `@wagmi/connectors` 8.2.0,
 `@walletconnect/ethereum-provider` 2.26.0, `@coinbase/wallet-sdk` 4.4.0 y `@metamask/connect-evm` 2.1.1 (integridad en
 la tabla de paquetes). Wallet no declara wagmi ni ningún conector, ni los tiene como transitivos
-(`frontend/wallet/test/unit/dependencies.test.ts`). `@noble/curves` y `@scure/base` se declaran cuando los usa el código
-(P17). Dependencias de desarrollo que no figuran en la tabla (fijadas el 2026-10-18, todas con más de 7 días):
+(`frontend/wallet/test/unit/dependencies.test.ts`). Dependencias de desarrollo que no figuran en la tabla (fijadas el
+2026-10-18, todas con más de 7 días):
 
 - `@vitest/coverage-v8` 5.0.3, `@eslint/js` 10.0.1 y `@types/node` 26.6.5 — las mismas que en `backend/app`.
 - `@types/react` 19.3.0 (2026-09-09) — `sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==`.

@@ -28,7 +28,7 @@ export default defineConfig({
       ],
       reporter: ['text-summary', 'text', 'lcov', 'json-summary'],
       reportsDirectory: 'coverage',
-      thresholds: { 'src/security/**': { lines: 90 }, 'src/config/**': { lines: 90 } },
+      thresholds: { 'src/security/**': { lines: 90 }, 'src/config/**': { lines: 90 }, 'src/crypto/**': { lines: 90 } },
     },
   },
 });
