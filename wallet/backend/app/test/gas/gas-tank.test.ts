@@ -31,7 +31,7 @@ import { createMetrics } from '../../src/observability/metrics.ts';
 import { loadPolicySnapshot, type BackendPolicySnapshot } from '../../src/policy/snapshot.ts';
 import { testConfig } from '../helpers/config.ts';
 import { createTestDatabase, type TestDatabase } from '../helpers/db.ts';
-import { deploySystem, type DeployedSystem } from '../helpers/deploy.ts';
+import { deployedChain, type DeployedSystem } from '../helpers/deploy.ts';
 import { startAnvil, type AnvilInstance } from '../helpers/fork.ts';
 import {
   createPki,
@@ -71,8 +71,9 @@ function service(overrides: Partial<{ dailyCapWei: bigint }> = {}): GasTankServi
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'mtw-gas-'));
-  [anvil, db] = await Promise.all([startAnvil(), createTestDatabase()]);
-  system = deploySystem(anvil.url);
+  const chain = deployedChain();
+  system = chain.system;
+  [anvil, db] = await Promise.all([startAnvil({ loadState: chain.statePath }), createTestDatabase()]);
   pki = createPki();
   const snapshotPath = writePolicySnapshot(dir, keys.policy, system.contracts);
   snapshot = loadPolicySnapshot(snapshotPath, keys.policy.publicKey, 'local');

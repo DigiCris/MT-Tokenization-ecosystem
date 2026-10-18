@@ -1,15 +1,23 @@
 // Infraestructura real para los tests de integración: PostgreSQL 18 y Valkey 9 con las mismas imágenes fijadas por
 // digest que el stack local (scripts/tools/versions.json) y el mismo init de roles (infra/local/postgres/init-db.sh).
 // Se crea `mtw_template` (copia de la base inicial, ya migrada): cada archivo de test clona su propia base desde ahí.
+//
+// Además (salvo que sólo corra el proyecto `live`), el sistema se despliega una vez en un fork de Base con los scripts
+// reales (`scripts/deploy-core ci`) y su estado se vuelca con `anvil_dumpState`: cada archivo que lo necesita levanta
+// su propio Anvil con `--load-state` (test/helpers/deploy.ts → deployedChain()).
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import pg from 'pg';
 import { GenericContainer, Wait } from 'testcontainers';
 import type { TestProject } from 'vitest/node';
 import { createDatabase } from '../../src/db/kysely.ts';
 import { migrateToLatest } from '../../src/db/migrator.ts';
+import { deploySystem, type DeployedChain } from '../helpers/deploy.ts';
+import { startAnvil } from '../helpers/fork.ts';
 
 const WALLET_ROOT = resolve(import.meta.dirname, '../../../..');
 
@@ -36,6 +44,38 @@ declare module 'vitest' {
     pg: PgInfo;
     redisUrl: string;
     mailpit: MailpitInfo;
+    /** Sistema desplegado en el fork (null si sólo corre el proyecto `live`). */
+    chain: DeployedChain | null;
+  }
+}
+
+/** Despliega el sistema en un Anvil efímero y vuelca su estado; devuelve también cómo limpiarlo. */
+async function deployChain(): Promise<{ chain: DeployedChain; cleanup: () => void }> {
+  const anvil = await startAnvil();
+  const dir = mkdtempSync(join(tmpdir(), 'mtw-backend-chain-'));
+  try {
+    const system = await deploySystem(anvil.url);
+    const hex = await anvil.rpc<string>('anvil_dumpState');
+    const raw = Buffer.from(hex.slice(2), 'hex');
+    let json: Buffer;
+    try {
+      json = gunzipSync(raw);
+    } catch {
+      json = raw;
+    }
+    const statePath = join(dir, 'state.json');
+    writeFileSync(statePath, json);
+    return {
+      chain: { statePath, system },
+      cleanup: () => {
+        rmSync(dir, { recursive: true, force: true });
+      },
+    };
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  } finally {
+    await anvil.stop();
   }
 }
 
@@ -50,6 +90,12 @@ export default async function setup(project: TestProject): Promise<() => Promise
   const migratorPassword = secret();
   const signerPassword = secret();
   const redisPassword = secret();
+
+  // El deploy (minutos) corre en paralelo con los contenedores; sólo hace falta si corre algo más que `live`.
+  const needsChain = project.vitest.projects.some((p) => p.name !== 'live');
+  const chainPromise = needsChain ? deployChain() : Promise.resolve(null);
+  // Si los contenedores fallan, el deploy igual se espera (y limpia) antes de propagar el error.
+  chainPromise.catch(() => undefined);
 
   const [postgres, valkey, mailpit] = await Promise.all([
     new PostgreSqlContainer(versions.images.postgres)
@@ -128,6 +174,8 @@ export default async function setup(project: TestProject): Promise<() => Promise
   await migrateToLatest(migrator);
   await migrator.destroy();
 
+  const deployed = await chainPromise;
+  project.provide('chain', deployed?.chain ?? null);
   project.provide('pg', info);
   project.provide('redisUrl', `redis://:${redisPassword}@${valkey.getHost()}:${valkey.getMappedPort(6379)}/0`);
   project.provide('mailpit', {
@@ -137,6 +185,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
   });
 
   return async () => {
+    deployed?.cleanup();
     await Promise.all([postgres.stop(), valkey.stop(), mailpit.stop()]);
   };
 }

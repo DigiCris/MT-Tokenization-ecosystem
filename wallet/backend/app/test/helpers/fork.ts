@@ -60,8 +60,13 @@ export async function rpcCall<T>(url: string, method: string, params: unknown[] 
   return body.result as T;
 }
 
+export interface AnvilOptions {
+  /** Estado a cargar (`anvil_dumpState` del sistema desplegado en el global setup). */
+  loadState?: string;
+}
+
 /** Anvil forkeando Base en el bloque fijado (chainId 8453), sin minado automático por tiempo. */
-export async function startAnvil(): Promise<AnvilInstance> {
+export async function startAnvil(options: AnvilOptions = {}): Promise<AnvilInstance> {
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   const child: ChildProcess = spawn(
@@ -87,6 +92,7 @@ export async function startAnvil(): Promise<AnvilInstance> {
       '--timeout',
       '60000',
       '--silent',
+      ...(options.loadState === undefined ? [] : ['--load-state', options.loadState]),
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
   );
@@ -94,7 +100,8 @@ export async function startAnvil(): Promise<AnvilInstance> {
   child.stderr?.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
   const exited = new Promise<number | null>((resolveExit) => child.once('exit', resolveExit));
 
-  const deadline = Date.now() + 60_000;
+  // Cargar el estado del sistema (--load-state) con varios forks arrancando a la vez puede tardar.
+  const deadline = Date.now() + 180_000;
   for (;;) {
     if (child.exitCode !== null) throw new Error(`anvil terminó al arrancar: ${stderr.slice(-300)}`);
     try {
@@ -103,7 +110,7 @@ export async function startAnvil(): Promise<AnvilInstance> {
     } catch {
       if (Date.now() > deadline) {
         child.kill('SIGKILL');
-        throw new Error('anvil no respondió en 60 s');
+        throw new Error('anvil no respondió en 180 s');
       }
       await sleep(250);
     }

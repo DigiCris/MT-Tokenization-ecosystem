@@ -18,7 +18,6 @@ const SECURITY_TESTS = [
 const LIVE_TESTS = ['test/**/*.live.test.ts'];
 
 const shared = {
-  globalSetup: ['test/setup/global-setup.ts'],
   testTimeout: 60_000,
   hookTimeout: 180_000,
   pool: 'forks' as const,
@@ -26,6 +25,11 @@ const shared = {
 
 export default defineConfig({
   test: {
+    // Una sola infraestructura por corrida para todos los proyectos (contenedores y sistema desplegado en el fork).
+    globalSetup: ['test/setup/global-setup.ts'],
+    // Los archivos de onboarding levantan cada uno un Anvil con el estado del sistema y dos shards del signer: más de
+    // cuatro a la vez agotan la memoria de una máquina de desarrollo (y el ritmo del RPC remoto del fork).
+    maxWorkers: 4,
     projects: [
       {
         test: {
