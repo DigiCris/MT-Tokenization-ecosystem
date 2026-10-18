@@ -1,7 +1,7 @@
-// Cliente OPAQUE ([B-PSES-02], ADR-008): @serenity-kit/opaque (WASM embebido; la CSP de Wallet permite
-// 'wasm-unsafe-eval' sólo por esto, [F-SEC-01]) cargado bajo demanda en su propio chunk. La password de OPAQUE es
-// AuthSecret_U en hex minúscula (nunca la Password U); el key stretching de OPAQUE es Argon2id 16 MiB/t=1/p=1, el mismo
-// que exige el backend al registrar y al desbloquear.
+// Cliente OPAQUE ([B-PSES-02], ADR-008): @serenity-kit/opaque (WASM embebido; con el Argon2id de hash-wasm del worker,
+// lo único por lo que la CSP de Wallet permite 'wasm-unsafe-eval', [F-SEC-01]) cargado bajo demanda en su propio chunk.
+// La password de OPAQUE es AuthSecret_U en hex minúscula (nunca la Password U); el key stretching de OPAQUE es Argon2id
+// 16 MiB/t=1/p=1, el mismo que exige el backend al registrar y al desbloquear.
 import type * as Opaque from '@serenity-kit/opaque';
 import { toHex } from '../crypto/bytes.ts';
 

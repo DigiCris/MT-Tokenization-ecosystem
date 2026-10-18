@@ -1,5 +1,5 @@
 {
-  "$comment": "Headers HTTP de la app Wallet ([F-SEC-01], [F-SEC-03], P16.T05). Los aplica `vite preview` en local y el contenedor estático wallet-web en P26 (desde dist/.well-known/security-headers.json, resuelto por entorno y cubierto por el manifest firmado). {apiOrigin} y {rpcOrigin} salen de la configuración del entorno. 'wasm-unsafe-eval' es requerido por OPAQUE (WASM). `remoteOnly` se emite sólo en staging y producción (local y ci corren sobre http://localhost).",
+  "$comment": "Headers HTTP de la app Wallet ([F-SEC-01], [F-SEC-03], P16.T05). Los aplica `vite preview` en local y el contenedor estático wallet-web en P26 (desde dist/.well-known/security-headers.json, resuelto por entorno y cubierto por el manifest firmado). {apiOrigin} y {rpcOrigin} salen de la configuración del entorno. 'wasm-unsafe-eval' es requerido por OPAQUE y por el Argon2id de hash-wasm (WASM, ADR-013). `remoteOnly` se emite sólo en staging y producción (local y ci corren sobre http://localhost).",
   "headers": {
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
     "X-Content-Type-Options": "nosniff",

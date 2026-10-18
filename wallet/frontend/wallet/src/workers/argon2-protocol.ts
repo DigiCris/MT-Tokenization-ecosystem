@@ -1,7 +1,8 @@
 // Protocolo del worker de Argon2id ([F-KEY-03]): mensajes entre la app y src/workers/argon2.worker.ts y la derivación
-// en sí (Argon2id de @noble/hashes, JS puro). Sin globals de DOM ni de worker: lo comparten el worker, la app y los
-// tests.
-import { argon2idAsync } from '@noble/hashes/argon2.js';
+// en sí. Argon2id de hash-wasm 4.12.0 (WASM, fijado tras revisión): ADR-013 lo adopta en Wallet porque @noble/hashes
+// (JS puro) superó el presupuesto de 3 s p95 en el perfil móvil de referencia (P17.T08). Mismo Argon2id v1.3: los
+// sobres creados antes abren igual. Sin globals de DOM ni de worker: lo comparten el worker, la app y los tests.
+import { argon2id } from 'hash-wasm';
 
 /** Baseline de V9 para todo sobre: 64 MiB, t=3, p=4, 32 bytes ([F-KEY-03]). */
 export const ARGON2_BASELINE = { memoryKiB: 65_536, iterations: 3, parallelism: 4, outputLength: 32 } as const;
@@ -42,10 +43,13 @@ export function validateArgon2(params: Argon2Params, salt: Uint8Array): void {
 
 export async function deriveArgon2id(request: Omit<Argon2Request, 'id'>): Promise<Uint8Array> {
   validateArgon2(request, request.salt);
-  return argon2idAsync(request.password, request.salt, {
-    m: request.memoryKiB,
-    t: request.iterations,
-    p: request.parallelism,
-    dkLen: request.outputLength,
+  return argon2id({
+    password: request.password,
+    salt: request.salt,
+    parallelism: request.parallelism,
+    iterations: request.iterations,
+    memorySize: request.memoryKiB,
+    hashLength: request.outputLength,
+    outputType: 'binary',
   });
 }

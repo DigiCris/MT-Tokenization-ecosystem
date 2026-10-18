@@ -177,7 +177,7 @@ fecha de elegibilidad (en las dos apps, respetando la regla de 72 h entre ambas 
 Con la versión exacta de la tabla: `react-router` 8.4.0, `@noble/hashes` 2.4.0, `vite` 8.3.4, `typescript` 6.0.3,
 `@noble/curves` 2.4.0 y `@scure/base` 2.4.0 (sólo Wallet desde P17: firma secp256k1 de U y base64url de los sobres),
 `@serenity-kit/opaque` 1.1.0 (sólo Wallet desde P17: cliente OPAQUE con el WASM embebido, en su propio chunk bajo
-demanda; es lo único que necesita `'wasm-unsafe-eval'` en la CSP de Wallet),
+demanda; con `hash-wasm`, lo único que necesita `'wasm-unsafe-eval'` en la CSP de Wallet),
 `prettier` 3.9.10 y, sólo en Recovery, `wagmi` 3.7.7, `@wagmi/core` 3.6.5, `@wagmi/connectors` 8.2.0,
 `@walletconnect/ethereum-provider` 2.26.0, `@coinbase/wallet-sdk` 4.4.0 y `@metamask/connect-evm` 2.1.1 (integridad en
 la tabla de paquetes). Wallet no declara wagmi ni ningún conector, ni los tiene como transitivos
@@ -185,6 +185,11 @@ la tabla de paquetes). Wallet no declara wagmi ni ningún conector, ni los tiene
 Paul Miller como `@noble`/`@scure`, sin dependencias) —
 `sha512-yovYRuacJBJkG9fWSwcB2bKZhr58c04DpOXguDU+rAAoJZdi6/J3DtlomkKqdd1MutIptIK+kigWmT7LKz8y7A==` — dibuja el QR del
 sobre cifrado como matriz en canvas y lo lee desde la cámara en `/restore` (sólo Wallet, P17; sin SVG ni HTML generado).
+También fuera de la tabla, `hash-wasm` 4.12.0 (2024-11-19, MIT, sin dependencias ni scripts de instalación) —
+`sha512-+/2B2rYLb48I/evdOIhP+K/DD2ca2fgBjp6O+GBEnCDk2e4rpeXIK8GvIyRPjTezgmWn9gmKwkQjjx6BtqDHVQ==` — es el Argon2id del
+worker de Wallet desde P17.T08 por la regla de fallback de ADR-013 (`@noble/hashes` superó el presupuesto de 3 s p95);
+revisado: sólo usa `WebAssembly.compile`/`instantiate` sobre el WASM embebido (sin `eval`, sinks de HTML ni red) y el
+build incluye únicamente Argon2 y BLAKE2b. Recovery no lo usa (sin WASM).
 Dependencias de desarrollo que no figuran en la tabla (fijadas el 2026-10-18, todas con más de 7 días):
 
 - `@vitest/coverage-v8` 5.0.3, `@eslint/js` 10.0.1 y `@types/node` 26.6.5 — las mismas que en `backend/app`.

@@ -1,4 +1,4 @@
-// Worker dedicado de Argon2id ([F-KEY-03]): deriva fuera del hilo de la UI con @noble/hashes y devuelve la clave
+// Worker dedicado de Argon2id ([F-KEY-03]): deriva fuera del hilo de la UI con hash-wasm (ADR-013) y devuelve la clave
 // transfiriendo el buffer. La password recibida se sobrescribe con ceros al terminar (best-effort, [F-KEY-05]). Se
 // carga sólo con una TrustedScriptURL de la política mtw-default (src/workers/argon2-client.ts).
 import { deriveArgon2id, type Argon2Request, type Argon2Response } from './argon2-protocol.ts';

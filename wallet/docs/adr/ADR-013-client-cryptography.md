@@ -1,6 +1,6 @@
 # ADR-013 — Criptografía del cliente
 
-- **Estado:** Aceptada
+- **Estado:** Aceptada; regla de fallback aplicada el 2026-10-18 (P17.T08): Argon2id de Wallet con `hash-wasm` 4.12.0
 - **Fecha:** 2026-10-16
 - **Fuentes:** planner §4 (ADR-013), §3.5 (Argon2id browser, wordlist 2^16), §5.1 (regla 1), §7.15 ([W-06]), §8.1 ([F-KEY-01] a [F-KEY-07]), §8.5 ([F-SEC-01], [F-SEC-02], [F-SEC-09]); V9 §4, §5; prompt §8, §9
 
@@ -27,6 +27,35 @@ Detalle ([F-KEY]):
 - **Prohibiciones** ([F-KEY-07]): U y R en texto plano nunca van a `localStorage`, `sessionStorage`, IndexedDB, cookies, logs, analytics ni observabilidad; sólo los sobres cifrados pueden cachearse en IndexedDB.
 - **Wordlist:** vendorizada como `config/wordlist/mtw-wordlist-v1.txt` con su `.sha256` y la licencia MIT de niceware; es inmutable.
 - **Implementación separada:** cada frontend implementa su capa criptográfica mínima por separado (§5.1, regla 1); sólo comparten vectores de test, copiados con hash.
+
+## Resultado de la medición (P17.T08, 2026-10-18)
+
+Método: `pnpm --dir frontend/wallet test:browser -- perf/argon2` (`scripts/perf-browser.mjs`) en el job
+`wallet-frontend-wallet` de GitHub Actions (runner `ubuntu-24.04`, imagen 20261012.601). La pantalla `/device-check` del
+build deriva 12 veces con los parámetros de los sobres (64 MiB, t=3, p=4) en el worker real de la app, cargado por la
+política de Trusted Types, dentro de la imagen fijada de Playwright 1.64.0 con `--cpus 0.25`: Chromium con emulación de
+Pixel 7 y WebKit con emulación de iPhone 14. La CPU 4× la pone la cuota de Docker, verificada antes de medir con un
+bucle de un hilo (4812 ms sin límite, 19455 ms con el límite: 4,04×). El throttling de CPU de DevTools no alcanza a los
+workers dedicados y WebKit no tiene uno propio; Docker rootless sin cgroups ignora la cuota, por eso la medición válida
+es la de CI (en local el script lo informa y no mide).
+
+| Implementación | Navegador (perfil) | Mediana | p95 | Presupuesto (3 s p95) |
+|---|---|---|---|---|
+| `@noble/hashes` 2.4.0 (JS puro) | Chromium (Pixel 7) | 4,52 s | 4,90 s | excedido |
+| `@noble/hashes` 2.4.0 (JS puro) | WebKit (iPhone 14) | 8,11 s | 8,72 s | excedido |
+
+Decisión aplicada (regla de fallback de este ADR): el worker de Wallet usa `hash-wasm` 4.12.0 (MIT, sin dependencias ni
+scripts de instalación; integridad en docs/VERSIONS.md). Revisión: sólo usa `WebAssembly.compile`/`instantiate` sobre
+el WASM embebido en el JS (sin `eval`, sinks de HTML ni red) y, con `sideEffects: false`, el chunk del worker incluye
+sólo Argon2 y BLAKE2b; corre bajo el `'wasm-unsafe-eval'` que la CSP de Wallet ya tenía por OPAQUE. La password copiada
+a la memoria del WASM no se puede sobrescribir desde JS, pero el worker se termina después de cada derivación. Es el
+mismo Argon2id v1.3: los sobres creados con `@noble/hashes` abren igual. Verificación
+(`test/unit/argon2-protocol.test.ts`, `src/crypto/vectors.test.ts`): vectores de la implementación de referencia
+(phc-winner-argon2), igualdad con la implementación nativa de Node/OpenSSL —validada con el vector de RFC 9106 §5.3,
+que hash-wasm no puede reproducir porque no admite datos asociados— y con `@noble/hashes` con los parámetros de los
+sobres, y los vectores de sobres de contracts/ (Root de Argon2id). Recovery mantiene `@noble/hashes` y su CSP sin WASM:
+con el perfil de referencia el desbloqueo de R tarda lo medido arriba (≈ 4,9 s p95 en Chromium y 8,7 s en WebKit), lo
+que este ADR acepta.
 
 ## Alternativas consideradas
 

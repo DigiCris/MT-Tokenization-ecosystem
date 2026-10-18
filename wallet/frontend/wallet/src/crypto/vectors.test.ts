@@ -1,8 +1,9 @@
 // P17.T04 [F-KEY-01..06]: el módulo crypto reproduce los vectores cruzados de contracts/test/vectors/wire (copia en
 // test/vectors/): sobres de U y R (Root de Argon2id, K y AuthSecret_U por HKDF, AES-256-GCM con AAD), backup de 17
-// palabras con checksum y firmas EIP-712 (RFC 6979, low-s). Además, los vectores estándar de las primitivas (RFC 9106,
-// RFC 5869, AES-GCM con AAD), sobres alterados y password equivocada sin oráculo, y el borrado best-effort.
-import { argon2id } from '@noble/hashes/argon2.js';
+// palabras con checksum y firmas EIP-712 (RFC 6979, low-s). Además, los vectores estándar de las primitivas (Argon2id
+// de referencia, RFC 5869, AES-GCM con AAD; RFC 9106 en test/unit/argon2-protocol.test.ts), sobres alterados y password
+// equivocada sin oráculo, y el borrado best-effort.
+import { argon2id } from 'hash-wasm';
 import { keccak256, toBytes, type TypedDataDefinition } from 'viem';
 import { describe, expect, it } from 'vitest';
 import backupVectors from '../../test/vectors/wire/backup-words.json';
@@ -51,16 +52,17 @@ const firstEnvelope = () => {
 };
 
 describe('vectores estándar de las primitivas', () => {
-  it('Argon2id: RFC 9106 §5.3 (la implementación que corre en el worker)', () => {
-    const tag = argon2id(new Uint8Array(32).fill(1), new Uint8Array(16).fill(2), {
-      t: 3,
-      m: 32,
-      p: 4,
-      dkLen: 32,
-      key: new Uint8Array(8).fill(3),
-      personalization: new Uint8Array(12).fill(4),
+  it('Argon2id: vector de la implementación de referencia, v1.3 (la que corre en el worker)', async () => {
+    const tag = await argon2id({
+      password: 'password',
+      salt: 'somesalt',
+      iterations: 2,
+      memorySize: 65_536,
+      parallelism: 1,
+      hashLength: 32,
+      outputType: 'hex',
     });
-    expect(toHex(tag)).toBe('0x0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659');
+    expect(tag).toBe('09316115d5cf24ed5a15a31a3ba326e5cf32edc24702987c02b6566f61913cf7');
   });
 
   it('HKDF-SHA256 de WebCrypto: RFC 5869, casos 1 y 3', async () => {
