@@ -13,6 +13,16 @@ on:
       - "wallet/config/**"
       - "wallet/ci/**"
       - "wallet/scripts/tools/**"
+      - "wallet/backend/app/**"
+      - "wallet/backend/signer/**"
+      - "wallet/contracts/src/**"
+      - "wallet/contracts/script/**"
+      - "wallet/infra/local/postgres/**"
+      - "wallet/docker-compose.yml"
+      - "wallet/scripts/stack/**"
+      - "wallet/scripts/lib/**"
+      - "wallet/scripts/deploy-core"
+      - "wallet/scripts/env.sh"
       - ".github/workflows/wallet-frontend-wallet.yml"
   pull_request:
     paths:
@@ -22,6 +32,16 @@ on:
       - "wallet/config/**"
       - "wallet/ci/**"
       - "wallet/scripts/tools/**"
+      - "wallet/backend/app/**"
+      - "wallet/backend/signer/**"
+      - "wallet/contracts/src/**"
+      - "wallet/contracts/script/**"
+      - "wallet/infra/local/postgres/**"
+      - "wallet/docker-compose.yml"
+      - "wallet/scripts/stack/**"
+      - "wallet/scripts/lib/**"
+      - "wallet/scripts/deploy-core"
+      - "wallet/scripts/env.sh"
       - ".github/workflows/wallet-frontend-wallet.yml"
   workflow_dispatch:
 

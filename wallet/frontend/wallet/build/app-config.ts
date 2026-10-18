@@ -14,6 +14,7 @@ export function publicConfig(config: BuildConfig) {
   return {
     app: config.app,
     environment: config.environment,
+    platformId: config.platformId,
     apiBaseUrl: config.apiBaseUrl,
     rpcUrl: config.rpcUrl,
     recoveryOrigin: config.recoveryOrigin,

@@ -23,6 +23,7 @@ Mínimos del sistema exigidos por PF-01: bash ≥ 4.0, git ≥ 2.34, python ≥ 
 | stack local: valkey | `valkey/valkey:9.2@sha256:247b5e730bdc9dc29fddb8274d1731b203a1a1a46af63eae3a9d55b4bf74853f` | 2026-10-17 |
 | stack local: foundry | `ghcr.io/foundry-rs/foundry:v1.8.5@sha256:32c8ea9ef052a440cb1620175987a3f49eff8b068a0c6a3d09ebf7f5f9a0e043` | 2026-10-17 |
 | stack local: mailpit | `axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387` | 2026-10-17 |
+| rendimiento de Argon2id con la CPU limitada (Chromium y WebKit, P17.T08): playwright | `mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f` | 2026-10-18 |
 | seguridad: semgrep | `semgrep/semgrep:1.181.0@sha256:81474464c1f07483ba0682a44787fd93c91397419762a04abe2bafaae396304b` | 2026-10-17 |
 | seguridad: osv-scanner | `ghcr.io/google/osv-scanner:v2.7.0@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0` | 2026-10-17 |
 | seguridad: zizmor | `ghcr.io/zizmorcore/zizmor:1.31.1@sha256:42d409dbb851d4c5d35a058cf042b828bea1e3f2884378c526eb0974780e18d9` | 2026-10-17 |
@@ -175,11 +176,16 @@ fecha de elegibilidad (en las dos apps, respetando la regla de 72 h entre ambas 
 
 Con la versión exacta de la tabla: `react-router` 8.4.0, `@noble/hashes` 2.4.0, `vite` 8.3.4, `typescript` 6.0.3,
 `@noble/curves` 2.4.0 y `@scure/base` 2.4.0 (sólo Wallet desde P17: firma secp256k1 de U y base64url de los sobres),
+`@serenity-kit/opaque` 1.1.0 (sólo Wallet desde P17: cliente OPAQUE con el WASM embebido, en su propio chunk bajo
+demanda; es lo único que necesita `'wasm-unsafe-eval'` en la CSP de Wallet),
 `prettier` 3.9.10 y, sólo en Recovery, `wagmi` 3.7.7, `@wagmi/core` 3.6.5, `@wagmi/connectors` 8.2.0,
 `@walletconnect/ethereum-provider` 2.26.0, `@coinbase/wallet-sdk` 4.4.0 y `@metamask/connect-evm` 2.1.1 (integridad en
 la tabla de paquetes). Wallet no declara wagmi ni ningún conector, ni los tiene como transitivos
-(`frontend/wallet/test/unit/dependencies.test.ts`). Dependencias de desarrollo que no figuran en la tabla (fijadas el
-2026-10-18, todas con más de 7 días):
+(`frontend/wallet/test/unit/dependencies.test.ts`). Fuera de la tabla, `qr` 0.7.2 (2026-09-28, MIT OR Apache-2.0, de
+Paul Miller como `@noble`/`@scure`, sin dependencias) —
+`sha512-yovYRuacJBJkG9fWSwcB2bKZhr58c04DpOXguDU+rAAoJZdi6/J3DtlomkKqdd1MutIptIK+kigWmT7LKz8y7A==` — dibuja el QR del
+sobre cifrado como matriz en canvas y lo lee desde la cámara en `/restore` (sólo Wallet, P17; sin SVG ni HTML generado).
+Dependencias de desarrollo que no figuran en la tabla (fijadas el 2026-10-18, todas con más de 7 días):
 
 - `@vitest/coverage-v8` 5.0.3, `@eslint/js` 10.0.1 y `@types/node` 26.6.5 — las mismas que en `backend/app`.
 - `@types/react` 19.3.0 (2026-09-09) — `sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==`.

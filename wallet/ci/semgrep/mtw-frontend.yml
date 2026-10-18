@@ -20,7 +20,12 @@ rules:
     message: Web Storage sólo en src/storage/flags.ts y src/drive/oauth-state.ts (flags no sensibles y state de OAuth, [F-KEY-07]).
     paths:
       include: ['frontend/*/src/**']
-      exclude: ['frontend/*/src/storage/flags.ts', 'frontend/*/src/drive/oauth-state.ts']
+      # Los tests unitarios (no se publican) leen el storage para probar que no queda nada sensible.
+      exclude:
+        - 'frontend/*/src/storage/flags.ts'
+        - 'frontend/*/src/drive/oauth-state.ts'
+        - 'frontend/*/src/**/*.test.ts'
+        - 'frontend/*/src/**/*.test.tsx'
     pattern-either:
       - pattern: localStorage
       - pattern: sessionStorage

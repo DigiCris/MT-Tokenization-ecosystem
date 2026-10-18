@@ -1,4 +1,4 @@
-// Configuración pública del build de la app Wallet (P16): entorno, API host, RPC del frontend, origin de Recovery,
+// Configuración pública del build de la app Wallet (P16): entorno, plataforma, API host, RPC del frontend, origin de Recovery,
 // cliente OAuth de Google, clave pública de atestación del signer y el commit con su fecha (SOURCE_DATE_EPOCH). Nunca
 // lee secretos. Cada valor sale, en este orden, del entorno del proceso, de wallet/.env (sólo en `local`, y sólo estas
 // variables públicas) o del default versionado en wallet/.env.example (sólo en `local` y `ci`, que corren sobre
@@ -19,6 +19,8 @@ export const ED25519_SPKI_BASE64 = /^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$/;
 export interface BuildConfig {
   app: typeof APP;
   environment: Environment;
+  /** Plataforma del backend (`PLATFORM_ID`): va en el AAD de los sobres y en las firmas EIP-712 ([F-KEY-04], [W-01]). */
+  platformId: string;
   /** Base del API de Wallet, p. ej. `http://localhost:8080/api/v1`. */
   apiBaseUrl: string;
   apiOrigin: string;
@@ -101,6 +103,8 @@ export function loadBuildConfig(env: Source = process.env): BuildConfig {
   };
   const required = (name: string): string => read(name) ?? '';
 
+  const platformId = required('PLATFORM_ID');
+  if (!/^[a-z0-9-]{1,32}$/.test(platformId)) throw new Error('PLATFORM_ID inválido (a-z, 0-9 y -, hasta 32)');
   const apiBaseUrl = required('WALLET_API_BASE_URL').replace(/\/+$/, '');
   const rpcUrl = required('WALLET_FRONTEND_RPC_URL');
   const recoveryOrigin = origin('RECOVERY_ORIGIN', required('RECOVERY_ORIGIN'), environment);
@@ -117,6 +121,7 @@ export function loadBuildConfig(env: Source = process.env): BuildConfig {
   return {
     app: APP,
     environment,
+    platformId,
     apiBaseUrl,
     apiOrigin: origin('WALLET_API_BASE_URL', apiBaseUrl, environment),
     rpcUrl,

@@ -33,6 +33,8 @@ export default defineConfig((): UserConfig => {
       assetsInlineLimit: 0,
       modulePreload: { polyfill: false },
       reportCompressedSize: false,
+      // El chunk principal (React, React Router y viem) ronda los 650 kB sin comprimir; OPAQUE va en su propio chunk.
+      chunkSizeWarningLimit: 800,
       rolldownOptions: {
         onLog(level, log, handler) {
           // React Router marca sus módulos con "use client" (React Server Components): en una SPA no aplica.

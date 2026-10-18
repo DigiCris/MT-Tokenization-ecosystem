@@ -11,7 +11,7 @@ import envelopeVectors from '../../test/vectors/wire/envelope.json';
 import wordlistText from '../vendor/mtw-wordlist-v1.txt?raw';
 import { deriveArgon2id } from '../workers/argon2-protocol.ts';
 import { BackupWordsError, backupWordsToKey, keyToBackupWords, splitBackupWords } from './backup-words.ts';
-import { fromBase64Url, fromHex, ownBuffer, toBase64Url, toHex, utf8 } from './bytes.ts';
+import { fromBase64Url, fromHex, ownBuffer, toBase64Url, toHex, utf8, zeroize } from './bytes.ts';
 import {
   EnvelopeError,
   envelopeAad,
@@ -25,6 +25,7 @@ import {
 import { defaultKdfParams, deriveKeys, hkdfBytes, type Argon2 } from './kdf.ts';
 import { addressOf, generatePrivateKey, isValidPrivateKey } from './keys.ts';
 import { signDigest, signTypedDataWithKey, withKey } from './sign.ts';
+import { keyAcceptance, keyRestore, platformDomain, walletCreationAuthorization } from './typed-data.ts';
 import { parseWordlist } from './wordlist.ts';
 
 const wordlist = parseWordlist(wordlistText);
@@ -245,6 +246,17 @@ describe('borrado best-effort [F-KEY-05]', () => {
     await expect(crypto.subtle.exportKey('raw', keys.encryptionKey)).rejects.toThrow();
   });
 
+  it('zeroize saltea los buffers ya transferidos a un worker (detached) y borra el resto', () => {
+    const transferred = Uint8Array.of(1, 2, 3);
+    structuredClone(transferred, { transfer: [transferred.buffer] });
+    expect(transferred.buffer.detached).toBe(true);
+    const kept = Uint8Array.of(4, 5, 6);
+    expect(() => {
+      zeroize(transferred, undefined, kept);
+    }).not.toThrow();
+    expect([...kept]).toEqual([0, 0, 0]);
+  });
+
   it('withKey descifra U sólo durante la firma y la borra después, también si la firma falla', async () => {
     const { vector, envelope } = firstEnvelope();
     const { encryptionKey } = await keysForEnvelope(envelope, vector.password, argon2);
@@ -354,6 +366,30 @@ describe('firmas EIP-712 (RFC 6979, low-s)', () => {
     // low-s: s ≤ n/2.
     const s = BigInt(`0x${entry.signature.slice(66, 130)}`);
     expect(s <= 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0n).toBe(true);
+  });
+
+  it('los builders tipados de la plataforma dan los digests de los vectores', () => {
+    const factory = (eip712.domain as { verifyingContract: `0x${string}` }).verifyingContract;
+    expect(platformDomain(factory)).toEqual(eip712.domain);
+    const byType = new Map(eip712.types.map((t) => [t.primaryType, t]));
+    const message = (name: string) => byType.get(name)?.message ?? {};
+    const creation = message('WalletCreationAuthorization') as Parameters<typeof walletCreationAuthorization>[1] & {
+      saltNonce: string;
+    };
+    const acceptance = message('KeyAcceptance') as { walletId: string; newKey: `0x${string}`; nonce: `0x${string}` };
+    const restore = message('KeyRestore') as Parameters<typeof keyRestore>[1];
+    const user = testKey('mtw-user-key');
+    const newUser = testKey('mtw-vector-new-user-key');
+    expect(
+      signTypedDataWithKey(
+        user,
+        walletCreationAuthorization(factory, { ...creation, saltNonce: BigInt(creation.saltNonce) }),
+      ),
+    ).toBe(byType.get('WalletCreationAuthorization')?.signature);
+    expect(signTypedDataWithKey(newUser, keyAcceptance(factory, { ...acceptance, role: 'U' }))).toBe(
+      byType.get('KeyAcceptance')?.signature,
+    );
+    expect(signTypedDataWithKey(user, keyRestore(factory, restore))).toBe(byType.get('KeyRestore')?.signature);
   });
 
   it('rechaza digests que no son de 32 bytes y claves inválidas', () => {

@@ -1,7 +1,7 @@
 // Comprobación del dispositivo: estado de las protecciones del navegador verificadas al arrancar, contratos del sistema
 // fijados en este build y medición de la derivación de clave (Argon2id con los parámetros reales de los sobres, en el
 // worker cargado por la política de Trusted Types). Datos aleatorios: no se usa ninguna clave ni password del usuario.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { appConfig, systemContracts } from '../config/index.ts';
 import { SYSTEM_ROLES } from '../config/system-contracts.ts';
 import { ARGON2_BASELINE } from '../workers/argon2-protocol.ts';
@@ -12,11 +12,15 @@ import { useSecurityStatus } from './security-status.ts';
 const BUDGET_MS = 3_000;
 
 type Measurement =
-  { state: 'idle' } | { state: 'running' } | { state: 'done'; ms: number } | { state: 'error'; message: string };
+  | { state: 'idle' }
+  | { state: 'running' }
+  | { state: 'done'; ms: number; run: number }
+  | { state: 'error'; message: string };
 
 export function DeviceCheckPage() {
   const status = useSecurityStatus();
   const [measurement, setMeasurement] = useState<Measurement>({ state: 'idle' });
+  const runs = useRef(0);
 
   const measure = () => {
     setMeasurement({ state: 'running' });
@@ -25,7 +29,8 @@ export function DeviceCheckPage() {
     runArgon2id({ ...ARGON2_BASELINE, password, salt })
       .then(({ key, elapsedMs }) => {
         key.fill(0);
-        setMeasurement({ state: 'done', ms: elapsedMs });
+        runs.current += 1;
+        setMeasurement({ state: 'done', ms: elapsedMs, run: runs.current });
       })
       .catch((error: unknown) => {
         setMeasurement({ state: 'error', message: error instanceof Error ? error.message : 'falló la derivación' });
@@ -59,7 +64,13 @@ export function DeviceCheckPage() {
         <button type="button" className="button" onClick={measure} disabled={measurement.state === 'running'}>
           {measurement.state === 'running' ? 'Midiendo…' : 'Medir derivación'}
         </button>
-        <p className="result" role="status" aria-live="polite">
+        <p
+          className="result"
+          role="status"
+          aria-live="polite"
+          data-elapsed-ms={measurement.state === 'done' ? String(Math.round(measurement.ms)) : undefined}
+          data-run={measurement.state === 'done' ? String(measurement.run) : undefined}
+        >
           {measurement.state === 'done' &&
             `${(measurement.ms / 1000).toFixed(2)} s — ${
               measurement.ms <= BUDGET_MS ? 'dentro del presupuesto de 3 s' : 'por encima del presupuesto de 3 s'

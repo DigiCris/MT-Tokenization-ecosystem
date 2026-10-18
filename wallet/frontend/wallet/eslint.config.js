@@ -13,7 +13,7 @@ import tseslint from 'typescript-eslint';
 const APP_ROOT = import.meta.dirname;
 const TOKENS_CSS = resolve(APP_ROOT, '../design-tokens/tokens.css');
 
-/** Módulos que pueden usar Web Storage: flags no sensibles y el `state`/verificador PKCE del viaje de OAuth (P17). */
+/** Módulos que pueden usar Web Storage: flags no sensibles y el `state` del viaje de OAuth (P17, ADR-012). */
 export const STORAGE_ALLOWLIST = ['src/storage/flags.ts', 'src/drive/oauth-state.ts'];
 
 const mtw = {
@@ -140,8 +140,13 @@ export default defineConfig(
     rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
   {
+    // Los tests no se publican: leen el storage para probar que no queda nada sensible ([F-KEY-07], P22.T03).
     files: ['src/**/*.test.{ts,tsx}', 'test/**/*.ts'],
-    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+    rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      'no-restricted-globals': 'off',
+      'no-restricted-properties': 'off',
+    },
   },
   {
     files: ['build/**/*.ts', 'test/**/*.ts', '*.config.ts'],

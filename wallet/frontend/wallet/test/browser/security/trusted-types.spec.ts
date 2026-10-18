@@ -143,14 +143,17 @@ test('sin service workers registrados', async ({ page }) => {
   expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
 });
 
-test('ningún request a terceros al cargar (sólo el propio origin)', async ({ page, baseURL }) => {
+test('ningún request a terceros al cargar (sólo el propio origin y la API de esta app)', async ({ page, baseURL }) => {
   const requests: Request[] = [];
   page.on('request', (r) => requests.push(r));
   await page.goto('/');
   await page.goto('/device-check');
   await page.waitForLoadState('networkidle');
   const origin = new URL(baseURL ?? '').origin;
-  const foreign = requests.map((r) => r.url()).filter((url) => new URL(url).origin !== origin);
-  expect(foreign).toEqual([]);
+  const api = new URL(loadBuildConfig().apiBaseUrl);
+  const foreign = requests
+    .map((r) => new URL(r.url()))
+    .filter((url) => url.origin !== origin && !(url.origin === api.origin && url.pathname.startsWith(api.pathname)));
+  expect(foreign.map((url) => url.href)).toEqual([]);
   expect(requests.length).toBeGreaterThan(3);
 });

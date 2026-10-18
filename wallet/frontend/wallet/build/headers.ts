@@ -3,7 +3,7 @@
 // escanean QR). El plugin los aplica a toda respuesta de `vite preview` (y de `vite` en dev), responde 403 a los pedidos
 // de scripts de service worker ([F-SEC-04]) y emite dist/.well-known/security-headers.json para el contenedor estático
 // de P26 y el integrity monitor de P20 (cubierto por el manifest firmado).
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Connect, Plugin } from 'vite';
 import { APP_ROOT, type BuildConfig } from './config.ts';
@@ -96,7 +96,11 @@ export function securityHeadersPlugin(config: BuildConfig): Plugin {
       server.middlewares.use(middleware(securityHeaders(config, { hmrOrigin: `ws://localhost:${String(port)}` })));
     },
     configurePreviewServer(server) {
-      server.middlewares.use(middleware(exact));
+      // `vite preview` sirve un build: aplica los headers que ese build emitió (como el contenedor estático de
+      // producción), no los que daría el entorno del proceso de preview.
+      const emitted = resolve(server.config.root, server.config.build.outDir, SECURITY_HEADERS_FILE);
+      const built = existsSync(emitted) ? (JSON.parse(readFileSync(emitted, 'utf8')) as SecurityHeaders) : exact;
+      server.middlewares.use(middleware({ headers: built.headers, routes: built.routes }));
     },
     generateBundle() {
       this.emitFile({

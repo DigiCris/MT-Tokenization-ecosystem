@@ -2,7 +2,7 @@
 // determinística, low-s), 65 bytes r ‖ s ‖ v con v ∈ {27, 28}. U se descifra sólo para cada firma y el Uint8Array se
 // sobrescribe con ceros al terminar (best-effort).
 import { secp256k1 } from '@noble/curves/secp256k1.js';
-import { hashTypedData, type TypedDataDefinition } from 'viem';
+import { hashTypedData, type TypedData, type TypedDataDefinition } from 'viem';
 import { fromHex, toHex, zeroize, type Hex } from './bytes.ts';
 import { openEnvelope, type KeyEnvelope } from './envelope.ts';
 import { isValidPrivateKey } from './keys.ts';
@@ -24,7 +24,10 @@ export function signDigest(digest: Uint8Array, key: Uint8Array): Hex {
   return toHex(signature);
 }
 
-export function signTypedDataWithKey(key: Uint8Array, typedData: TypedDataDefinition): Hex {
+export function signTypedDataWithKey<
+  const T extends TypedData | Record<string, unknown>,
+  P extends keyof T | 'EIP712Domain',
+>(key: Uint8Array, typedData: TypedDataDefinition<T, P>): Hex {
   return signDigest(fromHex(hashTypedData(typedData)), key);
 }
 

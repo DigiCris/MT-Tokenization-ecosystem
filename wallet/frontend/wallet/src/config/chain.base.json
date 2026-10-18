@@ -1,0 +1,171 @@
+{
+  "$schema": "./schema.json",
+  "network": "base-mainnet",
+  "chainId": 8453,
+  "explorer": {
+    "address": "https://basescan.org/address/",
+    "token": "https://basescan.org/token/",
+    "tx": "https://basescan.org/tx/"
+  },
+  "fork": {
+    "blockNumber": 52700000,
+    "blockHash": "0x64a292b057c55f118eb550d89bd860a5740598962f50536c719b375f1ca9c473",
+    "timestamp": 1792189347
+  },
+  "confirmations": {
+    "policy": "tags",
+    "confirmedTag": "safe",
+    "finalizedTag": "finalized",
+    "localDepth": {
+      "confirmed": 3,
+      "finalized": 10
+    }
+  },
+  "verifiedAt": "2026-10-17",
+  "contracts": {
+    "safeSingleton": {
+      "address": "0xFf51A5898e281Db6DfC7855790607438dF2ca44b",
+      "codehash": "0xdda019cbd7c867a533a2a86e5c53434fdc50b13122b5a5ddb4a8df61b31c20f2",
+      "role": "Safe v1.5.0 singleton L1 (referencia; no se usa)",
+      "source": "https://github.com/safe-global/safe-deployments/tree/main/src/assets/v1.5.0",
+      "verifiedAt": "2026-10-17",
+      "notes": "Singleton L1 de Safe v1.5.0 (deployment canonical); sólo referencia, el sistema usa SafeL2."
+    },
+    "safeL2Singleton": {
+      "address": "0xEdd160fEBBD92E350D4D398fb636302fccd67C7e",
+      "codehash": "0x180193227186ccb85316c94db1f0d156ed932b14712cfaac78901899178572dc",
+      "role": "Safe v1.5.0 SafeL2 singleton (usado)",
+      "version": "1.5.0",
+      "source": "https://github.com/safe-global/safe-deployments/tree/main/src/assets/v1.5.0",
+      "verifiedAt": "2026-10-17",
+      "notes": "Singleton SafeL2 v1.5.0 (deployment canonical); emite SafeMultiSigTransaction; inmutable."
+    },
+    "safeProxyFactory": {
+      "address": "0x14F2982D601c9458F93bd70B218933A6f8165e7b",
+      "codehash": "0x967dae4cda22b0c9ef7f31b010bdc1ceb0af9904b0c3dc060b5302e4c18a4529",
+      "role": "SafeProxyFactory v1.5.0",
+      "proxyCreationCodeHash": "0x941b3e88811b2f33b8e26783c7407d2e978404581a21c9f07abf2cad9cb87e12",
+      "proxyRuntimeCodehash": "0x4e381985ca68b3e5d27b4425fa581c19cf33146d3f887a3cfca96f55528ea46f",
+      "source": "https://github.com/safe-global/safe-deployments/tree/main/src/assets/v1.5.0",
+      "verifiedAt": "2026-10-17",
+      "notes": "SafeProxyFactory v1.5.0 (deployment canonical); createProxyWithNonceL2; inmutable."
+    },
+    "multiSendCallOnly": {
+      "address": "0xA83c336B20401Af773B6219BA5027174338D1836",
+      "codehash": "0xcdbdcec38d2f1c7d961b0029ff8416b7e86e9974d6f0e9c9580c7d17fcfb6663",
+      "role": "referencia; no se usa en camino asistido",
+      "source": "https://github.com/safe-global/safe-deployments/tree/main/src/assets/v1.5.0",
+      "verifiedAt": "2026-10-17",
+      "notes": "MultiSendCallOnly v1.5.0; sólo referencia (el camino asistido no usa MultiSend)."
+    },
+    "compatibilityFallbackHandler": {
+      "address": "0x3EfCBb83A4A7AfcB4F68D501E2c2203a38be77f4",
+      "codehash": "0x3c6a85bcf7b563daa624b884b4e9a1b9fa5371edde7be945d998071a48f28bbc",
+      "role": "referencia; no se instala (fallback = 0)",
+      "source": "https://github.com/safe-global/safe-deployments/tree/main/src/assets/v1.5.0",
+      "verifiedAt": "2026-10-17",
+      "notes": "CompatibilityFallbackHandler v1.5.0; no se instala (fallback handler = 0)."
+    },
+    "usdc": {
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "codehash": "0xa6705a10bb756b5dea144591118be77d7af0c3eee3bf2dfe2583dcb0364fefab",
+      "role": "USDC nativo de Circle (FiatTokenProxy, upgradeable, pausa y blacklist)",
+      "decimals": 6,
+      "symbol": "USDC",
+      "implementation": {
+        "address": "0x2Ce6311ddAE708829bc0784C967b7d77D19FD779",
+        "codehash": "0x11b75a237997ab8328f65b2d5a55c10f0346d0a175741ed42ddf4f2c66b9e873",
+        "slot": "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3",
+        "slotScheme": "org.zeppelinos.proxy.implementation"
+      },
+      "source": "https://developers.circle.com/stablecoins/usdc-contract-addresses",
+      "verifiedAt": "2026-10-17",
+      "notes": "Proxy upgradeable por Circle (slots ZeppelinOS, no EIP-1967) con pausa y blacklist; implementación FiatTokenV2_2 en `implementation`. Un cambio de implementación dispara alerta y revisión, no bloqueo automático (EXTERNAL_CONTRACTS.md)."
+    },
+    "usdt": {
+      "address": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+      "codehash": "0x478746a8e4b17181c4efbeb2069d86f22ec395788099ed65c9442ca44df265bc",
+      "role": "USDT bridged canónico (L2StandardERC20; no upgradeable, sin admin, sin pausa ni blacklist)",
+      "decimals": 6,
+      "symbol": "USDT",
+      "source": "https://ethereum-optimism.github.io/data/USDT/data.json",
+      "verifiedAt": "2026-10-17",
+      "notes": "L2StandardERC20 del bridge canónico de Base: no upgradeable, sin admin, sin pausa ni blacklist; sólo el bridge 0x4200…0010 hace mint/burn. Depende del bridge y de las claves de upgrade de Base."
+    },
+    "uniswapV3Factory": {
+      "address": "0x33128a8fC17869897dcE68Ed026d694621f6FDfD",
+      "codehash": "0x95707a4ac71f20181a63ef7d180e3c625be5d20fc8f6f980befa966bad568132",
+      "role": "verificación de pool",
+      "source": "https://github.com/Uniswap/sdks/blob/81db6f17e5d9b94ce86f9629a7f3085192670035/sdks/sdk-core/src/addresses.ts",
+      "verifiedAt": "2026-10-17",
+      "notes": "UniswapV3Factory; sólo para verificar el pool canónico."
+    },
+    "uniswapV3PoolUsdcUsdt100": {
+      "address": "0xD56da2B74bA826f19015E6B7Dd9Dae1903E85DA1",
+      "codehash": "0x7c1e281e8700a5038559b9380296ee9c4591b706789a1aa5a7a270ca837ef80d",
+      "role": "pool canónico del SwapExecutorV3",
+      "token0": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "token1": "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",
+      "fee": 100,
+      "source": "https://developers.uniswap.org/docs/protocols/v3/deployments/base-deployments",
+      "verifiedAt": "2026-10-17",
+      "notes": "Pool v3 USDC/USDT fee 100 (0,01 %), token0 = USDC, token1 = USDT; inmutable; dirección derivada y verificada con getPool en el fork."
+    },
+    "uniswapQuoterV2": {
+      "address": "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
+      "codehash": "0xceb5b8bc35e09fc64b1c48c6b920e0d2e37d5710e4f3ef214e1a81f75acee51e",
+      "role": "cotización por eth_call",
+      "source": "https://github.com/Uniswap/sdks/blob/81db6f17e5d9b94ce86f9629a7f3085192670035/sdks/sdk-core/src/addresses.ts",
+      "verifiedAt": "2026-10-17",
+      "notes": "QuoterV2; cotización por eth_call (no es view)."
+    },
+    "uniswapSwapRouter02": {
+      "address": "0x2626664c2603336E57B271c5C0b26F421741e481",
+      "codehash": "0x38bd640f47df62b2fd5a6755a63f4976ad847dc9b946ae0d145d21d16bb124e4",
+      "role": "no se usa",
+      "source": "https://github.com/Uniswap/sdks/blob/81db6f17e5d9b94ce86f9629a7f3085192670035/sdks/sdk-core/src/addresses.ts",
+      "verifiedAt": "2026-10-17",
+      "notes": "SwapRouter02; no se usa."
+    },
+    "uniswapUniversalRouter": {
+      "address": "0xd6145b2D3F379919E8CdEda7B97e37c4b2Ca9c40",
+      "codehash": "0x816c75fe7f6ccf8fe8b14825091e8dff301fe7ffd4b962f89b2981a747facc08",
+      "role": "no se usa",
+      "source": "https://github.com/Uniswap/sdks/blob/81db6f17e5d9b94ce86f9629a7f3085192670035/sdks/universal-router-sdk/src/utils/constants.ts",
+      "verifiedAt": "2026-10-17",
+      "notes": "UniversalRouter 2.1.2; no se usa."
+    },
+    "permit2": {
+      "address": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+      "codehash": "0xa67739abc3ede9dbdc0491636c67d6a14ac07fab9030c3f509b1eb7b11dff8ed",
+      "role": "no se usa; approvals a Permit2 denegados",
+      "source": "https://github.com/Uniswap/sdks/blob/81db6f17e5d9b94ce86f9629a7f3085192670035/sdks/permit2-sdk/src/constants.ts",
+      "verifiedAt": "2026-10-17",
+      "notes": "Permit2; no se usa y el Guard deniega toda llamada a Permit2 en el camino asistido."
+    },
+    "uniswapV4PoolManager": {
+      "address": "0x498581fF718922c3f8e6A244956aF099B2652b2b",
+      "codehash": "0x83b2af6e9f3158defc2811cbcb0db71ecf8b2ba2abea39c39e370ac5c6f43eb6",
+      "role": "candidato a SwapExecutorV4 futuro",
+      "source": "https://developers.uniswap.org/docs/protocols/v4/deployments",
+      "verifiedAt": "2026-10-17",
+      "notes": "v4 PoolManager; candidato a un SwapExecutorV4 futuro (no se usa en V1)."
+    },
+    "uniswapV4Quoter": {
+      "address": "0x0d5e0F971ED27FBfF6c2837bf31316121532048D",
+      "codehash": "0x9a5c0cdd56325bef0e48cdab071a4b6a7f877e1271c2e08510998d724a038bb3",
+      "role": "monitoreo comparativo",
+      "source": "https://developers.uniswap.org/docs/protocols/v4/deployments",
+      "verifiedAt": "2026-10-17",
+      "notes": "v4 Quoter; monitoreo comparativo de precio."
+    },
+    "uniswapV4StateView": {
+      "address": "0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71",
+      "codehash": "0xbbd5859677ef5491143133e8ed2b8faa0272f6fc2cbae94c53e79cc8c0538545",
+      "role": "monitoreo comparativo",
+      "source": "https://developers.uniswap.org/docs/protocols/v4/deployments",
+      "verifiedAt": "2026-10-17",
+      "notes": "v4 StateView; monitoreo comparativo de liquidez."
+    }
+  }
+}

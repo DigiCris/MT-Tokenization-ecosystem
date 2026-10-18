@@ -38,7 +38,7 @@ test('los mínimos del sistema de PF-01 están documentados', () => {
 });
 
 test('toda imagen fijada en versions.json figura con el mismo digest', () => {
-  const refs = [versions.images, versions.securityImages, versions.fallbackImages]
+  const refs = [versions.images, versions.testImages, versions.securityImages, versions.fallbackImages]
     .flatMap((group) => Object.entries(group).filter(([k]) => !k.startsWith('$')).map(([, ref]) => ref));
   assert.ok(refs.length >= 11);
   for (const ref of refs) {

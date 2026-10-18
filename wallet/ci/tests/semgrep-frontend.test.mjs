@@ -1,6 +1,6 @@
 // P16.SEC: las reglas Semgrep propias de los frontends (ci/semgrep/mtw-frontend.yml) detectan cada patrón prohibido
 // en el src/ de una app y no marcan el código permitido (worker con createTrustedWorker, Web Storage en los módulos
-// allowlisteados). Corre la imagen fijada de Semgrep sobre un árbol temporal con la misma estructura del repo.
+// allowlisteados y en los tests unitarios, que lo inspeccionan). Corre la imagen fijada de Semgrep sobre un árbol temporal con la misma estructura del repo.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -21,6 +21,7 @@ const FILES = {
   'frontend/app/src/security/trusted-types.ts':
     "export const createTrustedWorker = (url: string) => new Worker(url, { type: 'module' });\n",
   'frontend/app/src/storage/flags.ts': "export const flag = () => localStorage.getItem('mtw.flag');\n",
+  'frontend/app/src/drive/oauth.test.ts': "export const leaked = () => window.sessionStorage.length + localStorage.length;\n",
   'frontend/app/src/ok.ts': "export const f = (w: Window, origin: string) => { w.postMessage({ a: 1 }, origin); };\n",
   'frontend/app/test/not-src.ts': "export const f = (h: string) => { document.write(h); };\n",
 };
@@ -52,6 +53,7 @@ test('cada regla de frontend detecta su patrón en src/ y nada más', () => {
     assert.deepEqual(by('src/bad-script.ts'), ['mtw-fe-dynamic-script']);
     assert.deepEqual(by('src/security/trusted-types.ts'), []);
     assert.deepEqual(by('src/storage/flags.ts'), []);
+    assert.deepEqual(by('src/drive/oauth.test.ts'), []);
     assert.deepEqual(by('src/ok.ts'), []);
     assert.deepEqual(by('test/not-src.ts'), []);
   } finally {

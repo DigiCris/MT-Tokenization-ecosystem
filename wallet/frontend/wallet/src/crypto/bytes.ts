@@ -25,9 +25,15 @@ export function utf8(text: string): Uint8Array {
   return new TextEncoder().encode(text);
 }
 
-/** Sobrescribe con ceros (best-effort: el motor puede haber copiado el contenido antes). */
+/**
+ * Sobrescribe con ceros (best-effort: el motor puede haber copiado el contenido antes). Un buffer ya transferido a un
+ * worker (detached) no tiene contenido en este hilo y se saltea: `fill` lanzaría.
+ */
 export function zeroize(...buffers: (Uint8Array | undefined)[]): void {
-  for (const buffer of buffers) buffer?.fill(0);
+  for (const buffer of buffers) {
+    if (buffer === undefined || (buffer.buffer as ArrayBuffer).detached) continue;
+    buffer.fill(0);
+  }
 }
 
 /** Copia sobre un ArrayBuffer propio (WebCrypto y postMessage no aceptan vistas de buffers compartidos). */

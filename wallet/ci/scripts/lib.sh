@@ -102,6 +102,9 @@ ci_frontend_app() { # <ruta relativa> <fase>
   run_if_script "$dir" lint
   run_if_script "$dir" typecheck
   run_if_script "$dir" test
+  # Servicios reales con la cuenta de prueba (Drive, P17.TST/P22.T04): obligatorios, nunca se saltean; sin credenciales
+  # (GOOGLE_DRIVE_TEST_* en wallet/.env o en el environment de CI de la app) fallan.
+  run_if_script "$dir" test:drive-live
   run_if_script "$dir" build
   section "$rel: navegador de Playwright (headless shell de la versión fijada)"
   ensure_playwright_browser "$dir"

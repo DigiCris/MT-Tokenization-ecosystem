@@ -8,3 +8,5 @@ pnpm-lock.yaml
 src/styles/design-tokens/
 # Copia byte a byte de contracts/test/vectors (scripts/sync-vectors.mjs --check).
 test/vectors/
+# Copia byte a byte de config/chains/base-mainnet.json (test/unit/chain-config.test.ts).
+src/config/chain.base.json

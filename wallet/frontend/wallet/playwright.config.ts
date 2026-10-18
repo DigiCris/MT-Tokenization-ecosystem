@@ -1,11 +1,13 @@
-// Tests de navegador de la app Wallet (P16: headers y Trusted Types contra `vite preview` del build; desde P17 también
-// contra el stack local). `pnpm test:browser [filtro]` compila antes de correr (scripts/test-browser.mjs).
+// Tests de navegador de la app Wallet sin backend contra `vite preview` del build: headers y Trusted Types (P16). Los
+// specs contra el stack real están en playwright.stack.config.ts y la medición de Argon2id con la CPU limitada en
+// playwright.perf.config.ts. `pnpm test:browser [filtro]` compila antes (scripts/test-browser.mjs).
 import { defineConfig, devices } from '@playwright/test';
 
 const port = Number(process.env.MTW_PREVIEW_PORT ?? 4173);
 
 export default defineConfig({
   testDir: 'test/browser',
+  testIgnore: ['stack/**', 'perf/**'],
   forbidOnly: process.env.CI !== undefined,
   retries: 0,
   workers: 1,
