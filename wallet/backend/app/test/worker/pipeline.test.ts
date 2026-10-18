@@ -126,7 +126,8 @@ describe('pipeline del worker S', () => {
     expect(await statusOf(env, prepared.operationId)).toBe('MINED');
     expect(await env.chain.tokenBalance(usdc, destination)).toBe(5_000_000n);
     expect(await env.chain.tokenBalance(usdc, wallet.safe)).toBe(safeBefore - 5_000_000n);
-  });
+    // El fondeo y la whitelist soberana leen estado frío del fork (RPC remoto con límite de ritmo, compartido en CI).
+  }, 180_000);
 
   it('varias operaciones de la misma Safe se ejecutan en una pasada, en orden estricto de nonce', async () => {
     const start = await env.chain.safeNonce(wallet.safe);

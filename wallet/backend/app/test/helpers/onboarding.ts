@@ -11,7 +11,7 @@ import type { Worker } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { getAddress, type Address, type Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
-import { RpcQuorumClient } from '../../src/chain/rpc-quorum.ts';
+import { RpcQuorumClient, RpcQuorumError } from '../../src/chain/rpc-quorum.ts';
 import { platformTypedData } from '../../src/chain/eip712.ts';
 import { OutboxRepository } from '../../src/db/repositories/outbox-repository.ts';
 import { GasTankService } from '../../src/gas/gas-tank.ts';
@@ -23,6 +23,7 @@ import { loadPolicySnapshot, type BackendPolicySnapshot } from '../../src/policy
 import { createOutboxWorker } from '../../src/queue/outbox-consumer.ts';
 import { createRedis } from '../../src/queue/redis.ts';
 import { QUEUES } from '../../src/queue/queues.ts';
+import { SignerClientError } from '../../src/signer-client/client.ts';
 import { SignerKeyService } from '../../src/signer-client/sharding.ts';
 import { walletDeployJobHandler, WalletDeployer } from '../../src/wallets/deployer.ts';
 import { createVerifiedUser, type TestAccount } from './accounts.ts';
@@ -522,7 +523,19 @@ export async function deploy(env: OnboardingEnv, onboarded: OnboardedWallet): Pr
     },
   );
   if (response.statusCode !== 202) throw new Error(`deploy: ${String(response.statusCode)} ${response.body}`);
-  return env.deployer.handle(onboarded.walletId);
+  // Como el job del outbox en el proceso gas-tank (BullMQ lo reintenta con backoff): un error transitorio del RPC
+  // del fork o del signer (p. ej. límite de ritmo del RPC remoto, compartido en CI) se reintenta; `handle` retoma
+  // desde el estado guardado de la wallet.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await env.deployer.handle(onboarded.walletId);
+    } catch (error) {
+      const transient =
+        (error instanceof SignerClientError && error.retryable) || error instanceof RpcQuorumError;
+      if (!transient || attempt >= 5) throw error;
+      await new Promise((resolveWait) => setTimeout(resolveWait, attempt * 2_000));
+    }
+  }
 }
 
 /** Espera activa hasta que `probe` devuelva un valor definido. */

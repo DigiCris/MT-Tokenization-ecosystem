@@ -64,10 +64,13 @@ async function diagnostics(operationIds: string[]): Promise<string> {
 }
 
 /** Reinicia un worker con conexiones directas y espera MINED; verifica una sola ejecución. */
+/** Ejecutada on-chain: el watcher del proceso la puede pasar a CONFIRMED apenas se mina otro bloque. */
+const EXECUTED: readonly string[] = ['MINED', 'CONFIRMED', 'FINALIZED'];
+
 async function restartAndExpectMined(operationId: string, safeNonceBefore: bigint): Promise<void> {
   const worker = startWorkerProcess(await workerProcessEnv(env));
   try {
-    await until(async () => ((await statusOf(env, operationId)) === 'MINED' ? true : undefined), 120_000).catch(
+    await until(async () => (EXECUTED.includes(await statusOf(env, operationId)) ? true : undefined), 120_000).catch(
       async (error: unknown) => {
         throw new Error(
           `no llegó a MINED: ${String(error)}\n${await diagnostics([operationId])}\n${worker.output().slice(-4000)}`,
@@ -78,7 +81,7 @@ async function restartAndExpectMined(operationId: string, safeNonceBefore: bigin
     expect(await worker.kill('SIGTERM')).toBe(0);
   }
   expect(await env.chain.safeNonce(wallet.safe)).toBe(safeNonceBefore + 1n);
-  const mined = (await chainTxs(operationId)).filter((t) => t.status === 'MINED');
+  const mined = (await chainTxs(operationId)).filter((t) => EXECUTED.includes(t.status));
   expect(mined).toHaveLength(1);
 }
 
@@ -183,8 +186,9 @@ describe('kill -9 y reinicio del worker', () => {
     const worker = startWorkerProcess(await workerProcessEnv(env));
     try {
       await until(async () => {
+        // Con la segunda minada, el watcher del proceso ya puede confirmar la primera (profundidad 2).
         const statuses = await Promise.all(ops.map((o) => statusOf(env, o.operationId)));
-        return statuses.every((s) => s === 'MINED') ? true : undefined;
+        return statuses.every((s) => EXECUTED.includes(s)) ? true : undefined;
       }, 120_000).catch(async (error: unknown) => {
         throw new Error(
           `no llegaron a MINED: ${String(error)}\n${await diagnostics(ops.map((o) => o.operationId))}\n${worker.output().slice(-6000)}`,
