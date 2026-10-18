@@ -343,49 +343,75 @@ export async function startSignerShard(options: ShardOptions): Promise<SignerSha
   });
   if (create.status !== 0) throw new Error(`shard:create ${options.shardId} falló: ${create.stderr}`);
   const created = JSON.parse(create.stdout.trim().split('\n').at(-1) ?? '{}') as SignerShard['created'];
+  // El puerto libre se elige antes de que el shard lo tome: con varios archivos de test en paralelo otro proceso puede
+  // ganarlo en el medio (EADDRINUSE). Como el helper de Anvil, se reintenta con otro puerto.
   let output = '';
-  const child: ChildProcess = spawn('node', [join(SIGNER_ROOT, 'src/main.ts'), 'serve'], {
-    cwd: SIGNER_ROOT,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  child.stdout?.on('data', (c: Buffer) => (output += c.toString()));
-  child.stderr?.on('data', (c: Buffer) => (output += c.toString()));
-  const exited = new Promise<void>((r) =>
-    child.once('exit', () => {
-      r();
-    }),
-  );
-  const url = `https://127.0.0.1:${port}`;
-  const client = new SignerClient({ shardId: options.shardId, url, tls: options.pki.tls(), timeoutMs: 60_000 });
-  const deadline = Date.now() + 60_000;
-  for (;;) {
-    if (child.exitCode !== null)
-      throw new Error(`el shard ${options.shardId} terminó al arrancar: ${output.slice(-500)}`);
-    try {
-      const health = await client.health();
-      if (health.ready) break;
-    } catch {
-      // todavía arrancando
+  let child: ChildProcess | undefined;
+  let exited: Promise<void> = Promise.resolve();
+  let url = '';
+  let client: SignerClient | undefined;
+  for (let attempt = 1; ; attempt++) {
+    env.SIGNER_PORT = String(attempt === 1 ? port : await freePort());
+    output = '';
+    const spawned: ChildProcess = spawn('node', [join(SIGNER_ROOT, 'src/main.ts'), 'serve'], {
+      cwd: SIGNER_ROOT,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child = spawned;
+    spawned.stdout?.on('data', (c: Buffer) => (output += c.toString()));
+    spawned.stderr?.on('data', (c: Buffer) => (output += c.toString()));
+    exited = new Promise<void>((r) =>
+      spawned.once('exit', () => {
+        r();
+      }),
+    );
+    url = `https://127.0.0.1:${env.SIGNER_PORT}`;
+    client = new SignerClient({ shardId: options.shardId, url, tls: options.pki.tls(), timeoutMs: 60_000 });
+    const deadline = Date.now() + 60_000;
+    let ready = false;
+    let portTaken = false;
+    for (;;) {
+      if (spawned.exitCode !== null) {
+        client.close();
+        if (/EADDRINUSE/.test(output) && attempt < 5) {
+          portTaken = true;
+          break;
+        }
+        throw new Error(`el shard ${options.shardId} terminó al arrancar: ${output.slice(-500)}`);
+      }
+      try {
+        const health = await client.health();
+        if (health.ready) {
+          ready = true;
+          break;
+        }
+      } catch {
+        // todavía arrancando
+      }
+      if (Date.now() > deadline) {
+        spawned.kill('SIGKILL');
+        throw new Error(`el shard ${options.shardId} no quedó listo: ${output.slice(-500)}`);
+      }
+      await sleep(250);
     }
-    if (Date.now() > deadline) {
-      child.kill('SIGKILL');
-      throw new Error(`el shard ${options.shardId} no quedó listo: ${output.slice(-500)}`);
-    }
-    await sleep(250);
+    if (ready) break;
+    if (!portTaken) throw new Error(`el shard ${options.shardId} no arrancó`);
   }
+  const shardClient = client;
+  const shardChild = child;
   return {
     shardId: options.shardId,
     url,
-    client,
+    client: shardClient,
     created,
     keystoreDir,
     credentialFile: env.SIGNER_UNLOCK_CREDENTIAL_FILE ?? '',
     logs: () => output,
     stop: async () => {
-      client.close();
-      if (child.exitCode === null) {
-        child.kill('SIGTERM');
+      shardClient.close();
+      if (shardChild.exitCode === null) {
+        shardChild.kill('SIGTERM');
         await exited;
       }
       rmSync(root, { recursive: true, force: true });
