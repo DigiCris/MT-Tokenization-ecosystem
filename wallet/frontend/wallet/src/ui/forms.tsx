@@ -92,7 +92,13 @@ export function useAsyncAction<A extends unknown[]>(action: (...args: A) => Prom
 }
 
 /** Valor de un input de formulario por nombre. */
+/** Valor de un campo del formulario: un input o textarea, un select o un grupo de radios (el elegido). */
 export function formValue(form: HTMLFormElement, name: string): string {
   const element = form.elements.namedItem(name);
-  return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement ? element.value : '';
+  if (element instanceof RadioNodeList) return element.value;
+  return element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+    ? element.value
+    : '';
 }

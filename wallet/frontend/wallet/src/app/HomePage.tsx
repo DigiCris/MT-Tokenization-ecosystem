@@ -1,6 +1,8 @@
-// Inicio de Wallet: qué es la app y, según la sesión, el próximo paso (cuenta, crear la wallet, desbloquearla) o el
-// estado de la wallet desbloqueada. Saldos, actividad y QR de recepción llegan con la operación (P18).
+// Inicio de Wallet: qué es la app y, según la sesión, el próximo paso (cuenta, crear la wallet, desbloquearla) o, con la
+// wallet ACTIVE, desbloqueada y verificada por la app, la Safe operativa (P18.T03).
 import { Link } from 'react-router';
+import { OperatingHome } from '../home/OperatingHome.tsx';
+import { SafeGate } from '../safe/SafeGate.tsx';
 import { useSession, useSessionStore } from '../session/context.tsx';
 
 const STATUS_TEXT: Record<string, string> = {
@@ -16,6 +18,9 @@ const STATUS_TEXT: Record<string, string> = {
 export function HomePage() {
   const { status, user, wallet, unlocked } = useSession();
   const store = useSessionStore();
+  if (status === 'account' && wallet?.status === 'ACTIVE') {
+    return <SafeGate>{(ctx) => <OperatingHome ctx={ctx} />}</SafeGate>;
+  }
   return (
     <div className="stack">
       {status === 'account' && user && (

@@ -127,7 +127,8 @@ test('onboarding con Drive: U, Password U, AuthSecret_U y las 17 palabras no sal
   await expect(page.getByText('Palabras anotadas.')).toBeVisible();
   await page.getByRole('button', { name: 'Continuar' }).click();
   await page.getByRole('button', { name: 'Registrar', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Clave registrada' })).toBeVisible();
+  // Registrada la clave, el onboarding sigue con la activación de Recovery (P18).
+  await expect(page.getByRole('heading', { name: 'Activar Recovery' })).toBeVisible();
   try {
     const key = await backupWordsToKey('U', backupWords, testWordlist());
     const canaries = {

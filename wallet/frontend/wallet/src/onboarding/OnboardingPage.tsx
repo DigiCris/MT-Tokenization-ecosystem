@@ -1,13 +1,21 @@
-// Onboarding de U (P17.T05), en este orden: conectar Drive (la redirección recarga la app, por eso va antes de generar
-// nada) → step-up ONBOARDING y wallet en creación → generar U → mostrar la Password U → confirmar 2 palabras → sobre
-// cifrado → subir a Drive y verificar → backup independiente obligatorio → registro OPAQUE y alta de U. Sigue en P18:
-// activar Recovery, confirmar R, crear la Safe.
+// Onboarding (P17.T05 y P18.T01/T02), en este orden: conectar Drive (la redirección recarga la app, por eso va antes
+// de generar nada) → step-up ONBOARDING y wallet en creación → generar U → mostrar la Password U → confirmar 2 palabras
+// → sobre cifrado → subir a Drive y verificar → backup independiente obligatorio → registro OPAQUE y alta de U →
+// activar Recovery y confirmar R → crear la Safe con la verificación propia. Si la pestaña se recargó con U ya
+// registrada, se retoma abriendo el sobre con la Password U (U sólo se descifra para firmar la autorización).
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
+import { isAddressEqual, type Address } from 'viem';
 import type { StorageFlags, WalletView } from '../api/wallet-api.ts';
 import { api, argon2, driveOAuth } from '../app/services.ts';
 import { appConfig } from '../config/index.ts';
 import { zeroize } from '../crypto/bytes.ts';
+import { keysForEnvelope, openEnvelope, type KeyEnvelope } from '../crypto/envelope.ts';
+import { normalizePassword } from '../crypto/password.ts';
+import { confirmWithReturnLink } from '../recovery-activation/activation.ts';
+import { RecoveryActivationStep, type ConfirmedRecovery } from '../recovery-activation/RecoveryActivationStep.tsx';
+import { SafeCreationStep } from '../safe/SafeCreationStep.tsx';
+import { EnvelopeSource } from '../unlock/EnvelopeSource.tsx';
 import { loadWordlist } from '../crypto/wordlist.ts';
 import { startDriveConnect, takeDriveConnectError } from '../drive/oauth.ts';
 import { hasDriveToken } from '../drive/token.ts';
@@ -15,7 +23,7 @@ import { useSession, useSessionStore, useSensitiveScreen } from '../session/cont
 import { isLive, type StepUpSession } from '../session/step-up.ts';
 import { StepUpForm } from '../session/StepUpForm.tsx';
 import { rememberEnvelope } from '../storage/envelope-cache.ts';
-import { Notice, useAsyncAction } from '../ui/forms.tsx';
+import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { BackupStep } from './BackupStep.tsx';
 import { ConfirmPasswordWords, ShowPasswordWords } from './PasswordWords.tsx';
 import {
@@ -27,13 +35,24 @@ import {
   type SealedKey,
 } from './user-key.ts';
 
-type Step = 'drive' | 'step-up' | 'key' | 'confirm' | 'seal' | 'backups' | 'register' | 'done';
+type Step =
+  'drive' | 'step-up' | 'key' | 'confirm' | 'seal' | 'backups' | 'register' | 'resume' | 'recovery' | 'safe' | 'done';
 
-export function OnboardingPage() {
+/** U ya registrada: sobre y K_U (no exportable) en memoria; U se descifra sólo para firmar. */
+interface UserKeyInMemory {
+  envelope: KeyEnvelope;
+  encryptionKey: CryptoKey;
+}
+
+export function OnboardingPage({ returned }: { returned?: { enrollmentId: string; recoveryKey: Address } } = {}) {
   useSensitiveScreen();
   const store = useSessionStore();
-  const { wallet } = useSession();
+  const { wallet, user } = useSession();
   const [step, setStep] = useState<Step>(() => (hasDriveToken() ? 'step-up' : 'drive'));
+  const [userKey, setUserKey] = useState<UserKeyInMemory | null>(null);
+  const [recovery, setRecovery] = useState<ConfirmedRecovery | null>(null);
+  const [registeredU, setRegisteredU] = useState<Address | null>(null);
+  const [resumeEnvelope, setResumeEnvelope] = useState<KeyEnvelope | null>(null);
   const [connectError] = useState(() => takeDriveConnectError());
   const [stepUp, setStepUp] = useState<StepUpSession | null>(null);
   const [current, setCurrent] = useState<WalletView | null>(null);
@@ -85,10 +104,64 @@ export function OnboardingPage() {
         await registerNewUserKey(api, session.platform, sealed, backups);
         zeroize(draft.key);
         await store.refreshWallet();
-        setStep('done');
+        setUserKey({ envelope: sealed.envelope, encryptionKey: sealed.encryptionKey });
+        setStep('recovery');
       },
       [draft, sealed, store],
     ),
+  );
+
+  // Pestaña recargada con la wallet en creación y U ya registrada: se retoma abriendo el sobre.
+  useEffect(() => {
+    if (wallet?.status !== 'CREATING' || userKey !== null || draft !== null) return;
+    let live = true;
+    void api.walletDeployment(wallet.id).then((deployment) => {
+      if (!live || deployment.U === null) return;
+      setRegisteredU(deployment.U);
+      setStep('resume');
+    });
+    return () => {
+      live = false;
+    };
+  }, [wallet, userKey, draft]);
+
+  const resume = useAsyncAction(
+    useCallback(
+      async (password: string) => {
+        if (!resumeEnvelope || !wallet || registeredU === null) return;
+        if (resumeEnvelope.walletId !== wallet.id || !isAddressEqual(resumeEnvelope.keyAddress, registeredU)) {
+          throw new Error('Ese sobre no es el de la clave U registrada para esta wallet.');
+        }
+        const keys = await keysForEnvelope(resumeEnvelope, normalizePassword(password), argon2);
+        if (keys.authSecret) zeroize(keys.authSecret);
+        // Comprueba la Password U contra el sobre: U se descifra y se borra en el acto.
+        zeroize(await openEnvelope(resumeEnvelope, keys.encryptionKey));
+        setUserKey({ envelope: resumeEnvelope, encryptionKey: keys.encryptionKey });
+        setStep('recovery');
+      },
+      [resumeEnvelope, wallet, registeredU],
+    ),
+  );
+
+  // Link de regreso de Recovery abierto en esta pestaña (ninguna otra lo tomó): R del enrollment de ese link.
+  const fromReturn = useAsyncAction(
+    useCallback(async () => {
+      if (!returned) return;
+      const enrollment = await api.getRecoveryEnrollment(returned.enrollmentId);
+      const recoveryKey = confirmWithReturnLink(enrollment, returned);
+      setRecovery({ recoveryKey, enrollmentId: enrollment.id, enrollmentNonce: null });
+      setStep('safe');
+    }, [returned]),
+  );
+
+  const live = stepUp !== null && isLive(stepUp.session);
+  const stepUpForm = (
+    <StepUpForm
+      scope="ONBOARDING"
+      onSession={(session) => {
+        setStepUp(session);
+      }}
+    />
   );
 
   if (wallet && wallet.status !== 'CREATING' && step !== 'done') {
@@ -106,7 +179,7 @@ export function OnboardingPage() {
     <section className="stack narrow" aria-labelledby="onboarding-title">
       <h1 id="onboarding-title">Crear tu wallet</h1>
       <ol className="steps" aria-label="Pasos">
-        {(['Drive', 'Identidad', 'Password U', 'Backups', 'Registro'] as const).map((label, i) => (
+        {(['Drive', 'Identidad', 'Password U', 'Backups', 'Registro', 'Recovery', 'Safe'] as const).map((label, i) => (
           <li key={label} className={stepIndex(step) >= i ? 'steps__item steps__item--done' : 'steps__item'}>
             {label}
           </li>
@@ -235,12 +308,92 @@ export function OnboardingPage() {
           )}
         </article>
       )}
+      {step === 'resume' && (
+        <article className="card stack" aria-labelledby="resume-title">
+          <h2 id="resume-title">Seguir con la creación</h2>
+          <p>
+            Tu clave U ya está registrada. Para seguir abrí tu sobre cifrado con tu Password U: se descifra en este
+            navegador y no se envía a ningún lado.
+          </p>
+          {resumeEnvelope === null ? (
+            <EnvelopeSource onEnvelope={setResumeEnvelope} />
+          ) : (
+            <form
+              className="stack"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void resume.run(formValue(event.currentTarget, 'passwordU'));
+              }}
+            >
+              <Field label="Password U" name="passwordU" type="password" autoComplete="off" required />
+              {resume.error && <Notice tone="error">{resume.error}</Notice>}
+              <button type="submit" className="button" disabled={resume.pending}>
+                {resume.pending ? 'Abriendo el sobre…' : 'Abrir el sobre'}
+              </button>
+            </form>
+          )}
+        </article>
+      )}
+      {step === 'recovery' &&
+        wallet &&
+        userKey &&
+        (live ? (
+          returned ? (
+            <article className="card stack" aria-labelledby="return-title">
+              <h2 id="return-title">Confirmar tu clave R</h2>
+              <p>
+                Volviste desde la app Recovery: se confirma la clave R de ese pedido contra la que informa la
+                plataforma.
+              </p>
+              {fromReturn.error && <Notice tone="error">{fromReturn.error}</Notice>}
+              <button
+                type="button"
+                className="button"
+                disabled={fromReturn.pending}
+                onClick={() => void fromReturn.run()}
+              >
+                Confirmar la clave R
+              </button>
+            </article>
+          ) : (
+            <RecoveryActivationStep
+              walletId={wallet.id}
+              platform={stepUp.platform}
+              intro="Tu clave de recuperación (R) vive en la app Recovery, separada de esta. Con U y R podés recuperar tu wallet sin la plataforma."
+              onConfirmed={(confirmed) => {
+                setRecovery(confirmed);
+                setStep('safe');
+              }}
+            />
+          )
+        ) : (
+          stepUpForm
+        ))}
+      {step === 'safe' &&
+        wallet &&
+        user &&
+        userKey &&
+        recovery &&
+        (live ? (
+          <SafeCreationStep
+            walletId={wallet.id}
+            userId={user.id}
+            platform={stepUp.platform}
+            userKey={userKey}
+            recovery={recovery}
+            onActive={() => {
+              void store.refreshWallet();
+              setStep('done');
+            }}
+          />
+        ) : (
+          stepUpForm
+        ))}
       {step === 'done' && (
         <article className="card stack" aria-labelledby="done-title">
-          <h2 id="done-title">Clave registrada</h2>
+          <h2 id="done-title">Tu Safe está operativa</h2>
           <Notice tone="success">
-            Tu clave U quedó registrada y respaldada. El próximo paso es activar tu clave de recuperación en la app
-            Recovery.
+            Tu Safe quedó creada y verificada por esta app en Base, con tus claves U y R y la de la plataforma (S).
           </Notice>
           <p>
             <Link to="/">Ir al inicio</Link>
@@ -252,5 +405,17 @@ export function OnboardingPage() {
 }
 
 function stepIndex(step: Step): number {
-  return { drive: 0, 'step-up': 1, key: 2, confirm: 2, seal: 2, backups: 3, register: 4, done: 5 }[step];
+  return {
+    drive: 0,
+    'step-up': 1,
+    key: 2,
+    confirm: 2,
+    seal: 2,
+    backups: 3,
+    register: 4,
+    resume: 4,
+    recovery: 5,
+    safe: 6,
+    done: 7,
+  }[step];
 }

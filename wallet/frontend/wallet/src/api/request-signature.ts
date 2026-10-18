@@ -44,12 +44,40 @@ export interface PlatformAuth {
 export interface SignatureClock {
   now: () => number;
   randomHex: (bytes: number) => string;
+  /** Hora del servidor observada (ISO 8601) al recibir una respuesta: los relojes que se alinean la usan. */
+  observe?: (serverTimeIso: string, receivedAt?: number) => void;
 }
 
-export const systemClock: SignatureClock = {
-  now: () => Date.now(),
-  randomHex: (bytes) => toHex(crypto.getRandomValues(new Uint8Array(bytes))).slice(2),
-};
+const randomHex = (bytes: number) => toHex(crypto.getRandomValues(new Uint8Array(bytes))).slice(2);
+
+export const systemClock: SignatureClock = { now: () => Date.now(), randomHex };
+
+/**
+ * Reloj de las firmas alineado con el del servidor: `X-Session-Timestamp` y el `submittedAt` del envelope de envío
+ * tienen que estar a ±60 s de la hora del backend, y un dispositivo con la hora corrida no podría operar. La diferencia
+ * se estima con el `issuedAt` de cada PlatformSession recibida (precisión de segundos más la latencia: alcanza).
+ */
+export class ServerAlignedClock implements SignatureClock {
+  #offsetMs = 0;
+  readonly #local: () => number;
+
+  constructor(local: () => number = () => Date.now()) {
+    this.#local = local;
+  }
+
+  readonly now = (): number => this.#local() + this.#offsetMs;
+
+  readonly randomHex = randomHex;
+
+  readonly observe = (serverTimeIso: string, receivedAt: number = this.#local()): void => {
+    const server = Date.parse(serverTimeIso);
+    if (Number.isFinite(server)) this.#offsetMs = server - receivedAt;
+  };
+
+  get offsetMs(): number {
+    return this.#offsetMs;
+  }
+}
 
 export async function criticalHeaders(
   auth: PlatformAuth,

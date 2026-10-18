@@ -5,12 +5,13 @@ import { argon2Sync } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getAddress, type Address, type Hex } from 'viem';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
 import type { ApiClient } from '../../../../src/api/client.ts';
 import { canonicalize } from '../../../../src/api/jcs.ts';
 import { generateSessionKey, signP256 } from '../../../../src/api/session-key.ts';
 import type { User, WalletApi, WalletView } from '../../../../src/api/wallet-api.ts';
 import { fromHex, toHex } from '../../../../src/crypto/bytes.ts';
+import { addressOf } from '../../../../src/crypto/keys.ts';
 import type { KeyEnvelope } from '../../../../src/crypto/envelope.ts';
 import type { Argon2 } from '../../../../src/crypto/kdf.ts';
 import { generatePassword } from '../../../../src/crypto/password.ts';
@@ -26,7 +27,7 @@ import {
 import { finishStepUp, startStepUp, type StepUpSession } from '../../../../src/session/step-up.ts';
 import { nextCode } from './mailpit.ts';
 import { ACCOUNT_PASSWORD, recoveryClient, uniqueEmail, walletApi } from './node-api.ts';
-import { stack, walletFactory } from './stack.ts';
+import { freshClientIp, stack, walletFactory } from './stack.ts';
 
 /** Argon2id nativo de Node (OpenSSL) con los mismos parámetros: el resultado es idéntico al del worker de la app. */
 export const nodeArgon2: Argon2 = (input) =>
@@ -63,6 +64,7 @@ export interface Account {
 
 /** Cuenta registrada y verificada (código real por Mailpit), con sesión abierta en `api`. */
 export async function verifiedAccount(prefix?: string): Promise<Account> {
+  freshClientIp();
   const api = walletApi();
   const email = uniqueEmail(prefix);
   await api.register({ email, password: ACCOUNT_PASSWORD });
@@ -85,6 +87,8 @@ export interface ActiveWallet extends Account {
   userAddress: Address;
   passwordWords: string[];
   envelope: KeyEnvelope;
+  /** R de la wallet (la tendría la app Recovery). */
+  recovery: PrivateKeyAccount;
 }
 
 async function recoveryStepUp(client: ApiClient, email: string) {
@@ -102,13 +106,105 @@ async function recoveryStepUp(client: ApiClient, email: string) {
   return { token: issued.token, sessionId: issued.session.id, key };
 }
 
+/**
+ * La parte de la app Recovery para un enrollment (P12, listener de Recovery): login con la misma cuenta, step-up
+ * ENROLLMENT, Enrollment Key, prueba de control de R (EIP-712) y envío del enrollment firmado por la Enrollment Key. Para
+ * un reemplazo (R′ de una wallet ACTIVE) agrega la KeyAcceptance de R′ con el nonce del enrollment.
+ */
+export async function submitRecovery(
+  account: Pick<Account, 'email' | 'user'>,
+  enrollment: { enrollmentId: string; nonce: Hex; walletId?: string },
+  r: PrivateKeyAccount = privateKeyToAccount(generatePrivateKey()),
+): Promise<PrivateKeyAccount> {
+  const recovery = recoveryClient();
+  await recovery.request('POST', '/auth/login', { body: { email: account.email, password: ACCOUNT_PASSWORD } });
+  const enrollmentSession = await recoveryStepUp(recovery, account.email);
+  const enrollmentKey = await generateSessionKey();
+  await recovery.request('POST', `/recovery/enrollments/${enrollment.enrollmentId}/enrollment-key`, {
+    platform: enrollmentSession,
+    body: { enrollmentKey: enrollmentKey.publicJwk },
+  });
+  const issuedAt = new Date(Date.now() - 1_000);
+  const enrollmentObject = {
+    userId: account.user.id,
+    platformId: stack().platformId,
+    R: getAddress(r.address),
+    nonce: enrollment.nonce,
+    issuedAt: issuedAt.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    expiresAt: new Date(issuedAt.getTime() + 10 * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+  };
+  const domain = { name: 'MTW Wallet', version: '1', chainId: 8453, verifyingContract: walletFactory() } as const;
+  const proofOfControl = await r.signTypedData({
+    domain,
+    types: {
+      RecoveryProofOfControl: [
+        { name: 'userId', type: 'string' },
+        { name: 'platformId', type: 'string' },
+        { name: 'enrollmentId', type: 'string' },
+        { name: 'recoveryKey', type: 'address' },
+      ],
+    },
+    primaryType: 'RecoveryProofOfControl',
+    message: {
+      userId: account.user.id,
+      platformId: stack().platformId,
+      enrollmentId: enrollment.enrollmentId,
+      recoveryKey: enrollmentObject.R,
+    },
+  });
+  const keyAcceptance =
+    enrollment.walletId === undefined
+      ? {}
+      : {
+          keyAcceptance: {
+            nonce: enrollment.nonce,
+            signature: await r.signTypedData({
+              domain,
+              types: {
+                KeyAcceptance: [
+                  { name: 'walletId', type: 'string' },
+                  { name: 'role', type: 'uint8' },
+                  { name: 'newKey', type: 'address' },
+                  { name: 'nonce', type: 'bytes32' },
+                ],
+              },
+              primaryType: 'KeyAcceptance',
+              message: { walletId: enrollment.walletId, role: 2, newKey: enrollmentObject.R, nonce: enrollment.nonce },
+            }),
+          },
+        };
+  await recovery.request('POST', `/recovery/enrollments/${enrollment.enrollmentId}/submit`, {
+    platform: enrollmentSession,
+    body: {
+      enrollment: enrollmentObject,
+      enrollmentKeySignature: await signP256(enrollmentKey.privateKey, canonicalize(enrollmentObject)),
+      rType: 'INTERNAL',
+      proofOfControl,
+      storageFlags: { drive: true, file: true, qr: false, words: false },
+      ...keyAcceptance,
+    },
+  });
+  return r;
+}
+
 /** Onboarding completo por la API hasta la Safe ACTIVE. */
 export async function activeWallet(prefix?: string): Promise<ActiveWallet> {
-  const account = await verifiedAccount(prefix);
-  const { api, email, user } = account;
+  return onboardWallet(await verifiedAccount(prefix));
+}
+
+/**
+ * Onboarding por la API de una wallet para una cuenta ya verificada, con una U nueva o con una existente (la U sana que
+ * reutiliza la Safe nueva de una migración excepcional, sellada con una Password U nueva para esa wallet).
+ */
+export async function onboardWallet(account: Account, existingUserKey?: Uint8Array): Promise<ActiveWallet> {
+  const { api, email } = account;
   const onboarding = await stepUp(api, email, 'ONBOARDING');
   const created = await api.createWallet(onboarding.platform);
-  const draft = draftUserKey(testWordlist());
+  const fresh = draftUserKey(testWordlist());
+  const draft =
+    existingUserKey === undefined
+      ? fresh
+      : { ...fresh, key: existingUserKey.slice(), address: addressOf(existingUserKey) };
   const sealed = await sealUserKey(
     draft,
     draft.passwordWords.join(' '),
@@ -123,52 +219,7 @@ export async function activeWallet(prefix?: string): Promise<ActiveWallet> {
     `/wallets/${created.id}/recovery/enrollments`,
     { platform: onboarding.platform, idempotencyKey: `idem-${crypto.randomUUID()}` },
   );
-  const recovery = recoveryClient();
-  await recovery.request('POST', '/auth/login', { body: { email, password: ACCOUNT_PASSWORD } });
-  const enrollmentSession = await recoveryStepUp(recovery, email);
-  const enrollmentKey = await generateSessionKey();
-  await recovery.request('POST', `/recovery/enrollments/${enrollment.enrollmentId}/enrollment-key`, {
-    platform: enrollmentSession,
-    body: { enrollmentKey: enrollmentKey.publicJwk },
-  });
-  const r = privateKeyToAccount(generatePrivateKey());
-  const issuedAt = new Date(Date.now() - 1_000);
-  const enrollmentObject = {
-    userId: user.id,
-    platformId: stack().platformId,
-    R: getAddress(r.address),
-    nonce: enrollment.nonce,
-    issuedAt: issuedAt.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-    expiresAt: new Date(issuedAt.getTime() + 10 * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
-  };
-  const proofOfControl = await r.signTypedData({
-    domain: { name: 'MTW Wallet', version: '1', chainId: 8453, verifyingContract: walletFactory() },
-    types: {
-      RecoveryProofOfControl: [
-        { name: 'userId', type: 'string' },
-        { name: 'platformId', type: 'string' },
-        { name: 'enrollmentId', type: 'string' },
-        { name: 'recoveryKey', type: 'address' },
-      ],
-    },
-    primaryType: 'RecoveryProofOfControl',
-    message: {
-      userId: user.id,
-      platformId: stack().platformId,
-      enrollmentId: enrollment.enrollmentId,
-      recoveryKey: enrollmentObject.R,
-    },
-  });
-  await recovery.request('POST', `/recovery/enrollments/${enrollment.enrollmentId}/submit`, {
-    platform: enrollmentSession,
-    body: {
-      enrollment: enrollmentObject,
-      enrollmentKeySignature: await signP256(enrollmentKey.privateKey, canonicalize(enrollmentObject)),
-      rType: 'INTERNAL',
-      proofOfControl,
-      storageFlags: { drive: true, file: true, qr: false, words: false },
-    },
-  });
+  const r = await submitRecovery(account, enrollment);
 
   // S del signer, autorización de U y deploy por el gas tank.
   const plan = await api.client.request<{
@@ -206,6 +257,7 @@ export async function activeWallet(prefix?: string): Promise<ActiveWallet> {
         userAddress: draft.address,
         passwordWords: draft.passwordWords,
         envelope: sealed.envelope,
+        recovery: r,
       };
     }
     if (wallet?.status === 'FAILED' || Date.now() > deadline) {

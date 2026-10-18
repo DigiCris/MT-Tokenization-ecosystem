@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ApiClient, newIdempotencyKey } from './client.ts';
 import { ApiError, NetworkError, isProblem, problemOf } from './problem.ts';
-import { canonicalRequest, bodySha256Hex } from './request-signature.ts';
+import { canonicalRequest, bodySha256Hex, criticalHeaders, ServerAlignedClock } from './request-signature.ts';
 import { generateSessionKey, verifyP256 } from './session-key.ts';
 import { WalletApi } from './wallet-api.ts';
 
@@ -202,5 +202,28 @@ describe('ApiClient', () => {
       ['/api/v1/auth/csrf', undefined, undefined],
       ['/api/v1/sessions/otra', undefined, 't2'],
     ]);
+  });
+});
+
+describe('reloj de las firmas alineado con el servidor', () => {
+  it('estima la diferencia con la hora del servidor y la usa en X-Session-Timestamp', async () => {
+    let local = Date.parse('2026-10-18T12:00:00Z');
+    const clock = new ServerAlignedClock(() => local);
+    clock.observe('2026-10-18T12:05:00Z');
+    expect(clock.offsetMs).toBe(300_000);
+    local += 1_000;
+    expect(clock.now()).toBe(Date.parse('2026-10-18T12:05:01Z'));
+    clock.observe('no es una fecha');
+    expect(clock.offsetMs).toBe(300_000);
+    const key = await generateSessionKey();
+    const headers = await criticalHeaders({ token: 'jws', sessionId: 'ps', key }, 'POST', '/api/v1/x', '{}', clock);
+    expect(headers['X-Session-Timestamp']).toBe(String(Date.parse('2026-10-18T12:05:01Z') / 1000));
+  });
+
+  it('el cliente expone la hora alineada y deriva lo observado a su reloj', () => {
+    const clock = new ServerAlignedClock(() => 1_000_000);
+    const client = new ApiClient({ baseUrl: 'https://api.example/api/v1', clock });
+    client.observeServerTime(new Date(1_060_000).toISOString());
+    expect(client.now()).toBe(1_060_000);
   });
 });

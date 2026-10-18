@@ -11,6 +11,10 @@ describe('cadena fijada', () => {
     expect(pinnedChain.tokens.usdt).toMatchObject({ symbol: 'USDT', decimals: 6 });
     expect(pinnedChain.tokens.usdc.address).toBe('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
     expect(pinnedChain.safe.singletonL2).toMatch(/^0x[0-9a-fA-F]{40}$/);
+    expect(pinnedChain.safe.proxyRuntimeCodehash).toBe(chainFile.contracts.safeProxyFactory.proxyRuntimeCodehash);
+    expect(pinnedChain.safe.singletonL2Codehash).toBe(chainFile.contracts.safeL2Singleton.codehash);
+    expect(pinnedChain.uniswap.pool).toMatchObject({ fee: 100, token0: pinnedChain.tokens.usdc.address });
+    expect(pinnedChain.uniswap.quoterV2).toBe('0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a');
     expect(pinnedChain.explorer.tx).toBe('https://basescan.org/tx/');
   });
 
@@ -27,5 +31,14 @@ describe('cadena fijada', () => {
     expect(() =>
       parseChain({ ...base, contracts: { ...base.contracts, usdt: { ...base.contracts.usdt, decimals: '6' } } }),
     ).toThrow('usdt');
+    expect(() =>
+      parseChain({
+        ...base,
+        contracts: {
+          ...base.contracts,
+          safeProxyFactory: { ...base.contracts.safeProxyFactory, proxyRuntimeCodehash: '0x1' },
+        },
+      }),
+    ).toThrow('proxyRuntimeCodehash');
   });
 });

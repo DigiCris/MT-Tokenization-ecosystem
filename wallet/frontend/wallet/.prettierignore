@@ -10,3 +10,5 @@ src/styles/design-tokens/
 test/vectors/
 # Copia byte a byte de config/chains/base-mainnet.json (test/unit/chain-config.test.ts).
 src/config/chain.base.json
+# Generados por scripts/sync-abis.mjs (copia de contracts/out-abi, verificada con --check).
+src/chain/abis/

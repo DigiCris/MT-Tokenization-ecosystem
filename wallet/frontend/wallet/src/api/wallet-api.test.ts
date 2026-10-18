@@ -17,6 +17,7 @@ interface Call {
 
 class RecordingClient extends ApiClient {
   readonly calls: Call[] = [];
+  readonly observed: string[] = [];
   cleared = 0;
 
   constructor() {
@@ -25,7 +26,13 @@ class RecordingClient extends ApiClient {
 
   override request<T>(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<T> {
     this.calls.push({ method, path, options });
-    return Promise.resolve({} as T);
+    // Las PlatformSessions emitidas traen la hora del servidor (issuedAt).
+    const body = path.endsWith('/finish') ? { session: { issuedAt: '2026-10-18T12:00:00Z' } } : {};
+    return Promise.resolve(body as T);
+  }
+
+  override observeServerTime(serverTimeIso: string): void {
+    this.observed.push(serverTimeIso);
   }
 
   override clearCsrfToken(): void {
@@ -72,6 +79,8 @@ describe('WalletApi', () => {
     await api.stepUpFinish({ challengeId: 'c', code: '12345678' });
     await api.checkPlatformSession(platform);
     await api.revokePlatformSession('ps');
+    // El reloj de las firmas se alinea con la hora del servidor de cada PlatformSession emitida.
+    expect(client.observed).toEqual(['2026-10-18T12:00:00Z', '2026-10-18T12:00:00Z']);
     expect(client.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
       'POST /auth/register',
       'POST /auth/verify-email',
@@ -102,6 +111,119 @@ describe('WalletApi', () => {
     expect(client.calls[10]?.options.body).toEqual({ code: '123456' });
     expect(client.calls[21]?.options.platform).toBe(platform);
     expect(client.cleared).toBe(2);
+  });
+
+  it('Safe, operaciones, send, swap, whitelist, rotaciones y migración (P18): método, path, cuerpo y firma', async () => {
+    const client = new RecordingClient();
+    const api = new WalletApi(client);
+    const platform = { token: 'jws', sessionId: 'ps', key: await generateSessionKey() };
+    const D = '0x000000000000000000000000000000000000dEaD' as const;
+    const authorization = {
+      userId: 'u',
+      platformId: 'p',
+      walletId: 'w1',
+      userKey: D,
+      recoveryKey: D,
+      executor: D,
+      saltNonce: '1',
+      expectedSafe: D,
+      enrollmentNonce: `0x${'1'.repeat(64)}` as const,
+    };
+    const submission = {
+      ownerSignature: `0x${'a'.repeat(130)}` as const,
+      ownerRole: 'U' as const,
+      submissionEnvelope: {
+        operationId: 'o1',
+        safeTxHash: `0x${'b'.repeat(64)}` as const,
+        sessionId: 'ps',
+        submittedAt: 1,
+      },
+      submissionEnvelopeSignature: 's'.repeat(86),
+    };
+    await api.createRecoveryEnrollment(platform, 'w1', IDEMPOTENCY);
+    await api.getRecoveryEnrollment('e/1');
+    await api.assignExecutor(platform, 'w1');
+    await api.incorporateRecoveryKey(platform, 'e1', { authorization, signature: `0x${'c'.repeat(130)}` });
+    await api.deployWallet(platform, 'w1', IDEMPOTENCY);
+    await api.walletDeployment('w1');
+    await api.balances('w1');
+    await api.transfers('w1', { limit: 5, before: 'c1' });
+    await api.operations('w1');
+    await api.operation('o1');
+    await api.notifications({ unread: true });
+    await api.markNotificationRead('n1');
+    await api.submitOperationSignature(platform, 'o1', submission, IDEMPOTENCY);
+    await api.cancelOperation(platform, 'o1', IDEMPOTENCY);
+    await api.requestOperationTwoFactor(platform, 'o1', IDEMPOTENCY);
+    await api.confirmOperationTwoFactor(platform, 'o1', '123456', IDEMPOTENCY);
+    await api.prepareSend(platform, 'w1', { token: 'USDC', destination: D, amount: '10' }, IDEMPOTENCY);
+    await api.swapQuote('w1', { tokenIn: 'USDT', amountIn: '5', slippageBps: 30 });
+    await api.prepareSwap(platform, 'w1', { tokenIn: 'USDC', amountIn: '5' }, IDEMPOTENCY);
+    await api.operationGroup('g1');
+    await api.requoteSwap(platform, 'g1', { slippageBps: 10 }, IDEMPOTENCY);
+    await api.revokeSwapApproval(platform, 'g1', IDEMPOTENCY);
+    await api.whitelist('w1');
+    await api.requestWhitelistDestination(platform, 'w1', { destination: D, label: 'Ana' }, IDEMPOTENCY);
+    await api.confirmWhitelistRequest(platform, 'r1', '12345678', IDEMPOTENCY);
+    await api.removeWhitelistDestination(platform, 'w1', D, IDEMPOTENCY);
+    await api.proposeRotation(platform, 'w1', 'S', IDEMPOTENCY);
+    await api.prepareRotationExecution(platform, 'rot1', IDEMPOTENCY);
+    await api.relayRotationCancellation('rot1', `0x${'d'.repeat(130)}`);
+    await api.prepareMigration(platform, 'old1', IDEMPOTENCY);
+    expect(client.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      'POST /wallets/w1/recovery/enrollments',
+      'GET /recovery/enrollments/e%2F1',
+      'POST /wallets/w1/executor',
+      'POST /recovery/enrollments/e1/incorporate',
+      'POST /wallets/w1/deploy',
+      'GET /wallets/w1/deployment',
+      'GET /wallets/w1/balances',
+      'GET /wallets/w1/transfers?limit=5&before=c1',
+      'GET /wallets/w1/operations',
+      'GET /operations/o1',
+      'GET /notifications?unread=true',
+      'POST /notifications/n1/read',
+      'POST /operations/o1/signatures',
+      'POST /operations/o1/cancel',
+      'POST /operations/o1/two-factor',
+      'POST /operations/o1/two-factor',
+      'POST /wallets/w1/send/prepare',
+      'GET /wallets/w1/swap/quote?tokenIn=USDT&amountIn=5&slippageBps=30',
+      'POST /wallets/w1/swap/prepare',
+      'GET /operation-groups/g1',
+      'POST /operation-groups/g1/requote',
+      'POST /operation-groups/g1/revoke-approval',
+      'GET /wallets/w1/whitelist',
+      'POST /wallets/w1/whitelist/requests',
+      'POST /whitelist/requests/r1/confirm',
+      `POST /wallets/w1/whitelist/${D}/remove`,
+      'POST /wallets/w1/rotations',
+      'POST /rotations/rot1/execute/prepare',
+      'POST /rotations/rot1/cancel',
+      'POST /wallets/old1/migration/prepare',
+    ]);
+    const byPath = (path: string, index = 0) => client.calls.filter((c) => c.path === path)[index]?.options;
+    // Críticas: firmadas con la PlatformSession; idempotentes con su clave.
+    for (const call of client.calls.filter(
+      (c) =>
+        (c.method === 'POST' && !c.path.startsWith('/notifications') && !c.path.endsWith('/cancel')) ||
+        c.path === '/operations/o1/cancel',
+    )) {
+      expect(call.options.platform, call.path).toBe(platform);
+    }
+    expect(byPath('/rotations/rot1/cancel')?.platform).toBeUndefined();
+    expect(byPath('/rotations/rot1/cancel')?.body).toEqual({ signature: `0x${'d'.repeat(130)}` });
+    expect(byPath('/operations/o1/signatures')).toMatchObject({ body: submission, idempotencyKey: IDEMPOTENCY });
+    expect(byPath('/operations/o1/two-factor', 0)?.body).toEqual({});
+    expect(byPath('/operations/o1/two-factor', 1)?.body).toEqual({ code: '123456' });
+    expect(byPath('/wallets/w1/send/prepare')?.body).toEqual({ token: 'USDC', destination: D, amount: '10' });
+    expect(byPath('/wallets/w1/rotations')?.body).toEqual({ role: 'S' });
+    expect(byPath('/whitelist/requests/r1/confirm')?.body).toEqual({ code: '12345678' });
+    expect(byPath('/recovery/enrollments/e1/incorporate')?.body).toEqual({
+      authorization,
+      signature: `0x${'c'.repeat(130)}`,
+    });
+    expect(byPath('/notifications/n1/read')?.body).toEqual({});
   });
 
   it('wallet y clave U: rutas críticas firmadas e idempotentes con el cuerpo exacto', async () => {

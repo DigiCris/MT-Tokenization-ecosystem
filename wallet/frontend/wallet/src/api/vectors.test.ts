@@ -114,15 +114,17 @@ describe('envelope de envío [B-PSES-06] y JCS', () => {
     expect(await verifyP256(v.publicJwk, v.canonical, v.signature)).toBe(true);
   });
 
-  it('el envelope propio fija submittedAt sin milisegundos y su firma verifica', async () => {
+  it('el envelope propio lleva submittedAt en segundos Unix (como el vector) y su firma verifica', async () => {
     const key = await generateSessionKey();
     const { object } = vectors.submissionEnvelope;
+    expect(Number.isInteger(object.submittedAt)).toBe(true);
     const signed = await signSubmission(
       key,
       { operationId: object.operationId, safeTxHash: object.safeTxHash, sessionId: object.sessionId },
-      new Date('2026-10-18T12:34:56.789Z'),
+      Date.parse('2026-10-18T12:34:56.789Z'),
     );
-    expect(signed.submissionEnvelope.submittedAt).toBe('2026-10-18T12:34:56Z');
+    expect(signed.submissionEnvelope.submittedAt).toBe(1792326896);
+    expect(submissionCanonical({ ...object })).toBe(vectors.submissionEnvelope.canonical);
     expect(
       await verifyP256(
         key.publicJwk,

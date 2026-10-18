@@ -56,6 +56,16 @@ export class ApiClient {
     this.#timeoutMs = options.timeoutMs ?? 30_000;
   }
 
+  /** Hora para los timestamps firmados (alineada con el servidor si el reloj lo está). */
+  now(): number {
+    return this.#clock.now();
+  }
+
+  /** Hora del servidor recibida en una respuesta (p. ej. `issuedAt` de una PlatformSession). */
+  observeServerTime(serverTimeIso: string): void {
+    this.#clock.observe?.(serverTimeIso);
+  }
+
   /** La sesión rotó o se cerró: el próximo request no-GET pide un token nuevo. */
   clearCsrfToken(): void {
     this.#csrf = null;

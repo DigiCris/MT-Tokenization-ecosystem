@@ -7,6 +7,11 @@ import decodeQR from 'qr/decode.js';
 export function QrScanner({ onText, active }: { onText: (text: string) => void; active: boolean }) {
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // El callback más reciente, sin reiniciar la cámara cuando cambia (cada lectura suele re-renderizar a quien lo pasa).
+  const callback = useRef(onText);
+  useEffect(() => {
+    callback.current = onText;
+  }, [onText]);
 
   useEffect(() => {
     if (!active) return undefined;
@@ -37,7 +42,7 @@ export function QrScanner({ onText, active }: { onText: (text: string) => void; 
           const frame = context.getImageData(0, 0, canvas.width, canvas.height);
           try {
             const text = decodeQR({ width: frame.width, height: frame.height, data: frame.data });
-            if (text !== '') onText(text);
+            if (text !== '') callback.current(text);
           } catch {
             // Sin QR legible en este cuadro.
           }
@@ -53,7 +58,7 @@ export function QrScanner({ onText, active }: { onText: (text: string) => void; 
         track.stop();
       });
     };
-  }, [active, onText]);
+  }, [active]);
 
   return (
     <div className="scanner">

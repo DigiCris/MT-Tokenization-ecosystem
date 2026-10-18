@@ -39,7 +39,8 @@ test('onboarding de U: Drive → step-up → Password U → backups → registro
   await expect(page.getByRole('list', { name: '17 palabras de la clave' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Continuar' }).click();
   await page.getByRole('button', { name: 'Registrar', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Clave registrada' })).toBeVisible();
+  // P18: después del registro sigue la activación de Recovery.
+  await expect(page.getByRole('heading', { name: 'Activar Recovery' })).toBeVisible();
 
   // El sobre descargado abre con la Password U mostrada y es el mismo que quedó en Drive.
   const envelope = parseEnvelope(JSON.parse(file));

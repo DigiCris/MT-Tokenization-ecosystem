@@ -10,8 +10,8 @@ export interface SubmissionEnvelope {
   operationId: string;
   safeTxHash: `0x${string}`;
   sessionId: string;
-  /** ISO 8601 en UTC sin milisegundos. */
-  submittedAt: string;
+  /** Unix en segundos (entero); el backend lo acepta a ±60 s de su hora. */
+  submittedAt: number;
 }
 
 export function submissionCanonical(envelope: SubmissionEnvelope): string {
@@ -21,12 +21,9 @@ export function submissionCanonical(envelope: SubmissionEnvelope): string {
 export async function signSubmission(
   key: SessionKey,
   fields: Omit<SubmissionEnvelope, 'submittedAt'>,
-  now: Date = new Date(),
+  nowMs: number = Date.now(),
 ): Promise<{ submissionEnvelope: SubmissionEnvelope; submissionEnvelopeSignature: string }> {
-  const submissionEnvelope: SubmissionEnvelope = {
-    ...fields,
-    submittedAt: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-  };
+  const submissionEnvelope: SubmissionEnvelope = { ...fields, submittedAt: Math.floor(nowMs / 1000) };
   return {
     submissionEnvelope,
     submissionEnvelopeSignature: await signP256(key.privateKey, submissionCanonical(submissionEnvelope)),

@@ -1,0 +1,161 @@
+// `/send` (P18.T06): token → destino (sólo los activos on-chain de la whitelist) → monto (bigint con los decimales
+// fijados) → review decodificado desde la SafeTx que arma la app, comparada byte a byte con la del backend (si difieren,
+// no se firma) → segundo factor si corresponde → firma de U → seguimiento.
+import { useCallback, useEffect, useState } from 'react';
+import type { Address } from 'viem';
+import type { TokenSymbol } from '../api/wallet-api.ts';
+import { api } from '../app/services.ts';
+import { verifyPrepared, type VerifiedOperation } from '../chain/safe-tx.ts';
+import { formatAmount, parseAmount } from '../assets/amount.ts';
+import { readAssets, type AssetView } from '../assets/assets.ts';
+import { pinnedChain } from '../config/chain.ts';
+import { systemContracts } from '../config/index.ts';
+import { decodeContext, onchainNonce } from '../operations/context.ts';
+import { OperationReview } from '../operations/OperationReview.tsx';
+import { releasePrepared, verifiedOrReleased } from '../operations/prepared.ts';
+import { SafeGate, type OperatingWallet } from '../safe/SafeGate.tsx';
+import { useSensitiveScreen } from '../session/context.tsx';
+import { AddressText } from '../ui/AddressText.tsx';
+import { describeError } from '../ui/errors.ts';
+import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
+import { isActiveDestination, readWhitelist, type Destination } from '../whitelist/whitelist.ts';
+import { transferCall } from './send.ts';
+
+function Send({ ctx }: { ctx: OperatingWallet }) {
+  const { wallet, reader, unlocked } = ctx;
+  const whitelistAddress = systemContracts.contracts.whitelist.address;
+  const [assets, setAssets] = useState<AssetView[] | null>(null);
+  const [active, setActive] = useState<Destination[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [review, setReview] = useState<VerifiedOperation | null>(null);
+
+  useEffect(() => {
+    const alive = { current: true };
+    void (async () => {
+      try {
+        const [read, labels] = await Promise.all([
+          readAssets(reader, pinnedChain, wallet.safe, null),
+          api.whitelist(wallet.id).catch(() => ({ entries: [] })),
+        ]);
+        const destinations = await readWhitelist(reader, whitelistAddress, wallet.safe, labels);
+        if (!alive.current) return;
+        setAssets(read);
+        // Sólo los destinos activos on-chain se pueden elegir.
+        setActive(destinations.filter((d) => d.active));
+      } catch (caught) {
+        if (alive.current) setError(describeError(caught));
+      }
+    })();
+    return () => {
+      alive.current = false;
+    };
+  }, [wallet, reader, whitelistAddress]);
+
+  const prepare = useAsyncAction(
+    useCallback(
+      async (token: TokenSymbol, destination: Address, amountText: string) => {
+        const pinned = token === 'USDC' ? pinnedChain.tokens.usdc : pinnedChain.tokens.usdt;
+        const amount = parseAmount(amountText, pinned.decimals);
+        if (amount <= 0n) throw new Error('El monto tiene que ser mayor que cero.');
+        const balance = assets?.find((a) => a.symbol === token)?.balance ?? 0n;
+        if (amount > balance) throw new Error(`No tenés saldo suficiente de ${token}.`);
+        if (!(await isActiveDestination(reader, whitelistAddress, wallet.safe, destination))) {
+          throw new Error('Ese destino no está activo en tu whitelist on-chain.');
+        }
+        // Lo preparado y abandonado antes en esta pestaña libera su nonce antes de reservar uno nuevo.
+        await releasePrepared(api, unlocked.platform);
+        const prepared = await api.prepareSend(unlocked.platform, wallet.id, {
+          token,
+          destination,
+          amount: amount.toString(),
+        });
+        setReview(
+          await verifiedOrReleased(api, unlocked.platform, [prepared], async () =>
+            verifyPrepared(prepared, {
+              safe: wallet.safe,
+              chainId: 8453,
+              onchainNonce: await onchainNonce(reader, wallet.safe),
+              build: (n) => transferCall(pinned, destination, amount, n),
+            }),
+          ),
+        );
+      },
+      [assets, reader, whitelistAddress, wallet, unlocked],
+    ),
+  );
+
+  if (error) return <Notice tone="error">{error}</Notice>;
+  if (!assets || !active) return <p className="muted">Leyendo saldos y whitelist en Base…</p>;
+  if (review) {
+    return (
+      <OperationReview
+        title="Revisá el envío"
+        items={[review]}
+        unlocked={unlocked}
+        decode={decodeContext(wallet.safe)}
+        onCancel={() => {
+          setReview(null);
+        }}
+      />
+    );
+  }
+  return (
+    <section className="card stack" aria-labelledby="send-title">
+      <h1 id="send-title">Enviar</h1>
+      {active.length === 0 ? (
+        <Notice>No tenés destinos activos: agregá uno a tu whitelist (se activa 24 h después).</Notice>
+      ) : (
+        <form
+          className="stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            void prepare.run(
+              formValue(form, 'token') as TokenSymbol,
+              (form.elements.namedItem('destination') as HTMLSelectElement).value as Address,
+              formValue(form, 'amount'),
+            );
+          }}
+        >
+          <fieldset className="choices">
+            <legend>Token</legend>
+            {assets.map((a, i) => (
+              <label key={a.symbol} className="check">
+                <input type="radio" name="token" value={a.symbol} defaultChecked={i === 0} /> {a.symbol} (saldo{' '}
+                {formatAmount(a.balance, a.decimals)})
+              </label>
+            ))}
+          </fieldset>
+          <div className="field">
+            <label htmlFor="send-destination" className="field__label">
+              Destino (sólo los activos de tu whitelist)
+            </label>
+            <select id="send-destination" name="destination" className="field__input" required>
+              {active.map((d) => (
+                <option key={d.address} value={d.address}>
+                  {d.label ?? 'Sin nombre'} — {d.address}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Field label="Monto" name="amount" inputMode="decimal" autoComplete="off" placeholder="0,00" required />
+          {prepare.error && <Notice tone="error">{prepare.error}</Notice>}
+          <button type="submit" className="button" disabled={prepare.pending}>
+            {prepare.pending ? 'Preparando…' : 'Revisar el envío'}
+          </button>
+          <p className="muted">
+            Destinos activos:{' '}
+            {active.map((d) => (
+              <AddressText key={d.address} address={d.address} />
+            ))}
+          </p>
+        </form>
+      )}
+    </section>
+  );
+}
+
+export function SendPage() {
+  useSensitiveScreen();
+  return <SafeGate>{(ctx) => <Send ctx={ctx} />}</SafeGate>;
+}

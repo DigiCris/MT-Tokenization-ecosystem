@@ -1,6 +1,16 @@
 // Rutas de la app Wallet (§8.4). P17: cuenta, onboarding de U, desbloqueo, restauración y seguridad (sesiones, TOTP,
-// backups, Password U). La operación (home completo, envíos, swap, whitelist, actividad) llega en P18.
+// backups, Password U). P18: activación de Recovery y Safe, inicio operativo, activos, envíos, swap, whitelist,
+// actividad, rotaciones, reemplazo de Recovery, co-firma soberana y migración excepcional.
 import type { ReactNode } from 'react';
+import { ActivityPage } from '../activity/ActivityPage.tsx';
+import { AssetsPage } from '../assets/AssetsPage.tsx';
+import { MigrationPage } from '../migration/MigrationPage.tsx';
+import { ReplaceRecoveryPage } from '../security/recovery/ReplaceRecoveryPage.tsx';
+import { RotationsPage } from '../security/rotations/RotationsPage.tsx';
+import { SendPage } from '../send/SendPage.tsx';
+import { SovereignPage } from '../sovereign/SovereignPage.tsx';
+import { SwapPage } from '../swap/SwapPage.tsx';
+import { WhitelistPage } from '../whitelist/WhitelistPage.tsx';
 import { createBrowserRouter } from 'react-router';
 import { SessionsPage, TotpPage } from '../auth/AccountSecurityPages.tsx';
 import { LoginPage } from '../auth/LoginPage.tsx';
@@ -8,6 +18,7 @@ import { AccountUnlockPage, ForgotPasswordPage, ResetPasswordPage } from '../aut
 import { RegisterPage } from '../auth/RegisterPage.tsx';
 import { VerifyEmailPage } from '../auth/VerifyEmailPage.tsx';
 import { OnboardingPage } from '../onboarding/OnboardingPage.tsx';
+import { ConfirmRecoveryPage } from '../recovery-activation/ConfirmRecoveryPage.tsx';
 import { RestorePage } from '../restore/RestorePage.tsx';
 import { ChangePasswordUPage, LostPasswordUPage } from '../security/password-u/PasswordUPages.tsx';
 import { SecurityPage } from '../security/SecurityPage.tsx';
@@ -36,6 +47,7 @@ export function createAppRouter() {
         { path: 'reset-password', element: <ResetPasswordPage /> },
         { path: 'account-unlock', element: <AccountUnlockPage /> },
         { path: 'onboarding', element: account(<OnboardingPage />) },
+        { path: 'onboarding/confirm-recovery', element: account(<ConfirmRecoveryPage />) },
         { path: 'unlock', element: account(<UnlockPage />) },
         { path: 'restore', element: <RestorePage /> },
         { path: 'security', element: account(<SecurityPage />) },
@@ -43,6 +55,16 @@ export function createAppRouter() {
         { path: 'security/totp', element: account(<TotpPage />) },
         { path: 'security/password-u', element: account(<ChangePasswordUPage />) },
         { path: 'security/lost-password-u', element: account(<LostPasswordUPage />) },
+        { path: 'security/rotations', element: account(<RotationsPage />) },
+        { path: 'security/recovery', element: account(<ReplaceRecoveryPage />) },
+        { path: 'security/migration', element: account(<MigrationPage />) },
+        { path: 'assets', element: account(<AssetsPage />) },
+        { path: 'send', element: account(<SendPage />) },
+        { path: 'swap', element: account(<SwapPage />) },
+        { path: 'whitelist', element: account(<WhitelistPage />) },
+        { path: 'activity', element: account(<ActivityPage />) },
+        // Sin cuenta: la salida soberana tiene que funcionar aunque la plataforma no esté.
+        { path: 'sovereign', element: <SovereignPage /> },
         { path: '*', element: <NotFoundPage /> },
       ],
     },

@@ -1,5 +1,6 @@
 // Seguridad (§8.4): sesiones, verificación en dos pasos, backups del sobre (estado del chequeo de Drive [F-DRV-05],
-// re-exportar archivo o QR), cambiar la Password U y "perdí mi Password U". El chequeo de Drive nunca bloquea nada: si
+// re-exportar archivo o QR), cambiar la Password U, "perdí mi Password U" y las claves de la Safe (rotaciones,
+// reemplazo de R, migración y co-firma soberana, P18). El chequeo de Drive nunca bloquea nada: si
 // falta o no coincide, queda la alerta hasta re-subirlo.
 import { useCallback, useState } from 'react';
 import { Link, useLocation } from 'react-router';
@@ -112,6 +113,16 @@ export function SecurityPage() {
         <h2>Password U</h2>
         <Link to="/security/password-u">Cambiar la Password U</Link>
         <Link to="/security/lost-password-u">Perdí mi Password U</Link>
+      </nav>
+
+      <nav className="card stack" aria-label="Claves de la Safe">
+        <h2>Claves de tu Safe</h2>
+        <Link to="/security/rotations">Rotaciones (pendientes, cancelar, ejecutar)</Link>
+        <Link to="/security/recovery">Estado y reemplazo de tu clave de recuperación (R)</Link>
+        <Link to="/security/migration">Migración excepcional</Link>
+        <Link to="/sovereign" reloadDocument>
+          Co-firmar una operación soberana
+        </Link>
       </nav>
     </section>
   );
