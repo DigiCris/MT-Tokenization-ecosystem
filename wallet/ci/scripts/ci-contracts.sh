@@ -11,6 +11,9 @@ if [ -z "${FORK_RPC_URL:-}" ] && [ -f "$WALLET_ROOT/.env" ]; then
   export FORK_RPC_URL
 fi
 cd "$WALLET_ROOT/contracts"
+# El RPC del fork es compartido con los jobs de backend y signer: ante un 429 forge reintenta con backoff exponencial
+# (flags de EVM de forge; no tienen clave equivalente en foundry.toml).
+FORK_RETRY_FLAGS=(--fork-retries 12 --fork-retry-backoff 2000)
 section "dependencias (soldeer.lock)"
 [ -d dependencies ] || forge soldeer install
 bash script/verify-deps.sh
@@ -19,9 +22,9 @@ forge build --sizes
 # P07.T09: la suite completa en los dos modos de policy (las suites adversarial e invariantes toman POLICY_MODE;
 # las de integración fijan su modo).
 section "forge test --profile ci (POLICY_MODE=restricted, igual que producción)"
-POLICY_MODE=restricted forge test --profile ci
+POLICY_MODE=restricted forge test --profile ci "${FORK_RETRY_FLAGS[@]}"
 section "forge test --profile ci (POLICY_MODE=bootstrap)"
-POLICY_MODE=bootstrap forge test --profile ci
+POLICY_MODE=bootstrap forge test --profile ci "${FORK_RETRY_FLAGS[@]}"
 if [ -z "$(find src -name '*.sol' 2>/dev/null | head -1)" ]; then
   echo "SKIP: cobertura y Slither: todavía no hay contratos en src/ (fase P04)"
   exit 0

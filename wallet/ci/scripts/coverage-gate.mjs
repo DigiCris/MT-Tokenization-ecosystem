@@ -43,7 +43,8 @@ function main() {
   let lcovPath = flag === '--lcov' ? resolve(lcovArg) : join(dir, 'coverage/lcov.info');
   if (flag !== '--lcov') {
     mkdirSync(join(dir, 'coverage'), { recursive: true });
-    const r = spawnSync('forge', ['coverage', '--report', 'lcov', '--report-file', lcovPath, '--no-match-coverage', '(test|script|dependencies)/'], { cwd: dir, stdio: 'inherit', env: process.env });
+    // Reintentos con backoff ante un 429 del RPC del fork (compartido con otros jobs de CI).
+    const r = spawnSync('forge', ['coverage', '--report', 'lcov', '--report-file', lcovPath, '--no-match-coverage', '(test|script|dependencies)/', '--fork-retries', '12', '--fork-retry-backoff', '2000'], { cwd: dir, stdio: 'inherit', env: process.env });
     if (r.status !== 0) {
       console.error('forge coverage falló');
       process.exit(1);
