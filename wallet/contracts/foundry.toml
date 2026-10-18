@@ -33,6 +33,11 @@ runs = 64
 depth = 32
 fail_on_revert = false
 
+# CI: tope de unidades de cómputo por segundo de los fork tests hacia el RPC remoto, que comparten la key con los demás
+# jobs en paralelo (docs/CI.md#presupuesto-del-rpc-del-fork).
+[profile.ci]
+compute_units_per_second = 100
+
 # CI: fuzz 10.000 runs e invariants con 500 runs y profundidad 50 (§10, P03.T02).
 [profile.ci.fuzz]
 runs = 10000

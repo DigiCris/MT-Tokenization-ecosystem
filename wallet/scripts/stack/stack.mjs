@@ -322,6 +322,8 @@ async function bringUp(state, { walletOrigin, recoveryOrigin }) {
     SIGNER_PLATFORM_DATABASE_URL: '',
     REDIS_URL: '',
     INTEGRITY_REQUIRED: 'false',
+    // Comparte la key del RPC con los demás jobs de CI (docs/CI.md#presupuesto-del-rpc-del-fork).
+    ANVIL_COMPUTE_UNITS_PER_SECOND: '80',
   };
   writeFileSync(state.envFile, '', { mode: 0o600 });
   updateEnvFile(state.envFile, { ...example, ...overrides });

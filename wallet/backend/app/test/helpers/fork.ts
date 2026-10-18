@@ -127,13 +127,15 @@ async function launchAnvil(options: AnvilOptions): Promise<AnvilInstance> {
       // El chain id del fork se conoce: no se le pide al RPC remoto al arrancar.
       '--fork-chain-id',
       '8453',
-      // El RPC remoto limita el ritmo (429): más reintentos con backoff y un tope de unidades de cómputo por instancia.
+      // El RPC remoto limita el ritmo (429; ~500 CU/s para toda la key, que comparten los jobs de CI en paralelo,
+      // docs/CI.md#presupuesto-del-rpc-del-fork): tope de 50 CU/s por instancia y reintentos con backoff para
+      // absorber las ráfagas.
       '--retries',
-      '30',
+      '60',
       '--fork-retry-backoff',
-      '1500',
+      '2000',
       '--compute-units-per-second',
-      '100',
+      '50',
       '--timeout',
       '60000',
       ...(logFd === null ? ['--silent'] : []),

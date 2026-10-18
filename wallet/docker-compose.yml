@@ -47,6 +47,9 @@ services:
     environment:
       BASE_RPC_URL: "${BASE_RPC_URL:?falta BASE_RPC_URL: ver docs/SETUP_EXTERNAL_SERVICES.md#base_rpc_url}"
       FORK_BLOCK_NUMBER: ${FORK_BLOCK_NUMBER:-52700000}
+      # Tope de unidades de cómputo por segundo hacia el RPC del fork (el stack aislado de los tests usa 80: comparte
+      # la key con los demás jobs de CI, docs/CI.md#presupuesto-del-rpc-del-fork).
+      ANVIL_COMPUTE_UNITS_PER_SECOND: ${ANVIL_COMPUTE_UNITS_PER_SECOND:-330}
     command:
       - >-
         exec anvil --host 0.0.0.0 --port 8545
@@ -54,7 +57,8 @@ services:
         --fork-block-number "$$FORK_BLOCK_NUMBER"
         --chain-id 8453
         --block-time 2
-        --fork-retry-backoff 1000 --retries 10 --timeout 60000
+        --compute-units-per-second "$$ANVIL_COMPUTE_UNITS_PER_SECOND"
+        --fork-retry-backoff 2000 --retries 30 --timeout 60000
     ports:
       - "127.0.0.1:${ANVIL_HOST_PORT:-8545}:8545"
     volumes:

@@ -9,7 +9,7 @@ port="$(node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>
 rpc="http://127.0.0.1:$port"
 
 anvil --host 127.0.0.1 --port "$port" --fork-url "$FORK_RPC_URL" --fork-block-number "$block" --chain-id 8453 \
-  --fork-retry-backoff 1000 --retries 10 --timeout 60000 --quiet >/dev/null 2>&1 &
+  --compute-units-per-second 80 --fork-retry-backoff 2000 --retries 30 --timeout 60000 --quiet >/dev/null 2>&1 &
 anvil_pid=$!
 cleanup() {
   kill "$anvil_pid" 2>/dev/null || true

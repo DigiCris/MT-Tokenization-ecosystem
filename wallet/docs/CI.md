@@ -41,6 +41,25 @@ libera la cuota.
 `MTW_LIVE_TESTS=1` los fuerza y `MTW_LIVE_TESTS=0` los omite. Cuando no corren, el log dice por qué. El `schedule`
 de GitHub sólo dispara en la rama por defecto: la corrida diaria empieza cuando el workflow llega a `main`.
 
+### Presupuesto del RPC del fork
+
+Todos los jobs que forkean Base usan la misma key (`BASE_RPC_URL`), que admite unos 500 CU/s en total: medido el
+2026-10-18, 400 CU/s sostenidos pasan limpio, 800 CU/s devuelven 21 % de 429 y 1200 CU/s todo 429. Con varios
+workflows en paralelo (backend, signer, contratos y los tests de navegador de Wallet) un Anvil llegó a agotar sus
+reintentos con 429, así que cada consumidor tiene un tope (`--compute-units-per-second`) y reintentos con backoff:
+
+| Consumidor | Tope | Reintentos |
+|---|---|---|
+| Anvil de cada archivo de tests de `backend/app` y `backend/signer` (hasta 4 workers) | 50 CU/s | 60, backoff 2 s |
+| Anvil del stack aislado de los tests de navegador (`scripts/stack/stack.mjs`) | 80 CU/s | 30, backoff 2 s |
+| Anvil efímero de los insumos de los builds (`ci/scripts/deploy-ephemeral.sh`) | 80 CU/s | 30, backoff 2 s |
+| Fork tests de `forge test --profile ci` | 100 CU/s | reintento de la corrida si hubo 429 (`ci-contracts.sh`) |
+| Anvil del compose para desarrollo local (`ANVIL_COMPUTE_UNITS_PER_SECOND`) | 330 CU/s | 30, backoff 2 s |
+
+Con `MTW_ANVIL_LOG_DIR` cada Anvil de los tests del backend deja su log (con el endpoint redactado) y el workflow
+`wallet-backend` lo sube como artefacto `anvil-logs` si el job falla. Un segundo proveedor para CI
+(`BASE_RPC_URL_SECONDARY` como secret) dividiría la carga entre dos keys.
+
 ## Reglas comunes
 
 - Acciones de terceros fijadas por SHA de commit (`docs/VERSIONS.md#github-actions-fijadas-por-sha-de-commit-p02`); la única acción propia es `wallet/ci/actions/setup-toolchain` (composite).
