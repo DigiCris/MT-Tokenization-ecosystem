@@ -59,17 +59,29 @@ describe('fuerza bruta por cuenta', () => {
   it('espera exponencial desde el 5.º fallo, bloqueo blando al 10.º y desbloqueo con el OTP del email', async () => {
     const account = await createVerifiedUser(env.wallet, env.db);
     const wrong = () => login(account.email, `${account.password}-mal`);
-    for (let i = 1; i <= THROTTLE.freeFailures; i++) expect((await wrong()).statusCode, `fallo ${String(i)}`).toBe(401);
+    // Momento en que empezó el último fallo: la penalidad corre desde que el servidor lo registró (después).
+    let lastFailureStart = performance.now();
+    for (let i = 1; i <= THROTTLE.freeFailures; i++) {
+      lastFailureStart = performance.now();
+      expect((await wrong()).statusCode, `fallo ${String(i)}`).toBe(401);
+    }
 
     // Desde el 5.º fallo: 1 s, 2 s, 4 s, 8 s, 16 s (el intento durante la espera es 429 y no cuenta).
     for (let failure = THROTTLE.freeFailures + 1; failure <= THROTTLE.softLockFailures; failure++) {
       const blocked = await wrong();
+      const blockedAt = performance.now();
       expect(blocked.statusCode, `espera antes del fallo ${String(failure)}`).toBe(429);
-      expect(retryAfter(blocked)).toBe(2 ** (failure - 1 - THROTTLE.freeFailures));
+      // Retry-After es la espera restante (ceil del TTL): la penalidad exponencial menos lo que pudo transcurrir
+      // desde que se registró el fallo anterior (acotado por la latencia medida acá).
+      const penalty = 2 ** (failure - 1 - THROTTLE.freeFailures);
+      const elapsedSeconds = (blockedAt - lastFailureStart) / 1000;
+      expect(retryAfter(blocked), `penalidad antes del fallo ${String(failure)}`).toBeLessThanOrEqual(penalty);
+      expect(retryAfter(blocked)).toBeGreaterThanOrEqual(Math.max(1, Math.ceil(penalty - elapsedSeconds)));
       // Ni la contraseña correcta pasa durante la espera (una vez: [B-RL] permite 20 intentos por hora por email).
       if (failure === THROTTLE.freeFailures + 1)
         expect((await login(account.email, account.password)).statusCode).toBe(429);
       await waitPenalty(blocked);
+      lastFailureStart = performance.now();
       expect((await wrong()).statusCode, `fallo ${String(failure)}`).toBe(401);
     }
 

@@ -85,18 +85,33 @@ describe('login: respuesta uniforme', () => {
     await login(accounts[0]?.email ?? '', 'calentamiento-incorrecto');
     const unknown: number[] = [];
     const wrong: number[] = [];
+    const pairs: number[] = [];
+    const timed = async (attempt: () => Promise<{ statusCode: number }>) => {
+      const start = performance.now();
+      expect((await attempt()).statusCode).toBe(401);
+      return performance.now() - start;
+    };
     for (let i = 0; i < rounds; i++) {
-      const a = performance.now();
-      expect((await login(randomEmail('t'), randomPassword())).statusCode).toBe(401);
-      unknown.push(performance.now() - a);
-      const b = performance.now();
-      expect((await login(accounts[i]?.email ?? '', randomPassword())).statusCode).toBe(401);
-      wrong.push(performance.now() - b);
+      const unknownAttempt = () => login(randomEmail('t'), randomPassword());
+      const wrongAttempt = () => login(accounts[i]?.email ?? '', randomPassword());
+      // Pares consecutivos con el orden alternado: los dos caminos ven la misma carga de la máquina.
+      let u: number;
+      let w: number;
+      if (i % 2 === 0) {
+        u = await timed(unknownAttempt);
+        w = await timed(wrongAttempt);
+      } else {
+        w = await timed(wrongAttempt);
+        u = await timed(unknownAttempt);
+      }
+      unknown.push(u);
+      wrong.push(w);
+      pairs.push(Math.abs(u - w) / Math.max(u, w));
     }
-    const [mu, mw] = [median(unknown), median(wrong)];
-    // Los dos caminos pagan un Argon2id completo (m=64 MiB, t=3): la diferencia queda dentro del ruido.
-    expect(Math.min(mu, mw)).toBeGreaterThan(20);
-    expect(Math.abs(mu - mw) / Math.max(mu, mw)).toBeLessThan(0.3);
+    // Los dos caminos pagan un Argon2id completo (m=64 MiB, t=3): sin él, el email inexistente respondería en una
+    // fracción del tiempo (diferencia relativa cercana a 1). La mediana de los pares queda dentro del ruido.
+    expect(Math.min(median(unknown), median(wrong))).toBeGreaterThan(20);
+    expect(median(pairs)).toBeLessThan(0.3);
   });
 
   it('un email con otra capitalización o espacios es la misma cuenta (normalización antes de buscar)', async () => {
