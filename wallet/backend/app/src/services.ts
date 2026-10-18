@@ -26,6 +26,7 @@ import { EnrollmentService } from './recovery/enrollment.ts';
 import type { SignerKeyService } from './signer-client/sharding.ts';
 import { OperationService } from './operations/service.ts';
 import { OperationStateMachine } from './operations/state-machine.ts';
+import { WhitelistService } from './whitelist/service.ts';
 import { KeyRestoreService } from './wallets/key-restore.ts';
 import { SovereignModification } from './wallets/sovereign.ts';
 import { WalletService } from './wallets/wallet-service.ts';
@@ -41,6 +42,8 @@ export interface AccountServices {
   account: AccountService;
   audit: AuditWriter;
   emails: EmailOutbox;
+  /** Challenges de seguridad (OTP/token) compartidos por cuenta, step-up, whitelist y 2FA de alto valor. */
+  challenges: ChallengeService;
   issuer: PlatformSessionIssuer;
   opaque: OpaqueService;
   platformSessions: PlatformSessionService;
@@ -120,6 +123,7 @@ export async function createAccountServices(input: {
     account,
     audit,
     emails,
+    challenges,
     issuer,
     opaque,
     platformSessions,
@@ -136,6 +140,8 @@ export interface WalletServices {
   keyRestore: KeyRestoreService;
   /** Operaciones de la Safe (P13): prepare interno, firmas, cancelación y lecturas. */
   operations: OperationService;
+  /** P14: whitelist. */
+  whitelist: WhitelistService;
 }
 
 /** Onboarding de wallets (P12): requiere los servicios de cuenta armados con dependencias on-chain. */
@@ -152,6 +158,21 @@ export function createWalletServices(input: {
   const { config, db, account, onchain, metrics, logger } = input;
   if (account.keyRestore === null) throw new Error('los servicios de cuenta no tienen dependencias on-chain');
   const common = { db, platformId: config.platformId, chainId: config.chainId, snapshot: onchain.snapshot, metrics };
+  const operations = new OperationService({
+    db,
+    machine: new OperationStateMachine({ db, audit: account.audit, outbox: input.outbox }),
+    audit: account.audit,
+    rpc: onchain.rpc,
+    snapshot: onchain.snapshot,
+    sovereign: new SovereignModification({
+      audit: account.audit,
+      email: account.emails,
+      logger: logger.child({ component: 'sovereign' }),
+      metrics,
+    }),
+    logger: logger.child({ component: 'operations' }),
+    metrics,
+  });
   return {
     wallets: new WalletService({
       ...common,
@@ -169,19 +190,17 @@ export function createWalletServices(input: {
       logger: logger.child({ component: 'recovery-enrollment' }),
     }),
     keyRestore: account.keyRestore,
-    operations: new OperationService({
+    operations,
+    whitelist: new WhitelistService({
       db,
-      machine: new OperationStateMachine({ db, audit: account.audit, outbox: input.outbox }),
+      operations,
+      challenges: account.challenges,
+      issuer: account.issuer,
+      emails: account.emails,
       audit: account.audit,
       rpc: onchain.rpc,
       snapshot: onchain.snapshot,
-      sovereign: new SovereignModification({
-        audit: account.audit,
-        email: account.emails,
-        logger: logger.child({ component: 'sovereign' }),
-        metrics,
-      }),
-      logger: logger.child({ component: 'operations' }),
+      logger: logger.child({ component: 'whitelist' }),
       metrics,
     }),
   };

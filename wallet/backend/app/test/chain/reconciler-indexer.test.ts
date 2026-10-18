@@ -236,6 +236,7 @@ describe('reconciliación', () => {
         label: 'sólo en la DB',
         status: 'ACTIVE',
         activates_at: new Date(),
+        activated_at: new Date(),
       })
       .execute();
     const block = await env.chain.blockNumber();

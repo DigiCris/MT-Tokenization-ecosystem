@@ -1,10 +1,13 @@
 // Challenges de seguridad (`security_challenges`): verificación de email, reset de password y desbloqueo de cuenta
-// (P09), step-up de PlatformSession (P10); whitelist, rotaciones y operaciones de alto valor en las fases siguientes.
+// (P09), step-up de PlatformSession (P10), alta de whitelist y 2FA de operaciones de alto valor (P14).
 //
-// - Un challenge nuevo del mismo usuario y tipo invalida los anteriores abiertos (un solo código vigente).
+// - Un challenge nuevo del mismo usuario y tipo invalida los anteriores abiertos (un solo código vigente); los de
+//   whitelist y alto valor sólo invalidan los del mismo destino u operación (`supersede`), así dos pedidos distintos
+//   no se pisan.
 // - Verificación con la fila bloqueada (FOR UPDATE): el contador de intentos sube aunque el código sea incorrecto y
 //   el challenge se consume al acertar (un solo uso). La transacción del llamador debe confirmarse también en el
-//   error, para que el intento quede contado.
+//   error, para que el intento quede contado. Un challenge cuyo factor es el TOTP del usuario (2FA de alto valor con
+//   TOTP activo) se verifica con `verifyWith`: mismos intentos, vencimiento y consumo, con otro verificador.
 import { randomUUID } from 'node:crypto';
 import { sql, type Transaction } from 'kysely';
 import type { Secret } from '../config/secret.ts';
@@ -26,6 +29,10 @@ export const CHALLENGE_POLICIES: Readonly<Partial<Record<ChallengeType, Challeng
   PASSWORD_RESET: { ttlMinutes: 30, maxAttempts: 5, kind: 'token' },
   // Step-up de PlatformSession [B-PSES-03]: más corto (abre una sesión sensible).
   STEP_UP: { ttlMinutes: 10, maxAttempts: 5, kind: 'otp' },
+  // Alta de whitelist (P14.T01): el email muestra la dirección exacta, la red y la expiración.
+  WHITELIST_ADD: { ttlMinutes: 15, maxAttempts: 5, kind: 'otp' },
+  // 2FA de una operación de alto valor ([B-POL-02]): ligado a la SafeTx, vale lo que una operación sin firmar.
+  HIGH_VALUE_TX: { ttlMinutes: 10, maxAttempts: 5, kind: 'otp' },
 };
 
 export type ChallengeResult = 'OK' | 'INVALID' | 'EXPIRED' | 'EXHAUSTED' | 'NOT_FOUND';
@@ -58,17 +65,24 @@ export class ChallengeService {
       walletId?: string | null;
       binding?: Record<string, unknown>;
       ipPrefix?: string | null;
+      /** Sólo invalida los abiertos cuyo binding tiene este valor en esa clave (p. ej. el mismo destino). */
+      supersede?: { key: string; value: string };
+      /** Agrega `expiresAt` (ISO) al binding: el challenge queda ligado también a su vencimiento. */
+      bindExpiry?: boolean;
     },
   ): Promise<IssuedChallenge> {
     const policy = policyFor(input.type);
-    await trx
+    let invalidate = trx
       .updateTable('security_challenges')
       .set({ expires_at: sql`now()` })
       .where('user_id', '=', input.userId)
       .where('type', '=', input.type)
       .where('consumed_at', 'is', null)
-      .where('expires_at', '>', sql<Date>`now()`)
-      .execute();
+      .where('expires_at', '>', sql<Date>`now()`);
+    if (input.supersede) {
+      invalidate = invalidate.where(sql<boolean>`binding ->> ${input.supersede.key} = ${input.supersede.value}`);
+    }
+    await invalidate.execute();
     const challengeId = randomUUID();
     const secret = policy.kind === 'otp' ? generateOtp() : generateSecretToken();
     const expiresAt = new Date(Date.now() + policy.ttlMinutes * 60_000);
@@ -79,7 +93,10 @@ export class ChallengeService {
         user_id: input.userId,
         wallet_id: input.walletId ?? null,
         type: input.type,
-        binding: JSON.stringify(input.binding ?? {}),
+        binding: JSON.stringify({
+          ...input.binding,
+          ...(input.bindExpiry ? { expiresAt: expiresAt.toISOString() } : {}),
+        }),
         code_hash: hashChallengeSecret(this.#key, challengeId, secret),
         max_attempts: policy.maxAttempts,
         expires_at: expiresAt,
@@ -127,6 +144,46 @@ export class ChallengeService {
       userId: row.user_id,
       challengeId: row.id,
     };
+  }
+
+  /**
+   * Verifica un challenge por id con un verificador externo (el TOTP del usuario): mismas reglas de vencimiento,
+   * intentos y consumo que `verify`. El verificador corre con la fila bloqueada.
+   */
+  async verifyWith(
+    trx: Transaction<Database>,
+    input: { type: ChallengeType; challengeId: string; userId: string; check: () => Promise<boolean> },
+  ): Promise<{ result: ChallengeResult; challengeId?: string; binding?: unknown }> {
+    const row = await trx
+      .selectFrom('security_challenges')
+      .selectAll()
+      .where('id', '=', input.challengeId)
+      .where('user_id', '=', input.userId)
+      .where('type', '=', input.type)
+      .forUpdate()
+      .executeTakeFirst();
+    if (!row || row.consumed_at !== null) return { result: 'NOT_FOUND' };
+    if (row.expires_at.getTime() <= Date.now()) return { result: 'EXPIRED', challengeId: row.id };
+    if (row.attempts >= row.max_attempts) return { result: 'EXHAUSTED', challengeId: row.id };
+    const ok = await input.check();
+    await trx
+      .updateTable('security_challenges')
+      .set({ attempts: sql`attempts + 1`, ...(ok ? { consumed_at: sql`now()` } : {}) })
+      .where('id', '=', row.id)
+      .execute();
+    if (ok) return { result: 'OK', challengeId: row.id, binding: row.binding };
+    return { result: row.attempts + 1 >= row.max_attempts ? 'EXHAUSTED' : 'INVALID', challengeId: row.id };
+  }
+
+  /** Vence un challenge abierto (p. ej. el de un pedido de whitelist que se reemplaza o se cancela). */
+  async expire(trx: Transaction<Database>, challengeId: string): Promise<void> {
+    await trx
+      .updateTable('security_challenges')
+      .set({ expires_at: sql`now()` })
+      .where('id', '=', challengeId)
+      .where('consumed_at', 'is', null)
+      .where('expires_at', '>', sql<Date>`now()`)
+      .execute();
   }
 
   /** Invalida todos los challenges abiertos de un tipo (p. ej. tokens de reset al completar el reset). */

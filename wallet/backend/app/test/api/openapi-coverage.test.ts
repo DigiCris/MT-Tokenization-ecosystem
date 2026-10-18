@@ -86,7 +86,8 @@ const ACCOUNT_PATHS = [
 ];
 /**
  * El estado del enrollment de R lo consultan las dos apps (P12); el grupo `operations` (P13) existe en los dos
- * listeners: en Wallet firma U (OPERATIONS) y en Recovery firma R (RECOVERY).
+ * listeners: en Wallet firma U (OPERATIONS) y en Recovery firma R (RECOVERY). La lectura de la whitelist (P14) también
+ * (Recovery la muestra para la baja de emergencia con R).
  */
 const SHARED_ONBOARDING_PATHS = [
   '/api/v1/recovery/enrollments/{id}',
@@ -94,6 +95,7 @@ const SHARED_ONBOARDING_PATHS = [
   '/api/v1/operations/{id}',
   '/api/v1/operations/{id}/signatures',
   '/api/v1/operations/{id}/cancel',
+  '/api/v1/wallets/{id}/whitelist',
 ];
 /**
  * Sólo en el listener de Wallet ([B-API], [B-AUTHZ] 3): desbloqueo con U (OPAQUE), el grupo `wallet` y, del grupo
@@ -112,11 +114,17 @@ const WALLET_ONLY_PATHS = [
   '/api/v1/wallets/{id}/deployment',
   '/api/v1/wallets/{id}/recovery/enrollments',
   '/api/v1/recovery/enrollments/{id}/incorporate',
+  // P14: alta y baja de whitelist con U.
+  '/api/v1/wallets/{id}/whitelist/requests',
+  '/api/v1/whitelist/requests/{id}/confirm',
+  '/api/v1/wallets/{id}/whitelist/{destination}/remove',
 ];
-/** Sólo en el listener de Recovery: Enrollment Key y envío de R. */
+/** Sólo en el listener de Recovery: Enrollment Key y envío de R, y el grupo de emergencia (R) de P14. */
 const RECOVERY_ONLY_PATHS = [
   '/api/v1/recovery/enrollments/{id}/enrollment-key',
   '/api/v1/recovery/enrollments/{id}/submit',
+  '/api/v1/wallets/{id}/emergency/whitelist-remove',
+  '/api/v1/wallets/{id}/emergency/noop',
 ];
 /** Operaciones (método + ruta): GET y PATCH /users/me, GET y DELETE /sessions. */
 const ACCOUNT_OPERATIONS = ACCOUNT_PATHS.length + 2;

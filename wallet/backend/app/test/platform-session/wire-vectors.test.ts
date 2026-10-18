@@ -18,6 +18,7 @@ import { STEP_UP_LISTENER } from '../../src/platform-session/step-up.ts';
 import {
   PLATFORM_SCOPES,
   PlatformSessionIssuer,
+  type ChallengeCompletionClaims,
   type PlatformSessionClaims,
 } from '../../src/platform-session/token.ts';
 
@@ -85,6 +86,46 @@ describe('token de PlatformSession [W-03]', () => {
     await expect(issuer.verify(vector.jws, (vector.claims.issuedAt + 60) * 1000)).rejects.toMatchObject({
       problem: 'UNKNOWN_KEY',
     });
+  });
+});
+
+describe('atestación ChallengeCompletion [W-03] (P14)', () => {
+  const vectors = wire('jws.json') as {
+    tokens: { name: string; kid: string; claims: ChallengeCompletionClaims; jws: string }[];
+  };
+  const vector = vectors.tokens.find((t) => t.name === 'ChallengeCompletion');
+  if (!vector) throw new Error('sin vector ChallengeCompletion');
+
+  it('firmar los claims del vector produce exactamente el mismo JWS y se verifica con la clave del emisor', async () => {
+    const { privateKey, publicKey } = vectorIssuerKeys();
+    const issuer = await PlatformSessionIssuer.create(new Secret(privateKey), publicKey, { kid: vector.kid });
+    expect(await issuer.signChallengeCompletion(vector.claims)).toBe(vector.jws);
+    expect(await issuer.verifyChallengeCompletion(vector.jws)).toEqual(vector.claims);
+  });
+
+  it('rechaza un JWS adulterado, de otra clave o con claims fuera del formato', async () => {
+    const { privateKey, publicKey } = vectorIssuerKeys();
+    const issuer = await PlatformSessionIssuer.create(new Secret(privateKey), publicKey, { kid: vector.kid });
+    const [header = '', payload = '', signature = ''] = vector.jws.split('.');
+    const altered = Buffer.from(JSON.stringify({ ...vector.claims, amount: '1500000001' }), 'utf8').toString(
+      'base64url',
+    );
+    await expect(issuer.verifyChallengeCompletion(`${header}.${altered}.${signature}`)).rejects.toMatchObject({
+      problem: 'SIGNATURE',
+    });
+    const other = await PlatformSessionIssuer.create(new Secret(privateKey), publicKey, { kid: 'otra-clave' });
+    await expect(other.verifyChallengeCompletion(vector.jws)).rejects.toMatchObject({ problem: 'UNKNOWN_KEY' });
+    // Un PlatformSession firmado por el mismo emisor no es una ChallengeCompletion.
+    const session = vectors.tokens.find((t) => t.name === 'PlatformSession');
+    await expect(issuer.verifyChallengeCompletion(session?.jws ?? '')).rejects.toMatchObject({ problem: 'MALFORMED' });
+    // Y el emisor no firma claims sin checksum o con campos de más.
+    await expect(
+      issuer.signChallengeCompletion({ ...vector.claims, safe: `0x${vector.claims.safe.slice(2).toUpperCase()}` }),
+    ).rejects.toThrow();
+    await expect(
+      issuer.signChallengeCompletion({ ...vector.claims, extra: true } as unknown as ChallengeCompletionClaims),
+    ).rejects.toThrow();
+    expect(payload.length).toBeGreaterThan(0);
   });
 });
 

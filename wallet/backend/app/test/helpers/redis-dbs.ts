@@ -55,4 +55,11 @@ export const REDIS_DBS = {
   operationsSecurity: 54,
   finalityTags: 55,
   chainContext: 56,
+  // P14: whitelist, send y swap.
+  whitelistChallenge: 57,
+  send: 58,
+  swap: 59,
+  swapQuote: 60,
+  readEndpoints: 61,
+  whitelistThreeLayers: 62,
 } as const;

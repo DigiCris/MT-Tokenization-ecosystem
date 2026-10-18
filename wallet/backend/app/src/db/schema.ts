@@ -253,6 +253,10 @@ export interface WhitelistRequestsTable {
   operation_id: string | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
+  /** P14: motivo de EXPIRED/CANCELLED/FAILED. */
+  failure_reason: string | null;
+  /** P14: momento en que se superó el challenge (ventana para reintentar el prepare tras un error transitorio). */
+  challenge_passed_at: Timestamp | null;
 }
 
 export interface WhitelistedDestinationsTable {
@@ -266,6 +270,41 @@ export interface WhitelistedDestinationsTable {
   removed_tx_hash: Bytes | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
+  /** P14: PLATFORM (SafeTx U+S de la plataforma) o SOVEREIGN (alta U+R por fuera). */
+  origin: Generated<'PLATFORM' | 'SOVEREIGN'>;
+  request_id: string | null;
+  activated_at: Timestamp | null;
+  removed_at: Timestamp | null;
+  removed_by: 'U' | 'R' | 'SAFE' | null;
+}
+
+/** P14: eventos de DestinationWhitelist de las Safes de la plataforma (indexados con finalidad y reorgs). */
+export interface WhitelistEventsTable {
+  id: Generated<string>;
+  chain_id: number;
+  safe_address: Bytes;
+  destination: Bytes;
+  kind: 'ADDED' | 'REMOVED';
+  activates_at: Timestamp | null;
+  tx_hash: Bytes;
+  log_index: number;
+  block_number: Int8;
+  block_hash: Bytes;
+  status: 'MINED' | 'CONFIRMED' | 'FINALIZED' | 'REORGED';
+  applied_at: Timestamp | null;
+  created_at: GeneratedTimestamp;
+  updated_at: GeneratedTimestamp;
+}
+
+/** Cotización vigente de un grupo de swap (P14.T04). */
+export interface SwapQuoteJson {
+  expectedOut: string;
+  minOut: string;
+  slippageBps: number;
+  priceImpactBps: number;
+  deadline: string;
+  blockNumber: string;
+  quotedAt: string;
 }
 
 export interface OperationGroupsTable {
@@ -275,6 +314,14 @@ export interface OperationGroupsTable {
   status: 'OPEN' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
+  user_id: string;
+  token_in: Bytes;
+  token_out: Bytes;
+  amount_in: Numeric;
+  quote: Json<SwapQuoteJson>;
+  failure_reason: string | null;
+  completed_at: Timestamp | null;
+  allowance_notified_at: Timestamp | null;
 }
 
 export interface WalletOperationsTable {
@@ -484,6 +531,8 @@ export interface NotificationsTable {
   payload: GeneratedJson;
   read_at: Timestamp | null;
   created_at: GeneratedTimestamp;
+  /** P14: una sola notificación por evento (p. ej. `HIGH_VALUE_EXECUTED:<operación>`). */
+  dedupe_key: string | null;
 }
 
 export interface OperatorUsersTable {
@@ -544,6 +593,7 @@ export interface Database {
   security_challenges: SecurityChallengesTable;
   whitelist_requests: WhitelistRequestsTable;
   whitelisted_destinations: WhitelistedDestinationsTable;
+  whitelist_events: WhitelistEventsTable;
   operation_groups: OperationGroupsTable;
   wallet_operations: WalletOperationsTable;
   chain_transactions: ChainTransactionsTable;

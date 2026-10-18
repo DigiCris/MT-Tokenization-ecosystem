@@ -71,6 +71,7 @@ export const OperationStatusSchema = z
     walletId: z.uuid(),
     status: z.enum(OPERATION_STATUSES),
     operationType: z.enum(OPERATION_TYPES),
+    groupId: z.uuid().nullable(),
     safeNonce: z.string(),
     safeTxHash: Hex32,
     txHash: Hex32.nullable(),
@@ -94,6 +95,12 @@ export const SubmitSignatureRequestSchema = z
     ownerRole: z.enum(['U', 'R']),
     submissionEnvelope: SubmissionEnvelopeSchema,
     submissionEnvelopeSignature: z.string().regex(/^[A-Za-z0-9_-]{86}$/, { error: 'P-256 r‖s en base64url' }),
+    twoFactorChallengeId: z
+      .uuid()
+      .optional()
+      .describe(
+        'Challenge HIGH_VALUE_TX completado con POST /operations/{id}/two-factor (si se envía, tiene que coincidir)',
+      ),
   })
   .strict()
   .meta({ id: 'SubmitSignatureRequest' });
@@ -103,7 +110,7 @@ export interface OperationRoutesOptions {
   operations: OperationService;
 }
 
-function operationActor(request: FastifyRequest): OperationActor {
+export function operationActor(request: FastifyRequest): OperationActor {
   const session = request.session;
   const platform = request.platformSession;
   if (!session || !platform) throw new Error('ruta crítica sin sesión de cuenta o PlatformSession');

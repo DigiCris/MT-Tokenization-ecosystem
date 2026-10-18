@@ -20,6 +20,7 @@ const ALL_MIGRATIONS = [
   '0003_signer_key_attestation',
   '0004_wallet_onboarding',
   '0005_operation_pipeline',
+  '0006_whitelist_send_swap',
 ];
 const hash = () => randomBytes(32);
 const sig = () => randomBytes(65);
@@ -61,6 +62,7 @@ const ALL_TABLES = [
   'wallet_keys_metadata',
   'wallet_operations',
   'wallets',
+  'whitelist_events',
   'whitelist_requests',
   'whitelisted_destinations',
 ];
@@ -85,6 +87,9 @@ const FOREIGN_KEYS: [string, string, string][] = [
   ['whitelist_requests', 'challenge_id', 'security_challenges'],
   ['whitelist_requests', 'operation_id', 'wallet_operations'],
   ['whitelisted_destinations', 'wallet_id', 'wallets'],
+  ['whitelisted_destinations', 'request_id', 'whitelist_requests'],
+  ['whitelist_events', 'safe_address', 'wallets'],
+  ['operation_groups', 'user_id', 'users'],
   ['wallet_operations', 'user_id', 'users'],
   ['wallet_operations', 'wallet_id', 'wallets'],
   ['wallet_operations', 'platform_session_id', 'platform_sessions'],

@@ -316,6 +316,7 @@ const queueFields = {
   WATCHER_INTERVAL_MS: positiveInt(2_000, 60_000),
   INDEXER_INTERVAL_MS: positiveInt(4_000, 600_000),
   RECONCILER_INTERVAL_MS: positiveInt(60_000, 3_600_000),
+  EFFECTS_INTERVAL_MS: positiveInt(5_000, 600_000),
 };
 
 const rpcFields = {
@@ -517,6 +518,8 @@ export interface AppConfig {
     watcherIntervalMs: number;
     indexerIntervalMs: number;
     reconcilerIntervalMs: number;
+    /** P14: sincronización de whitelist, grupos de swap y notificaciones de alto valor. */
+    effectsIntervalMs: number;
   };
   rpc: {
     primaryUrl: Secret<string>;
@@ -585,6 +588,7 @@ export function loadConfig(options: LoadOptions = {}): AppConfig {
       watcherIntervalMs: v.WATCHER_INTERVAL_MS,
       indexerIntervalMs: v.INDEXER_INTERVAL_MS,
       reconcilerIntervalMs: v.RECONCILER_INTERVAL_MS,
+      effectsIntervalMs: v.EFFECTS_INTERVAL_MS,
     },
     rpc: {
       primaryUrl: v.RPC_PRIMARY_URL,

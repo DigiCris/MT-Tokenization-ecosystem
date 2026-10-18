@@ -72,6 +72,17 @@ function firstFree(used: Set<bigint>, from: bigint): bigint {
   return n;
 }
 
+/** El menor n ≥ from tal que n … n + count − 1 están libres. */
+function firstFreeRun(used: Set<bigint>, from: bigint, count: number): bigint {
+  let n = firstFree(used, from);
+  for (;;) {
+    let k = 1;
+    while (k < count && !used.has(n + BigInt(k))) k++;
+    if (k === count) return n;
+    n = firstFree(used, n + BigInt(k));
+  }
+}
+
 /**
  * Asigna el nonce de una operación nueva. La fila de la wallet tiene que estar bloqueada (lockWallet) en la misma
  * transacción, que inserta la operación con el nonce devuelto.
@@ -81,11 +92,24 @@ export async function allocateNonce(
   walletId: string,
   onchainNonce: bigint,
 ): Promise<bigint> {
+  return allocateNonces(trx, walletId, onchainNonce, 1);
+}
+
+/**
+ * Asigna `count` nonces consecutivos (el par approve/swap de un swap, P14.T05: N y N+1) con las mismas reglas que
+ * `allocateNonce`; devuelve el primero.
+ */
+export async function allocateNonces(
+  trx: Transaction<Database>,
+  walletId: string,
+  onchainNonce: bigint,
+  count: number,
+): Promise<bigint> {
   const floorExecuted = await executedFloor(trx, walletId);
   const from = onchainNonce > floorExecuted ? onchainNonce : floorExecuted;
   const used = await usedNonces(trx, walletId, from);
-  const nonce = firstFree(used, from);
-  used.add(nonce);
+  const nonce = firstFreeRun(used, from, count);
+  for (let k = 0; k < count; k++) used.add(nonce + BigInt(k));
   await trx
     .updateTable('wallets')
     .set({ next_safe_nonce: firstFree(used, from).toString() })

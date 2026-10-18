@@ -31,7 +31,9 @@ export const OPERATION_STATUSES = [
 export const ALLOWED_TRANSITIONS: Readonly<Record<OperationStatus, readonly OperationStatus[]>> = {
   // Sin firma: la firma válida la encola; a los 15 min vence; cancelarla la descarta (nonce liberado).
   CREATED: ['USER_SIGNED', 'EXPIRED', 'CANCELLED'],
-  USER_SIGNED: ['QUEUED', 'CANCEL_REQUESTED'],
+  // FAILED_FINAL sin pasar por el worker (agregado al diagrama de §7.4, P14.T05): la mitad firmada de un par
+  // approve/swap cuya otra mitad venció o se canceló antes de firmarse (S nunca la co-firmó; el nonce se libera).
+  USER_SIGNED: ['QUEUED', 'CANCEL_REQUESTED', 'FAILED_FINAL'],
   // FAILED_FINAL sin pasar por el worker (agregado al diagrama de §7.4): la NoOp que perdió la carrera de cancelación
   // ([B-NONCE-06]) o una firma de más de 24 h que esperaba un nonce menor ([B-PSES-06], SIGNATURE_STALE).
   QUEUED: ['VALIDATING', 'CANCEL_REQUESTED', 'FAILED_FINAL'],

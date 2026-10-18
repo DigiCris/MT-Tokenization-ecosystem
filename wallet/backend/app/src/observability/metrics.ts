@@ -36,6 +36,10 @@ export interface Metrics {
   sovereignModified: Counter;
   reconcilerDiscrepancies: Counter<'kind'>;
   indexerHeadBlock: Gauge<'indexer'>;
+  whitelistEvents: Counter<'event'>;
+  twoFactorChallenges: Counter<'method' | 'result'>;
+  swapQuotes: Counter<'result'>;
+  notificationsCreated: Counter<'type'>;
 }
 
 export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metrics {
@@ -225,6 +229,30 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_indexer_head_block',
       help: 'Último bloque procesado por cada indexer',
       labelNames: ['indexer'],
+      registers,
+    }),
+    whitelistEvents: new Counter({
+      name: 'mtw_whitelist_events_total',
+      help: 'Eventos del ciclo de vida de la whitelist (pedido, challenge, alta on-chain, activación, baja)',
+      labelNames: ['event'],
+      registers,
+    }),
+    twoFactorChallenges: new Counter({
+      name: 'mtw_two_factor_challenges_total',
+      help: '2FA de operaciones de alto valor por factor y resultado',
+      labelNames: ['method', 'result'],
+      registers,
+    }),
+    swapQuotes: new Counter({
+      name: 'mtw_swap_quotes_total',
+      help: 'Cotizaciones de swap (QuoterV2) por resultado',
+      labelNames: ['result'],
+      registers,
+    }),
+    notificationsCreated: new Counter({
+      name: 'mtw_notifications_created_total',
+      help: 'Notificaciones in-app creadas por tipo',
+      labelNames: ['type'],
       registers,
     }),
   };

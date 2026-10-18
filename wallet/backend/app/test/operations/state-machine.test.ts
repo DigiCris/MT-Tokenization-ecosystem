@@ -42,6 +42,8 @@ let nonce = 0;
 const DIAGRAM: [OperationStatus, OperationStatus][] = [
   ['QUEUED', 'FAILED_FINAL'],
   ['REORGED', 'MINED'],
+  // Agregada en P14: la mitad firmada de un par approve/swap que no se completó (sin co-firma de S).
+  ['USER_SIGNED', 'FAILED_FINAL'],
   ['CREATED', 'USER_SIGNED'],
   ['CREATED', 'EXPIRED'],
   ['CREATED', 'CANCELLED'],

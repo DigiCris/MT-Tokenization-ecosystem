@@ -35,7 +35,9 @@ import { OperationService } from './operations/service.ts';
 import { OperationStateMachine } from './operations/state-machine.ts';
 import { PlatformSessionIssuer } from './platform-session/token.ts';
 import { SafeLease } from './worker/lease.ts';
+import { OperationEffects } from './worker/effects.ts';
 import { startOperationsWorker } from './worker/main.ts';
+import { WhitelistSync } from './whitelist/sync.ts';
 import { OperationPipeline } from './worker/pipeline.ts';
 import { SovereignModification } from './wallets/sovereign.ts';
 import { createAccountServices, createWalletServices } from './services.ts';
@@ -331,9 +333,10 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
     });
     const audit = new AuditWriter(config.secrets.auditChainKey, metrics);
     const machine = new OperationStateMachine({ db, audit, outbox });
+    const emails = new EmailOutbox(outbox, config.secrets.fieldEncryptionKey);
     const sovereign = new SovereignModification({
       audit,
-      email: new EmailOutbox(outbox, config.secrets.fieldEncryptionKey),
+      email: emails,
       logger: logger.child({ component: 'sovereign' }),
       metrics,
     });
@@ -359,6 +362,20 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
         retry: config.worker.retry,
       },
     });
+    // Efectos de P14: whitelist desde los eventos on-chain.
+    const whitelistSync = new WhitelistSync({
+      db,
+      rpc,
+      audit,
+      emails,
+      snapshot: () => snapshot,
+      logger: logger.child({ component: 'whitelist-sync' }),
+      metrics,
+    });
+    const effects = new OperationEffects(
+      [{ name: 'whitelist', runOnce: () => whitelistSync.runOnce() }],
+      logger.child({ component: 'operation-effects' }),
+    );
     const operationsConnection = createRedis(
       config.redis.url.reveal(),
       'worker',
@@ -409,6 +426,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
         logger: logger.child({ component: 'reconciler' }),
         metrics,
       }),
+      effects,
       logger,
       metrics,
       options: {
@@ -416,6 +434,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
         watcherIntervalMs: config.worker.watcherIntervalMs,
         indexerIntervalMs: config.worker.indexerIntervalMs,
         reconcilerIntervalMs: config.worker.reconcilerIntervalMs,
+        effectsIntervalMs: config.worker.effectsIntervalMs,
       },
     });
     closers.unshift(() => operationsWorker.close());

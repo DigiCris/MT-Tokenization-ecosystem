@@ -34,6 +34,7 @@ import { addressToBuffer, bufferToAddress, bufferToHex, hexToBuffer } from '../l
 import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
 import { challengeFacts } from '../operations/challenges.ts';
+import { swapPairingFacts } from '../operations/pairing.ts';
 import { decodeRevertReason, policyFactsFrom, readOperationContext } from '../operations/chain-context.ts';
 import { safeTxFromJson, safeTxToJson, type CanonicalIntent } from '../operations/intent.ts';
 import { dailyOutflow } from '../operations/ledger.ts';
@@ -489,6 +490,15 @@ export class OperationPipeline {
       amount: call.kind === 'ERC20_TRANSFER' ? call.amount : 0n,
     });
     Object.assign(facts, await challengeFacts(this.#d.db, op, call));
+    // Par de un swap [B-SIG-02]: SWAP N+1 firmado por la U vigente (approve) o approve N−1 ya co-firmado por S (swap).
+    Object.assign(
+      facts,
+      await swapPairingFacts(this.#d.db, op, call, {
+        mode: 'execute',
+        chainId: snapshot.chainId,
+        userKey: ctx.state.roles.userKey,
+      }),
+    );
     const verdict = evaluatePolicy(snapshot, {
       safe,
       role: op.owner_role as 'U' | 'R',

@@ -1,5 +1,7 @@
 // Indexer de la cadena (P13.T07, [B-FIN-03]): eventos de SafeL2 de las Safes de la plataforma (ejecuciones del backend
-// y soberanas, para que el historial sea completo) y `Transfer` de USDC/USDT desde/hacia esas Safes (`token_transfers`).
+// y soberanas, para que el historial sea completo), `Transfer` de USDC/USDT desde/hacia esas Safes (`token_transfers`)
+// y altas/bajas de DestinationWhitelist de esas Safes (`whitelist_events`, P14: las aplica la sincronización de whitelist
+// del worker, también las soberanas o las hechas con MultiSend).
 // Lee por rangos de bloques con quórum (los dos proveedores tienen que devolver exactamente los mismos logs) hasta el
 // head común, guarda el cursor con el hash de su bloque y, si ese hash cambió, retrocede y marca REORGED lo indexado
 // después del punto de retroceso. Las filas avanzan MINED → CONFIRMED → FINALIZED con la misma política de finalidad
@@ -23,6 +25,13 @@ export const SAFE_MULTISIG_TRANSACTION = parseAbiItem(
 export const EXECUTION_SUCCESS = parseAbiItem('event ExecutionSuccess(bytes32 indexed txHash, uint256 payment)');
 export const EXECUTION_FAILURE = parseAbiItem('event ExecutionFailure(bytes32 indexed txHash, uint256 payment)');
 export const ERC20_TRANSFER = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
+export const DESTINATION_ADDED = parseAbiItem(
+  'event DestinationAdded(address indexed safe, address indexed destination, uint64 activatesAt)',
+);
+export const DESTINATION_REMOVED = parseAbiItem(
+  'event DestinationRemoved(address indexed safe, address indexed destination)',
+);
+const ADDED_TOPIC = toEventSelector(DESTINATION_ADDED).toLowerCase();
 
 const MULTISIG_TOPIC = toEventSelector(SAFE_MULTISIG_TRANSACTION).toLowerCase();
 const SUCCESS_TOPIC = toEventSelector(EXECUTION_SUCCESS).toLowerCase();
@@ -75,6 +84,7 @@ export interface IndexerResult {
   toBlock: string | null;
   executions: number;
   transfers: number;
+  whitelistEvents: number;
   rewound: boolean;
 }
 
@@ -116,7 +126,14 @@ export class ChainIndexer {
 
   /** Una pasada: verifica el cursor, indexa el siguiente rango y avanza la finalidad de lo indexado. */
   async runOnce(): Promise<IndexerResult> {
-    const result: IndexerResult = { fromBlock: null, toBlock: null, executions: 0, transfers: 0, rewound: false };
+    const result: IndexerResult = {
+      fromBlock: null,
+      toBlock: null,
+      executions: 0,
+      transfers: 0,
+      whitelistEvents: 0,
+      rewound: false,
+    };
     const head = await this.#d.rpc.commonHead();
     let cursor = await this.#d.db
       .selectFrom('chain_cursors')
@@ -145,6 +162,7 @@ export class ChainIndexer {
           const counts = await this.#indexRange(safes, from, to);
           result.executions = counts.executions;
           result.transfers = counts.transfers;
+          result.whitelistEvents = counts.whitelistEvents;
           break;
         } catch (error) {
           // Un proveedor que limita el rango de eth_getLogs (p. ej. un plan gratuito): se reintenta con la mitad.
@@ -195,6 +213,12 @@ export class ChainIndexer {
         .where('block_number', '>', target.toString())
         .where('status', 'in', ['MINED', 'CONFIRMED'])
         .execute();
+      await trx
+        .updateTable('whitelist_events')
+        .set({ status: 'REORGED' })
+        .where('block_number', '>', target.toString())
+        .where('status', 'in', ['MINED', 'CONFIRMED'])
+        .execute();
     });
     await this.#saveCursor(target, await this.#blockHash(target));
     this.#d.metrics.reorgsDetected.inc({ kind: 'indexer' });
@@ -223,11 +247,13 @@ export class ChainIndexer {
     safes: Address[],
     fromBlock: bigint,
     toBlock: bigint,
-  ): Promise<{ executions: number; transfers: number }> {
+  ): Promise<{ executions: number; transfers: number; whitelistEvents: number }> {
     const snapshot = this.#d.snapshot();
     const tokens = [snapshot.tokens.USDC, snapshot.tokens.USDT];
+    const whitelist = snapshot.contracts.destinationWhitelist;
     const safeEvents: LogSummary[] = [];
     const transfers: LogSummary[] = [];
+    const whitelistLogs: LogSummary[] = [];
     for (let i = 0; i < safes.length; i += ADDRESS_CHUNK) {
       const chunk = safes.slice(i, i + ADDRESS_CHUNK);
       safeEvents.push(
@@ -248,10 +274,54 @@ export class ChainIndexer {
           client.getLogs({ address: tokens, event: ERC20_TRANSFER, args: { to: chunk }, fromBlock, toBlock }),
         )),
       );
+      whitelistLogs.push(
+        ...(await this.#logs('eth_getLogs:whitelist-added', (client) =>
+          client.getLogs({ address: whitelist, event: DESTINATION_ADDED, args: { safe: chunk }, fromBlock, toBlock }),
+        )),
+        ...(await this.#logs('eth_getLogs:whitelist-removed', (client) =>
+          client.getLogs({ address: whitelist, event: DESTINATION_REMOVED, args: { safe: chunk }, fromBlock, toBlock }),
+        )),
+      );
     }
     const executions = await this.#storeExecutions(safeEvents);
     const stored = await this.#storeTransfers(transfers, new Set(safes.map((s) => s.toLowerCase())));
-    return { executions, transfers: stored };
+    const whitelistEvents = await this.#storeWhitelistEvents(whitelistLogs);
+    return { executions, transfers: stored, whitelistEvents };
+  }
+
+  /** Altas y bajas de DestinationWhitelist (las aplica la sincronización de whitelist cuando están confirmadas). */
+  async #storeWhitelistEvents(logs: LogSummary[]): Promise<number> {
+    const snapshot = this.#d.snapshot();
+    let stored = 0;
+    for (const log of logs) {
+      const added = log.topics[0]?.toLowerCase() === ADDED_TOPIC;
+      const [activatesAt] = added ? decodeAbiParameters([{ type: 'uint64' }], log.data) : [null];
+      const result = await this.#d.db
+        .insertInto('whitelist_events')
+        .values({
+          chain_id: snapshot.chainId,
+          safe_address: addressToBuffer(addressOfTopic(log.topics[1])),
+          destination: addressToBuffer(addressOfTopic(log.topics[2])),
+          kind: added ? 'ADDED' : 'REMOVED',
+          activates_at: activatesAt === null ? null : new Date(Number(activatesAt) * 1000),
+          tx_hash: hexToBuffer(log.transactionHash, 32),
+          log_index: log.logIndex,
+          block_number: log.blockNumber,
+          block_hash: hexToBuffer(log.blockHash, 32),
+          status: 'MINED',
+        })
+        .onConflict((oc) =>
+          oc.columns(['chain_id', 'tx_hash', 'log_index']).doUpdateSet({
+            block_number: log.blockNumber,
+            block_hash: hexToBuffer(log.blockHash, 32),
+            status: 'MINED',
+          }),
+        )
+        .returning(sql<boolean>`(xmax = 0)`.as('inserted'))
+        .executeTakeFirstOrThrow();
+      if (result.inserted) stored++;
+    }
+    return stored;
   }
 
   /** Empareja cada ExecutionSuccess/Failure con el SafeMultiSigTransaction previo de la misma Safe y tx. */
@@ -406,7 +476,7 @@ export class ChainIndexer {
   async #advanceFinality(head: bigint): Promise<void> {
     const c = this.#d.confirmations;
     const tags = c.policy === 'tags' ? await this.#d.rpc.headTags() : null;
-    for (const table of ['safe_executions', 'token_transfers'] as const) {
+    for (const table of ['safe_executions', 'token_transfers', 'whitelist_events'] as const) {
       const blocks = await this.#d.db
         .selectFrom(table)
         .select(['block_number', 'block_hash'])
@@ -426,7 +496,9 @@ export class ChainIndexer {
             .where('block_hash', '=', block.block_hash)
             .where('status', 'in', ['MINED', 'CONFIRMED'])
             .execute();
-          this.#d.metrics.reorgsDetected.inc({ kind: table === 'safe_executions' ? 'execution' : 'transfer' });
+          this.#d.metrics.reorgsDetected.inc({
+            kind: table === 'safe_executions' ? 'execution' : table === 'token_transfers' ? 'transfer' : 'whitelist',
+          });
           continue;
         }
         const confirmed = tags ? number <= tags.safe : head - number + 1n >= BigInt(c.confirmationDepth);

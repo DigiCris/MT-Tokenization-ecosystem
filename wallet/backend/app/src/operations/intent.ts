@@ -142,6 +142,8 @@ export interface OperationView {
   walletId: string;
   status: OperationStatus;
   operationType: OperationKind;
+  /** Grupo de swap (approve + swap) al que pertenece, si corresponde. */
+  groupId: string | null;
   safeNonce: string;
   safeTxHash: Hex;
   txHash: Hex | null;

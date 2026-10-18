@@ -91,6 +91,7 @@ describe('health', () => {
             '0003_signer_key_attestation',
             '0004_wallet_onboarding',
             '0005_operation_pipeline',
+            '0006_whitelist_send_swap',
           ],
         },
       },

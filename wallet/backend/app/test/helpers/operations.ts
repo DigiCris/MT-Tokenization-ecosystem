@@ -35,6 +35,7 @@ import { readSignerTls, SignerClient } from '../../src/signer-client/client.ts';
 import { SignerKeyService } from '../../src/signer-client/sharding.ts';
 import { SovereignModification } from '../../src/wallets/sovereign.ts';
 import { createRedis } from '../../src/queue/redis.ts';
+import { WhitelistSync } from '../../src/whitelist/sync.ts';
 import { SafeLease } from '../../src/worker/lease.ts';
 import { startOperationsWorker, type OperationsWorker } from '../../src/worker/main.ts';
 import { OperationPipeline, type PipelineOptions } from '../../src/worker/pipeline.ts';
@@ -49,6 +50,7 @@ import {
   type Session,
 } from './onboarding.ts';
 import { testRedisUrl } from './api.ts';
+import { waitForMessage, type MailpitMessage } from './mailpit.ts';
 import { signP256, unlockWallet, type UnlockedSession } from './platform.ts';
 
 /** Holders de USDC/USDT en el bloque del fork (los mismos que usa SeedLocal). */
@@ -79,6 +81,8 @@ export interface OperationsEnv {
   watcher: (confirmations?: ConfirmationPolicy, rpc?: RpcQuorumClient) => FinalityWatcher;
   indexer: () => ChainIndexer;
   reconciler: () => Reconciler;
+  /** P14: efectos del worker (whitelist desde los eventos on-chain). */
+  whitelistSync: () => WhitelistSync;
   close: () => Promise<void>;
 }
 
@@ -111,12 +115,8 @@ export async function startOperationsEnv(options: { redisDb: number; logger?: Lo
     config.secrets.sessionIssuerPublicKey,
   );
   const logger = options.logger ?? createLogger({ level: 'silent', service: 'test-operations' });
-  const sovereign = new SovereignModification({
-    audit,
-    email: new EmailOutbox(outbox, config.secrets.fieldEncryptionKey),
-    logger,
-    metrics: base.metrics,
-  });
+  const emails = new EmailOutbox(outbox, config.secrets.fieldEncryptionKey);
+  const sovereign = new SovereignModification({ audit, email: emails, logger, metrics: base.metrics });
   const extraClients: SignerClient[] = [];
   const chain = new ForkChain(base.anvil.url, (method, params) => base.anvil.rpc(method, params));
   await chain.init();
@@ -181,6 +181,16 @@ export async function startOperationsEnv(options: { redisDb: number; logger?: Lo
         audit,
         snapshot: () => base.snapshot,
         sovereign,
+        logger,
+        metrics: base.metrics,
+      }),
+    whitelistSync: () =>
+      new WhitelistSync({
+        db,
+        rpc: base.rpc,
+        audit,
+        emails,
+        snapshot: () => base.snapshot,
         logger,
         metrics: base.metrics,
       }),
@@ -606,4 +616,74 @@ export class ForkChain {
     });
     await this.increaseTime(Number(delay) + 1);
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// P14: emails, sincronización con la cadena y requests de whitelist
+
+const seenEmails = new Set<string>();
+
+/** El próximo email de `address` cuyo asunto contiene `subject` y que todavía no se usó en el archivo. */
+export async function nextEmail(address: string, subject: string, timeoutMs = 30_000): Promise<MailpitMessage> {
+  const message = await waitForMessage(address, (m) => m.subject.includes(subject) && !seenEmails.has(m.id), timeoutMs);
+  seenEmails.add(message.id);
+  return message;
+}
+
+/** Indexa lo minado, confirma (mina `confirmations` bloques) y aplica los efectos de whitelist. */
+export async function syncChain(env: OperationsEnv, confirmations = 2): Promise<void> {
+  const indexer = env.indexer();
+  await indexer.runOnce();
+  await env.chain.mine(confirmations);
+  await indexer.runOnce();
+  await env.whitelistSync().runOnce();
+}
+
+/** POST /wallets/{id}/whitelist/requests con la sesión OPERATIONS. */
+export function requestWhitelist(
+  wallet: ActiveWallet,
+  body: { destination: string; label: string },
+  key = idempotencyKey(),
+) {
+  return critical(
+    wallet.onboarded.user.wallet,
+    sessionOf(wallet),
+    `/wallets/${wallet.walletId}/whitelist/requests`,
+    body,
+    {
+      idempotencyKey: key,
+    },
+  );
+}
+
+/** POST /whitelist/requests/{id}/confirm con el código del email. */
+export function confirmWhitelist(wallet: ActiveWallet, requestId: string, code: string, key = idempotencyKey()) {
+  return critical(
+    wallet.onboarded.user.wallet,
+    sessionOf(wallet),
+    `/whitelist/requests/${requestId}/confirm`,
+    { code },
+    {
+      idempotencyKey: key,
+    },
+  );
+}
+
+/**
+ * Vence las operaciones CREATED que dejó un caso sin firmar (como a los 15 min): ocupan nonces menores y las
+ * siguientes esperarían un nonce que nadie va a firmar ([B-NONCE-03]).
+ */
+export async function expireCreated(env: OperationsEnv, wallet: ActiveWallet): Promise<void> {
+  await env.base.db.app
+    .updateTable('wallet_operations')
+    .set({ expires_at: new Date(Date.now() - 1_000) })
+    .where('wallet_id', '=', wallet.walletId)
+    .where('status', '=', 'CREATED')
+    .execute();
+  await env.operations.sweep();
+}
+
+/** POST crítico con la sesión OPERATIONS de la wallet (Idempotency-Key nueva). */
+export function walletPost(wallet: ActiveWallet, path: string, body: unknown = {}, key = idempotencyKey()) {
+  return critical(wallet.onboarded.user.wallet, sessionOf(wallet), path, body, { idempotencyKey: key });
 }

@@ -5,7 +5,8 @@
 //   → se vuelven a mirar;
 // - barrido: CREATED vencidas → EXPIRED y firmas de más de 24 h → SIGNATURE_STALE;
 // - watcher de finalidad y reorgs [B-FIN-02], indexer [B-FIN-03] y reconciliación (cada 60 s las wallets con
-//   operaciones no finales; una vez por día todas).
+//   operaciones no finales; una vez por día todas);
+// - efectos (P14): whitelist desde los eventos on-chain, grupos de swap y avisos de alto valor.
 //
 // Paralelo ENTRE Safes (concurrencia configurable, default 8) y secuencial DENTRO de cada Safe (lease) [B-Q-05].
 import { Worker } from 'bullmq';
@@ -33,6 +34,8 @@ export interface OperationsWorkerDeps {
   watcher: FinalityWatcher;
   indexer: ChainIndexer;
   reconciler: Reconciler;
+  /** P14: whitelist, grupos de swap y avisos de alto valor (worker/effects.ts). */
+  effects?: { runOnce: () => Promise<unknown> };
   logger: Logger;
   metrics: Metrics;
   options: {
@@ -44,6 +47,8 @@ export interface OperationsWorkerDeps {
     reconcilerIntervalMs: number;
     /** Período de la reconciliación completa (default 24 h). */
     fullReconcileIntervalMs?: number;
+    /** Período de los efectos (default 5 s). */
+    effectsIntervalMs?: number;
     /** Desactiva los lazos periódicos (tests que los manejan a mano). */
     loops?: boolean;
   };
@@ -173,6 +178,9 @@ export function startOperationsWorker(deps: OperationsWorkerDeps): OperationsWor
         logger,
       ),
     );
+    const effects = deps.effects;
+    if (effects)
+      closers.push(loop('effects', deps.options.effectsIntervalMs ?? 5_000, () => effects.runOnce(), logger));
     // Al arrancar: retomar lo que dejó un worker caído sin esperar al primer tick.
     void schedule().catch((error: unknown) => {
       logger.error({ err: error }, 'falló la recuperación inicial de operaciones');
