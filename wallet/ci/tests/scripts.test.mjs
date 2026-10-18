@@ -38,8 +38,9 @@ test('coverage-gate y ci-contracts sólo reintentan ante un límite de ritmo del
 test('match-areas respeta la semántica de * y ** de GitHub Actions', () => {
   const run = (input) => spawnSync('python3', ['-I', join(CI, 'scripts/match-areas.py'), join(CI, 'areas.json')], { input, encoding: 'utf8' }).stdout.trim().split('\n').filter(Boolean);
   assert.deepEqual(run('README.md\nsrc/index.ts\n'), []);
-  // Los tests de backend y signer despliegan los contratos en el fork: un cambio en src/ también los dispara.
-  assert.deepEqual(run('wallet/contracts/src/SecurityGuard.sol\n'), ['wallet-contracts', 'wallet-backend', 'wallet-signer', 'wallet-security']);
+  // Los tests de backend, signer y los de navegador de Wallet (stack aislado) despliegan los contratos en el fork: un
+  // cambio en src/ también los dispara.
+  assert.deepEqual(run('wallet/contracts/src/SecurityGuard.sol\n'), ['wallet-contracts', 'wallet-backend', 'wallet-signer', 'wallet-frontend-wallet', 'wallet-security']);
   assert.deepEqual(run('wallet/contracts/test/unit/SecurityGuard.t.sol\n'), ['wallet-contracts', 'wallet-security']);
   assert.deepEqual(run('.github/workflows/wallet-signer.yml\n'), ['wallet-signer', 'wallet-security']);
   assert.deepEqual(run('.github/workflows/otro.yml\n'), []);
