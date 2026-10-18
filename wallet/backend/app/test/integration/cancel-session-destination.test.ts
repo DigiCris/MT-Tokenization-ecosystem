@@ -267,5 +267,7 @@ describe('destino no autorizado en el paso 7', () => {
       .where('operation_id', '=', send.operationId)
       .execute();
     expect(txs).toHaveLength(0);
-  });
+    // Arma su escenario on-chain (fondeo, alta soberana con U + R y dos operaciones firmadas por el signer): con el fork
+    // remoto de CI tarda más que el timeout por defecto.
+  }, 300_000);
 });

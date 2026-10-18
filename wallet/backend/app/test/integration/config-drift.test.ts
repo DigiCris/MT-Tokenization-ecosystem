@@ -145,7 +145,9 @@ describe('deriva de configuración de la Safe', () => {
     );
     expect(refused).toBeInstanceOf(SignerClientError);
     expect((refused as SignerClientError).code).toBe('SAFE_CONFIG_MODIFIED');
-  });
+    // Retira el Guard por el camino soberano y prueba backend, reconciliación y signer: con el fork remoto de CI se acerca
+    // al timeout por defecto.
+  }, 300_000);
 
   it('fallback handler puesto por U+R en una wallet sin operaciones: la reconciliación completa la marca', async () => {
     const wallet = await activeWallet(env);
