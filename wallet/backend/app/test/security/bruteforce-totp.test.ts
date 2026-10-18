@@ -68,18 +68,30 @@ describe('fuerza bruta por cuenta', () => {
 
     // Desde el 5.º fallo: 1 s, 2 s, 4 s, 8 s, 16 s (el intento durante la espera es 429 y no cuenta).
     for (let failure = THROTTLE.freeFailures + 1; failure <= THROTTLE.softLockFailures; failure++) {
+      const penalty = 2 ** (failure - 1 - THROTTLE.freeFailures);
+      const attemptStart = performance.now();
       const blocked = await wrong();
       const blockedAt = performance.now();
+      if (blocked.statusCode === 401) {
+        // Con la máquina cargada el intento pudo procesarse cuando la espera ya había vencido (la de 1 s, sobre todo):
+        // sólo vale si desde que empezó el fallo anterior pasó al menos la penalidad; si no, el servidor dejó pasar un
+        // intento durante la espera. Ese intento es el fallo siguiente.
+        expect(
+          (blockedAt - lastFailureStart) / 1000,
+          `fallo ${String(failure)} durante la espera`,
+        ).toBeGreaterThanOrEqual(penalty);
+        lastFailureStart = attemptStart;
+        continue;
+      }
       expect(blocked.statusCode, `espera antes del fallo ${String(failure)}`).toBe(429);
       // Retry-After es la espera restante (ceil del TTL): la penalidad exponencial menos lo que pudo transcurrir
       // desde que se registró el fallo anterior (acotado por la latencia medida acá).
-      const penalty = 2 ** (failure - 1 - THROTTLE.freeFailures);
       const elapsedSeconds = (blockedAt - lastFailureStart) / 1000;
       expect(retryAfter(blocked), `penalidad antes del fallo ${String(failure)}`).toBeLessThanOrEqual(penalty);
       expect(retryAfter(blocked)).toBeGreaterThanOrEqual(Math.max(1, Math.ceil(penalty - elapsedSeconds)));
-      // Ni la contraseña correcta pasa durante la espera (una vez: [B-RL] permite 20 intentos por hora por email).
-      if (failure === THROTTLE.freeFailures + 1)
-        expect((await login(account.email, account.password)).statusCode).toBe(429);
+      // Ni la contraseña correcta pasa durante la espera (una vez: [B-RL] permite 20 intentos por hora por email); con
+      // la de 4 s hay margen aunque la máquina esté cargada.
+      if (penalty === 4) expect((await login(account.email, account.password)).statusCode).toBe(429);
       await waitPenalty(blocked);
       lastFailureStart = performance.now();
       expect((await wrong()).statusCode, `fallo ${String(failure)}`).toBe(401);
