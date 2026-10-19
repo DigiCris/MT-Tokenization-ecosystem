@@ -13,13 +13,19 @@
 // 3. Madurez: PENDING_TIMELOCK con `executableAt` ≤ timestamp del bloque head → READY_TO_EXECUTE (notificación).
 // 4. Retiro en el signer ([B-SIG-08]): cada S que dejó de ser la de su Safe (rotada o reemplazada por U + R) se retira
 //    en su shard (deja de firmar; keystore destruido a los 30 días); un shard caído se reintenta en la pasada siguiente.
-import type { Kysely, Selectable, Transaction } from 'kysely';
+//
+// Aislamiento de fallas (revisión de seguridad de ADR-033, ALTO 1): cada paso corre aunque otro falle, y un evento que no
+// se puede aplicar (p. ej. un efecto que viola un constraint) no frena a los demás: queda en cuarentena con el error, la
+// alerta `ROTATION_EVENT_QUARANTINED` y la métrica, y se reintenta con espera exponencial. Los eventos posteriores de su
+// misma Safe esperan detrás de él (el orden por Safe no se pierde); los de las otras Safes siguen. Sin quórum de RPC, el
+// evento que lo necesita (una cancelación) y los siguientes de su Safe esperan a la próxima pasada, sin cuarentena.
+import { sql, type Kysely, type Selectable, type Transaction } from 'kysely';
 import { isAddressEqual, type Address } from 'viem';
 import type { AuditWriter } from '../audit/audit-writer.ts';
 import { securityGuardAbi } from '../chain/abis/index.ts';
 import { RpcQuorumError, type RpcQuorumClient } from '../chain/rpc-quorum.ts';
 import type { Database, OperationStatus, RotationEventsTable, RotationRole } from '../db/schema.ts';
-import { withTransaction } from '../db/transaction.ts';
+import { TransactionRetriesExhaustedError, withTransaction } from '../db/transaction.ts';
 import type { EmailOutbox } from '../email/email-outbox.ts';
 import { addressToBuffer, bufferToAddress, bufferToHex } from '../lib/bytes.ts';
 import type { Logger } from '../observability/logger.ts';
@@ -47,6 +53,18 @@ const SIGNED: readonly OperationStatus[] = [
   'CANCEL_REQUESTED',
 ];
 const DEAD: readonly OperationStatus[] = ['EXPIRED', 'CANCELLED', 'FAILED_FINAL'];
+const APPLICABLE = ['CONFIRMED', 'FINALIZED'] as const;
+
+/** Espera de la cuarentena: 30 s después del primer intento fallido, el doble en cada uno siguiente, hasta 1 h. */
+const QUARANTINE_BASE_DELAY_MS = 30_000;
+const QUARANTINE_MAX_DELAY_MS = 3_600_000;
+
+export function quarantineDelayMs(attempts: number): number {
+  return Math.min(QUARANTINE_MAX_DELAY_MS, QUARANTINE_BASE_DELAY_MS * 2 ** Math.min(Math.max(attempts - 1, 0), 20));
+}
+
+/** Lo que se registra recién con la transacción del evento confirmada (su cuerpo puede repetirse en un reintento). */
+type AfterCommit = (() => void)[];
 
 export interface RotationSyncDeps {
   db: Kysely<Database>;
@@ -63,6 +81,8 @@ export interface RotationSyncDeps {
 export interface RotationSyncResult {
   operations: number;
   applied: number;
+  /** Eventos que fallaron en esta pasada y quedaron (o siguen) en cuarentena. */
+  quarantined: number;
   ready: number;
   retired: number;
 }
@@ -75,21 +95,45 @@ export class RotationSync {
   }
 
   async runOnce(): Promise<RotationSyncResult> {
-    const operations = await this.#syncOperations();
-    let applied = 0;
-    let ready = 0;
-    try {
-      applied = await this.#applyEvents();
-      ready = await this.#markReady();
-    } catch (error) {
-      if (!(error instanceof RpcQuorumError)) throw error;
-      this.#d.logger.warn(
-        { code: error.code },
-        'sincronización de rotaciones sin quórum: se reintenta en la próxima pasada',
-      );
-    }
-    const retired = await this.#retireInSigner();
-    return { operations, applied, ready, retired };
+    // Cada paso corre aunque falle otro: un evento o un pedido que no se puede procesar no frena la madurez de las
+    // propuestas ni el retiro de las S en el signer. Al final se propaga el primer error (lo registra el lazo).
+    const errors: unknown[] = [];
+    const step = async <T>(name: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await fn();
+      } catch (error) {
+        if (error instanceof RpcQuorumError) {
+          this.#d.logger.warn(
+            { code: error.code, step: name },
+            'sincronización de rotaciones sin quórum: se reintenta en la próxima pasada',
+          );
+        } else {
+          errors.push(error);
+        }
+        return fallback;
+      }
+    };
+    const operations = await step('operations', () => this.#syncOperations(), 0);
+    const { applied, quarantined } = await step('events', () => this.#applyEvents(), { applied: 0, quarantined: 0 });
+    await step('quarantine-gauge', () => this.#reportQuarantined(), undefined);
+    const ready = await step('ready', () => this.#markReady(), 0);
+    const retired = await step('signer-retire', () => this.#retireInSigner(), 0);
+    if (errors.length > 0) throw errors[0];
+    return { operations, applied, quarantined, ready, retired };
+  }
+
+  /** Gauge con los eventos en cuarentena (alerta mientras haya alguno). */
+  async #reportQuarantined(): Promise<void> {
+    const metrics = this.#d.metrics;
+    if (metrics === undefined) return;
+    const row = await this.#d.db
+      .selectFrom('rotation_events')
+      .select((eb) => eb.fn.countAll<string>().as('n'))
+      .where('quarantined_at', 'is not', null)
+      .where('applied_at', 'is', null)
+      .where('status', 'in', APPLICABLE)
+      .executeTakeFirst();
+    metrics.rotationEventsQuarantined.set(Number(row?.n ?? 0));
   }
 
   /** Pide a cada shard el retiro de sus S ya retiradas en la base; idempotente del lado del signer. */
@@ -194,43 +238,138 @@ export class RotationSync {
     return changed;
   }
 
-  async #applyEvents(): Promise<number> {
+  async #applyEvents(): Promise<{ applied: number; quarantined: number }> {
+    const now = new Date();
     const events = await this.#d.db
-      .selectFrom('rotation_events')
-      .selectAll()
-      .where('applied_at', 'is', null)
-      .where('status', 'in', ['CONFIRMED', 'FINALIZED'])
-      .orderBy('block_number')
-      .orderBy('log_index')
+      .selectFrom('rotation_events as e')
+      .selectAll('e')
+      .where('e.applied_at', 'is', null)
+      .where('e.status', 'in', APPLICABLE)
+      // Uno en cuarentena se reintenta cuando vence su espera.
+      .where((eb) => eb.or([eb('e.retry_at', 'is', null), eb('e.retry_at', '<=', now)]))
+      // Los posteriores de una Safe con un evento en cuarentena esperan detrás de él: el orden por Safe no se pierde.
+      .where((eb) =>
+        eb.not(
+          eb.exists(
+            eb
+              .selectFrom('rotation_events as q')
+              .select('q.id')
+              .whereRef('q.chain_id', '=', 'e.chain_id')
+              .whereRef('q.safe_address', '=', 'e.safe_address')
+              .where('q.quarantined_at', 'is not', null)
+              .where('q.applied_at', 'is', null)
+              .where('q.status', 'in', APPLICABLE)
+              .where(sql<boolean>`(q.block_number, q.log_index) < (e.block_number, e.log_index)`),
+          ),
+        ),
+      )
+      .orderBy('e.block_number')
+      .orderBy('e.log_index')
       .limit(200)
       .execute();
     let applied = 0;
+    let quarantined = 0;
+    // Safes con un evento que no se aplicó en esta pasada: sus eventos siguientes esperan a la próxima.
+    const held = new Set<string>();
     for (const event of events) {
-      // Quién canceló se resuelve contra los roles on-chain (fuera de la transacción).
-      const roles =
-        event.kind === 'CANCELLED'
-          ? await this.#roles(bufferToAddress(event.safe_address), bufferToAddress(event.timelock))
-          : null;
-      await withTransaction(
-        this.#d.db,
-        async (trx) => {
-          const claimed = await trx
-            .updateTable('rotation_events')
-            .set({ applied_at: new Date() })
-            .where('id', '=', event.id)
-            .where('applied_at', 'is', null)
-            .returning('id')
-            .executeTakeFirst();
-          if (!claimed) return;
-          if (event.kind === 'PROPOSED') await this.#proposed(trx, event);
-          else if (event.kind === 'CANCELLED') await this.#cancelled(trx, event, roles);
-          else await this.#executed(trx, event);
-          applied++;
-        },
-        { auditLock: true },
+      const safeKey = `${String(event.chain_id)}:${bufferToHex(event.safe_address)}`;
+      if (held.has(safeKey)) continue;
+      try {
+        if (await this.#apply(event)) applied++;
+      } catch (error) {
+        held.add(safeKey);
+        // Transitorio (sin quórum de RPC o con los reintentos por serialización agotados): sin cuarentena.
+        if (error instanceof RpcQuorumError || error instanceof TransactionRetriesExhaustedError) {
+          this.#d.logger.warn(
+            { err: error, eventId: event.id, kind: event.kind, safe: bufferToAddress(event.safe_address) },
+            'evento de rotación sin aplicar: se reintenta en la próxima pasada',
+          );
+          continue;
+        }
+        await this.#quarantine(event, error);
+        quarantined++;
+      }
+    }
+    return { applied, quarantined };
+  }
+
+  /** Aplica un evento una sola vez (true si lo aplicó esta pasada); uno que estaba en cuarentena sale de ella. */
+  async #apply(event: EventRow): Promise<boolean> {
+    // Quién canceló se resuelve contra los roles on-chain (fuera de la transacción).
+    const roles =
+      event.kind === 'CANCELLED'
+        ? await this.#roles(bufferToAddress(event.safe_address), bufferToAddress(event.timelock))
+        : null;
+    let after: AfterCommit = [];
+    const done = await withTransaction(
+      this.#d.db,
+      async (trx) => {
+        after = [];
+        const claimed = await trx
+          .updateTable('rotation_events')
+          .set({ applied_at: new Date(), quarantined_at: null, retry_at: null })
+          .where('id', '=', event.id)
+          .where('applied_at', 'is', null)
+          .returning('id')
+          .executeTakeFirst();
+        if (!claimed) return false;
+        if (event.kind === 'PROPOSED') await this.#proposed(trx, event);
+        else if (event.kind === 'CANCELLED') await this.#cancelled(trx, event, roles);
+        else await this.#executed(trx, event, after);
+        return true;
+      },
+      { auditLock: true },
+    );
+    if (!done) return false;
+    for (const log of after) log();
+    if (event.quarantined_at !== null) {
+      this.#d.logger.info(
+        { eventId: event.id, kind: event.kind, attempts: event.apply_attempts },
+        'evento de rotación aplicado: salió de la cuarentena',
       );
     }
-    return applied;
+    return true;
+  }
+
+  /**
+   * Un evento que no se pudo aplicar queda en cuarentena con el error y el próximo intento (espera exponencial). La
+   * alerta sale al entrar; los reintentos fallidos suman a la métrica, y el gauge sigue mientras esté en cuarentena.
+   */
+  async #quarantine(event: EventRow, error: unknown): Promise<void> {
+    const attempts = event.apply_attempts + 1;
+    const retryAt = new Date(Date.now() + quarantineDelayMs(attempts));
+    const message = (error instanceof Error ? `${error.name}: ${error.message}` : String(error)).slice(0, 500);
+    await this.#d.db
+      .updateTable('rotation_events')
+      .set({
+        apply_attempts: attempts,
+        apply_error: message,
+        quarantined_at: event.quarantined_at ?? new Date(),
+        retry_at: retryAt,
+      })
+      .where('id', '=', event.id)
+      .where('applied_at', 'is', null)
+      .execute();
+    this.#d.metrics?.rotationEventApplyFailures.inc({ kind: event.kind });
+    const fields = {
+      eventId: event.id,
+      kind: event.kind,
+      safe: bufferToAddress(event.safe_address),
+      proposalId: bufferToHex(event.proposal_id),
+      txHash: bufferToHex(event.tx_hash),
+      blockNumber: event.block_number,
+      attempts,
+      retryAt: retryAt.toISOString(),
+      err: error,
+    };
+    if (event.quarantined_at === null) {
+      this.#d.logger.error(
+        { alert: 'ROTATION_EVENT_QUARANTINED', ...fields },
+        'evento de rotación en cuarentena: no se pudo aplicar; los siguientes de su Safe esperan y los demás siguen',
+      );
+    } else {
+      this.#d.logger.warn(fields, 'el evento de rotación sigue en cuarentena');
+    }
   }
 
   /** Roles de la Safe en el Guard dueño del timelock del evento (quien validó la cancelación on-chain). */
@@ -412,7 +551,7 @@ export class RotationSync {
     });
   }
 
-  async #executed(trx: Transaction<Database>, event: EventRow): Promise<void> {
+  async #executed(trx: Transaction<Database>, event: EventRow, after: AfterCommit): Promise<void> {
     const wallet = await this.#walletOf(trx, event);
     const safe = bufferToAddress(event.safe_address);
     const rotation = await trx
@@ -433,6 +572,19 @@ export class RotationSync {
     const oldKey = bufferToAddress(rotation.old_key);
     const newKey = bufferToAddress(rotation.new_key);
     const now = new Date();
+    // R′ de un pedido de reemplazo: la Wallet lo pudo haber rechazado (posible sustitución) con la rotación ya en curso.
+    // Desde la revisión de ADR-033 el backend no acepta ese rechazo, pero una fila anterior o una carrera lo dejan así: la
+    // cadena manda (R′ ya es owner), así que el pedido queda CONFIRMED igual y sale la alerta.
+    const enrollment =
+      rotation.role === 'R' && rotation.enrollment_id !== null
+        ? await trx
+            .selectFrom('recovery_metadata')
+            .select(['id', 'enrollment_id', 'status', 'rejection_reason'])
+            .where('id', '=', rotation.enrollment_id)
+            .forUpdate()
+            .executeTakeFirst()
+        : undefined;
+    const rejected = enrollment?.status === 'REJECTED';
     if (rotation.role === 'U' || rotation.role === 'R' || rotation.role === 'S') {
       // Metadatos de claves: la anterior ROTATED_OUT; la nueva ACTIVE (U' y R' ya estaban PENDING; S' se agrega).
       await trx
@@ -451,7 +603,26 @@ export class RotationSync {
         .where('status', '=', 'PENDING')
         .returning('id')
         .executeTakeFirst();
-      if (!pending) {
+      // El rechazo había dejado REVOKED la fila de R′: vuelve a estar viva (con su origen y sus backups).
+      const revoked =
+        !pending && rejected
+          ? await trx
+              .selectFrom('wallet_keys_metadata')
+              .select('id')
+              .where('wallet_id', '=', wallet.id)
+              .where('role', '=', 'R')
+              .where('key_address', '=', addressToBuffer(newKey))
+              .where('status', '=', 'REVOKED')
+              .orderBy('key_version', 'desc')
+              .executeTakeFirst()
+          : undefined;
+      if (revoked) {
+        await trx
+          .updateTable('wallet_keys_metadata')
+          .set({ status: 'ACTIVE', activated_at: now, deactivated_at: null })
+          .where('id', '=', revoked.id)
+          .execute();
+      } else if (!pending) {
         const version = await trx
           .selectFrom('wallet_keys_metadata')
           .select((eb) => eb.fn.max('key_version').as('v'))
@@ -492,11 +663,28 @@ export class RotationSync {
         .where('wallet_id', '=', wallet.id)
         .where('status', '=', 'CONFIRMED')
         .execute();
+      // Sin el motivo ni el momento del rechazo (sólo existen en uno REJECTED); el aviso y su email quedan registrados.
       await trx
         .updateTable('recovery_metadata')
-        .set({ status: 'CONFIRMED', confirmed_at: now })
+        .set({ status: 'CONFIRMED', confirmed_at: now, rejection_reason: null, rejected_at: null })
         .where('id', '=', rotation.enrollment_id)
         .execute();
+      if (rejected) {
+        const rejection = { enrollmentId: enrollment.enrollment_id, reason: enrollment.rejection_reason };
+        after.push(() => {
+          this.#d.logger.error(
+            {
+              alert: 'RECOVERY_REJECTED_KEY_EXECUTED',
+              walletId: wallet.id,
+              rotationId: rotation.id,
+              proposalId: bufferToHex(event.proposal_id),
+              newKey,
+              ...rejection,
+            },
+            'se ejecutó on-chain la rotación hacia una R que la Wallet había rechazado: la cadena manda (posible sustitución de R)',
+          );
+        });
+      }
     }
     if (rotation.role === 'S') {
       await trx

@@ -95,6 +95,7 @@ describe('health', () => {
             '0007_rotations_recovery_migration',
             '0008_executor_rotation_requests',
             '0009_recovery_enrollment_rejection',
+            '0010_rotation_quarantine_rejection_email',
           ],
         },
       },

@@ -9,7 +9,7 @@
 // KeyAcceptance), S' creada por el signer para esta wallet (con su SignerKeyAttestation) y el sucesor del Guard del
 // PolicyRegistry. El estado posterior (propuesta confirmada, madura, cancelada o ejecutada, con sus efectos) lo aplica
 // la sincronización del worker desde los eventos on-chain (rotations/sync.ts).
-import type { Kysely, Selectable } from 'kysely';
+import type { Kysely, Selectable, Transaction } from 'kysely';
 import { encodeFunctionData, getAddress, isAddressEqual, type Address, type Hex } from 'viem';
 import { ApiError } from '../api/errors.ts';
 import type { AuditWriter } from '../audit/audit-writer.ts';
@@ -295,6 +295,10 @@ export class RotationService {
             ? { newKeyIsSignerKey: true }
             : {},
       afterInsert: async (trx, created) => {
+        // R′ se leyó fuera de la transacción: el pedido tiene que seguir SUBMITTED con esa R′ (con lock, contra un
+        // rechazo de la Wallet o un pedido nuevo que lo reemplace en paralelo; el rechazo toma el mismo lock).
+        if (material.enrollmentId !== null)
+          await this.#lockSubmittedEnrollment(trx, material.enrollmentId, material.newKey);
         const values = {
           wallet_id: wallet.id,
           role: input.role,
@@ -443,6 +447,27 @@ export class RotationService {
       throw new ApiError('CONFLICT', { detail: 'no hay un sucesor del Guard registrado en el PolicyRegistry' });
     }
     return { ...none, newKey: getAddress(chain.successor) };
+  }
+
+  /** El enrollment de R′ bloqueado y todavía SUBMITTED con esa misma R′; si no, la propuesta no se arma. */
+  async #lockSubmittedEnrollment(trx: Transaction<Database>, enrollmentId: string, newKey: Address): Promise<void> {
+    const current = await trx
+      .selectFrom('recovery_metadata')
+      .select(['status', 'purpose', 'r_address'])
+      .where('id', '=', enrollmentId)
+      .forUpdate()
+      .executeTakeFirst();
+    if (
+      current?.status !== 'SUBMITTED' ||
+      current.purpose !== 'REPLACEMENT' ||
+      current.r_address === null ||
+      !isAddressEqual(bufferToAddress(current.r_address), newKey)
+    ) {
+      throw new ApiError('CONFLICT', {
+        detail:
+          'el pedido de la clave R nueva cambió (rechazado o reemplazado): vinculala de nuevo desde la app Recovery',
+      });
+    }
   }
 
   /** Hechos de la clave nueva para la ejecución, desde el material guardado del pedido (nunca del cliente). */

@@ -172,7 +172,7 @@ export const recoveryRoutes: FastifyPluginCallbackZod<RecoveryRoutesOptions> = (
           operationId: 'rejectRecoveryEnrollment',
           tags,
           summary:
-            'La Wallet aborta el pedido porque no pudo confirmar R ([F-LNK-02]): REJECTED con el motivo, auditoría, aviso y email de seguridad (idempotente)',
+            'La Wallet aborta el pedido porque no pudo confirmar R ([F-LNK-02]): REJECTED con el motivo, auditoría, aviso y email de seguridad (uno por ventana y usuario; el resto en un resumen), idempotente. 409 si el pedido ya terminó o si es un reemplazo de R con la rotación hacia su R′ en curso (se cancela la rotación)',
           security: criticalSecurity,
           headers: CriticalRequestHeadersSchema,
           params: EnrollmentIdParams,

@@ -207,7 +207,12 @@ Todo por la API del listener de Wallet con la PlatformSession ONBOARDING (step-u
    `MANUAL_COMPARISON_FAILED`, `RETURN_LINK_KEY_MISMATCH` o `RETURN_LINK_UNVERIFIED`; idempotente): el pedido queda
    REJECTED con el motivo, su R deja de estar viva y quedan la auditoría `RECOVERY_ENROLLMENT_REJECTED`, la notificación,
    el email «Posible sustitución de tu clave R», la alerta `RECOVERY_KEY_SUBSTITUTION_SUSPECTED` y la métrica
-   `mtw_recovery_enrollment_rejections_total`. Un pedido reemplazado por otro queda REJECTED con `SUPERSEDED`.
+   `mtw_recovery_enrollment_rejections_total{reason,purpose,alerted}`. Un pedido reemplazado por otro queda REJECTED con
+   `SUPERSEDED` (y conserva cuándo se lo reemplazó si después llega el aviso). El email sale uno por ventana de 1 h y
+   usuario: los siguientes de la ventana quedan retenidos y el worker los manda juntos al cerrarla
+   (`recovery-enrollment-rejections-summary`). El aviso tardío de un pedido reemplazado hace más de 15 min sólo deja la
+   auditoría y la métrica (`alerted="false"`). En el reemplazo de R, con la rotación hacia R′ ya en curso el rechazo
+   responde 409 (auditoría `RECOVERY_ENROLLMENT_REJECTION_REFUSED` y la alerta): hay que cancelar la rotación.
 3. `POST /wallets/{id}/executor`: el shard asignado crea S con su `SignerKeyAttestation` y el backend fija la Safe
    esperada — cálculo local (initializer + CREATE2 con el creation code fijado y
    `saltNonce = uint256(keccak256(abi.encode("MTW_SALT_V1", platformId, walletId)))`) igual a
@@ -278,7 +283,11 @@ CANCEL_REQUESTED ──se mina la NoOp──▶ CANCELLED · CANCEL_REQUESTED �
 
 Alertas en logs (campo `alert`): `REORG_DETECTED`, `TX_REVERTED`, `TX_STUCK`, `FEE_CAP`, `RETRIES_EXHAUSTED`,
 `SAFE_CONFIG_MODIFIED`, `RECONCILIATION_DISCREPANCY`, `SIGNER_RESPONSE_MISMATCH` y, del onboarding,
-`RECOVERY_KEY_SUBSTITUTION_SUSPECTED` (con `mtw_recovery_enrollment_rejections_total`). Métricas: `mtw_operation_transitions_total`,
+`RECOVERY_KEY_SUBSTITUTION_SUSPECTED` (con `mtw_recovery_enrollment_rejections_total`), y de las rotaciones
+`ROTATION_EVENT_QUARANTINED` (un evento del timelock que no se pudo aplicar queda en cuarentena con espera exponencial;
+los siguientes de su Safe esperan y los demás siguen: `mtw_rotation_event_apply_failures_total{kind}` y el gauge
+`mtw_rotation_events_quarantined`) y `RECOVERY_REJECTED_KEY_EXECUTED` (se ejecutó on-chain la rotación hacia una R′ que
+la Wallet había rechazado: la cadena manda). Métricas: `mtw_operation_transitions_total`,
 `mtw_wallet_operations{status}`, `mtw_wallet_operations_stuck`, `mtw_worker_step_duration_seconds`,
 `mtw_executor_transactions_total`, `mtw_reorgs_detected_total`, `mtw_reconciler_discrepancies_total`,
 `mtw_indexer_head_block`. Cada proceso registra al arrancar el snapshot de policy que cargó (anti-rollback,
@@ -318,7 +327,8 @@ Alertas en logs (campo `alert`): `REORG_DETECTED`, `TX_REVERTED`, `TX_STUCK`, `F
 - **Lecturas**: `GET /wallets/{id}/balances` (USDC/USDT y allowance hacia el SwapExecutor, quórum),
   `GET /wallets/{id}/whitelist` (ambos listeners) y `GET /operation-groups/{id}`; todo recurso de otro usuario es 404.
 - **Efectos** (`EFFECTS_INTERVAL_MS`, worker): sincronización de whitelist, coordinación de grupos de swap y avisos
-  de alto valor, idempotentes y separados del pipeline.
+  de alto valor, idempotentes y separados del pipeline (desde P15 también las rotaciones, las migraciones y el resumen
+  de los avisos de rechazo de R retenidos por la ventana de email, ADR-033).
 
 Métricas: `mtw_whitelist_events_total{event}`, `mtw_two_factor_challenges_total{method,result}`,
 `mtw_swap_quotes_total{result}`, `mtw_notifications_created_total{type}`.

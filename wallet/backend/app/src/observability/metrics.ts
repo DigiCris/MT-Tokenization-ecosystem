@@ -27,13 +27,15 @@ export interface Metrics {
   executorsBelowMinimum: Gauge;
   gasTankTransactions: Counter<'purpose' | 'result'>;
   walletOnboarding: Counter<'step' | 'result'>;
-  recoveryEnrollmentRejections: Counter<'reason' | 'purpose'>;
+  recoveryEnrollmentRejections: Counter<'reason' | 'purpose' | 'alerted'>;
   walletVerificationFailures: Counter<'item'>;
   operationTransitions: Counter<'to'>;
   operationErrors: Counter<'code'>;
   workerStepDuration: Histogram<'step'>;
   executorTransactions: Counter<'result'>;
   reorgsDetected: Counter<'kind'>;
+  rotationEventApplyFailures: Counter<'kind'>;
+  rotationEventsQuarantined: Gauge;
   sovereignModified: Counter;
   reconcilerDiscrepancies: Counter<'kind'>;
   indexerHeadBlock: Gauge<'indexer'>;
@@ -183,8 +185,8 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
     }),
     recoveryEnrollmentRejections: new Counter({
       name: 'mtw_recovery_enrollment_rejections_total',
-      help: 'Enrollments de R que la Wallet rechazó porque no pudo confirmar la R ([F-LNK-02]): posible sustitución de R (alerta)',
-      labelNames: ['reason', 'purpose'],
+      help: 'Enrollments de R que la Wallet rechazó porque no pudo confirmar la R ([F-LNK-02]): posible sustitución de R (alerta con alerted="true"; "false" es el aviso tardío de un pedido reemplazado hace más que su vigencia, sin alerta)',
+      labelNames: ['reason', 'purpose', 'alerted'],
       registers,
     }),
     walletVerificationFailures: new Counter({
@@ -222,6 +224,17 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_reorgs_detected_total',
       help: 'Reorgs detectados por el watcher (operación, transfer o ejecución indexada) [B-FIN-02]',
       labelNames: ['kind'],
+      registers,
+    }),
+    rotationEventApplyFailures: new Counter({
+      name: 'mtw_rotation_event_apply_failures_total',
+      help: 'Intentos fallidos de aplicar un evento del RotationTimelock: el evento queda en cuarentena (alerta) y los posteriores de su Safe esperan',
+      labelNames: ['kind'],
+      registers,
+    }),
+    rotationEventsQuarantined: new Gauge({
+      name: 'mtw_rotation_events_quarantined',
+      help: 'Eventos del RotationTimelock en cuarentena al final de la última pasada de la sincronización de rotaciones (alerta si > 0)',
       registers,
     }),
     sovereignModified: new Counter({

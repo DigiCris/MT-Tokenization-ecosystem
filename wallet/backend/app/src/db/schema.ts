@@ -204,10 +204,25 @@ export interface RecoveryMetadataTable {
   retired_at: Timestamp | null;
   /** P15: R sana reutilizada por la Safe nueva de una migración excepcional (viva también en la vieja). */
   reused_from_wallet_id: string | null;
-  /** P17.MAN (N10): por qué quedó REJECTED (null en los rechazados antes de 0009) y cuándo. */
+  /**
+   * P17.MAN (N10): por qué quedó REJECTED (null en los rechazados antes de 0009) y cuándo dejó de valer (en uno
+   * reemplazado, cuando se lo reemplazó, aunque el aviso de la Wallet llegue después).
+   */
   rejection_reason: RecoveryRejectionReason | null;
   rejected_at: Timestamp | null;
+  /** 0010: cuándo llegó el aviso del rechazo de la Wallet (null si no hubo aviso). */
+  rejection_reported_at: Timestamp | null;
+  /** 0010: el email de seguridad del aviso (null si no hubo aviso). */
+  rejection_email: RejectionEmailStatus | null;
+  /** 0010: cuándo salió el email que lo cubre (en el momento o en el resumen de la ventana). */
+  rejection_emailed_at: Timestamp | null;
 }
+
+/**
+ * Email de seguridad del aviso de un rechazo: SENT (en el momento), HELD (retenido para el resumen de la ventana del
+ * usuario), SUMMARIZED (incluido en ese resumen) o NONE (sin email: un reemplazo viejo o sin proveedor de email).
+ */
+export type RejectionEmailStatus = 'SENT' | 'HELD' | 'SUMMARIZED' | 'NONE';
 
 /**
  * Motivo del rechazo de un enrollment de R: reemplazado por un pedido nuevo, o abortado por la Wallet porque no pudo
@@ -496,6 +511,11 @@ export interface RotationEventsTable {
   applied_at: Timestamp | null;
   created_at: GeneratedTimestamp;
   updated_at: GeneratedTimestamp;
+  /** 0010: intentos fallidos de aplicarlo, el último error y la cuarentena (con su próximo intento). */
+  apply_attempts: Generated<number>;
+  apply_error: string | null;
+  quarantined_at: Timestamp | null;
+  retry_at: Timestamp | null;
 }
 
 /** P15: caso de migración excepcional (doble aprobación de operadores). */

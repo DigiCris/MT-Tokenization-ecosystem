@@ -203,6 +203,51 @@ describe('contenido obligatorio', () => {
         CTX,
       ).text,
     ).toContain('Motivo: la dirección copiada de la app Recovery no coincidió');
+    // Lo que pasa con la dirección es veraz también si después se propone on-chain (revisión de ADR-033): la plataforma
+    // no la usa ni la propone, y en el reemplazo de R se pide cancelar una rotación que no se esperaba.
+    expect(text).not.toContain('no quedó registrada');
+    expect(text).toContain(
+      'no va a proponer el reemplazo de tu clave R hacia ninguna dirección que haya llegado por él',
+    );
+    expect(text).toContain(
+      'Si te llega un aviso de una rotación de tu clave R que no esperabas, cancelala desde la app.',
+    );
+    expect(onboarding).toContain('no va a usar para crear tu Safe ninguna dirección que haya llegado por él');
+    expect(onboarding).not.toContain('rotación');
+  });
+
+  it('resumen de los rechazos retenidos de la ventana (revisión de ADR-033): cuántos, motivos, Safe y desde cuándo', () => {
+    const { subject, text } = render('recovery-enrollment-rejections-summary');
+    expect(subject).toBe('Más pedidos de tu clave R cancelados');
+    expect(text).toContain('Cancelamos 3 pedidos más para registrar tu clave de recuperación (R)');
+    expect(text).toContain('Para no llenarte de emails te los mandamos juntos');
+    expect(text).toContain('Pedidos cancelados: 3');
+    expect(text).toContain(
+      'Motivos: la dirección copiada de la app Recovery no coincidió; enlace de regreso que no armó tu app Recovery',
+    );
+    expect(text).toContain(`Safe: ${groupedAddress(SAFE)}`);
+    expect(text).toMatch(/^Primero: 17\/10\/2026, 12:04 \(America\/Argentina\/Buenos_Aires\)$/m);
+    expect(text).toMatch(/^Último \(UTC\): 17\/10\/2026, 15:40 UTC$/m);
+    expect(text).toContain(
+      'La plataforma descartó esos pedidos: no va a proponer el reemplazo de tu clave R hacia ninguna dirección que haya llegado por ellos.',
+    );
+    expect(text).toContain('Si te llega un aviso de una rotación de tu clave R que no esperabas, cancelala');
+    const single = renderTemplate(
+      'recovery-enrollment-rejections-summary',
+      {
+        ...TEMPLATE_FIXTURES['recovery-enrollment-rejections-summary'],
+        count: 1,
+        reasons: ['RETURN_LINK_KEY_MISMATCH'],
+        replacement: false,
+        safe: null,
+      },
+      CTX,
+    ).text;
+    expect(single).toContain('Cancelamos otro pedido para registrar tu clave de recuperación (R)');
+    expect(single).not.toMatch(/^Safe: /m);
+    expect(single).toContain(
+      'La plataforma descartó ese pedido: no va a usar para crear tu Safe ninguna dirección que haya llegado por él.',
+    );
   });
 
   it('cada oración del "si no fuiste vos" empieza en mayúscula', () => {

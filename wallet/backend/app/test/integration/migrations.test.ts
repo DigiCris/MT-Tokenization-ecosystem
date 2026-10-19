@@ -3,7 +3,9 @@
 // CHECKs y GRANTs por rol.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { sql } from 'kysely';
+import { Migrator } from 'kysely/migration';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { MIGRATIONS } from '../../src/db/migrations/index.ts';
 import { migrateToLatest, migrationStatus, pendingMigrations } from '../../src/db/migrator.ts';
 import {
   createTestDatabase,
@@ -24,6 +26,7 @@ const ALL_MIGRATIONS = [
   '0007_rotations_recovery_migration',
   '0008_executor_rotation_requests',
   '0009_recovery_enrollment_rejection',
+  '0010_rotation_quarantine_rejection_email',
 ];
 const hash = () => randomBytes(32);
 const sig = () => randomBytes(65);
@@ -148,6 +151,55 @@ describe('migraciones desde una base vacía', () => {
 
   it('mtw_app no puede ejecutar DDL', async () => {
     expect(await sqlStateOf(sql`CREATE TABLE intruso (id int)`.execute(fresh.app))).toBe('42501');
+  });
+});
+
+describe('0010 sobre datos de 0009', () => {
+  it('los avisos de rechazo anteriores quedan como enviados cuando se rechazaron; los reemplazos, sin aviso', async () => {
+    const old = await createTestDatabase({ migrated: false });
+    try {
+      const migrator = new Migrator({
+        db: old.migrator,
+        provider: { getMigrations: () => Promise.resolve(MIGRATIONS) },
+        migrationTableSchema: 'mtw_meta',
+      });
+      const until0009 = await migrator.migrateTo('0009_recovery_enrollment_rejection');
+      expect(until0009.error).toBeUndefined();
+      const userId = await insertUser(old.app);
+      const wallet = await old.app
+        .insertInto('wallets')
+        .values({ user_id: userId, platform_id: 'mt-test', chain_id: 8453, status: 'CREATING' })
+        .returning('id')
+        .executeTakeFirstOrThrow();
+      const rejectedAt = new Date('2026-10-19T12:00:00.000Z');
+      const insert = (enrollmentId: string, reason: 'SUPERSEDED' | 'RETURN_LINK_UNVERIFIED') =>
+        sql`INSERT INTO recovery_metadata (wallet_id, enrollment_id, status, expires_at, nonce, rejection_reason, rejected_at)
+            VALUES (${wallet.id}, ${enrollmentId}, 'REJECTED', now(), ${hash()}, ${reason}, ${rejectedAt})`.execute(
+          old.app,
+        );
+      const reported = randomUUID();
+      const superseded = randomUUID();
+      await insert(reported, 'RETURN_LINK_UNVERIFIED');
+      await insert(superseded, 'SUPERSEDED');
+
+      expect(await migrateToLatest(old.migrator)).toEqual(['0010_rotation_quarantine_rejection_email']);
+      const rows = await old.app
+        .selectFrom('recovery_metadata')
+        .select(['enrollment_id', 'rejection_reported_at', 'rejection_email', 'rejection_emailed_at'])
+        .execute();
+      expect(rows.find((r) => r.enrollment_id === reported)).toMatchObject({
+        rejection_reported_at: rejectedAt,
+        rejection_email: 'SENT',
+        rejection_emailed_at: rejectedAt,
+      });
+      expect(rows.find((r) => r.enrollment_id === superseded)).toMatchObject({
+        rejection_reported_at: null,
+        rejection_email: null,
+        rejection_emailed_at: null,
+      });
+    } finally {
+      await old.close();
+    }
   });
 });
 
@@ -747,6 +799,72 @@ describe('esquema [B-DB]', () => {
     expect(await sqlStateOf(enrollment({ status: 'REJECTED', rejection_reason: 'OTRO' }))).toBe('23514');
     expect(await sqlStateOf(enrollment({ rejection_reason: 'RETURN_LINK_UNVERIFIED' }))).toBe('23514');
     expect(await sqlStateOf(enrollment({ rejected_at: new Date() }))).toBe('23514');
+  });
+
+  it('0010: el aviso del rechazo y su email son coherentes; la cuarentena de un evento tiene su próximo intento', async () => {
+    const w = await insertWallet('ACTIVE', await insertUser(db.app));
+    const now = new Date();
+    const enrollment = (values: Record<string, unknown>) =>
+      db.app
+        .insertInto('recovery_metadata')
+        .values({
+          wallet_id: w.id,
+          enrollment_id: randomUUID(),
+          status: 'REJECTED',
+          rejection_reason: 'RETURN_LINK_UNVERIFIED',
+          rejected_at: now,
+          expires_at: new Date(Date.now() + 60_000),
+          nonce: hash(),
+          ...values,
+        })
+        .execute();
+    // Sin aviso (un reemplazo), enviado en el momento o en el resumen, retenido o sin email.
+    for (const values of [
+      { rejection_reason: 'SUPERSEDED' },
+      { rejection_reported_at: now, rejection_email: 'SENT', rejection_emailed_at: now },
+      { rejection_reported_at: now, rejection_email: 'SUMMARIZED', rejection_emailed_at: now },
+      { rejection_reported_at: now, rejection_email: 'HELD' },
+      { rejection_reported_at: now, rejection_email: 'NONE' },
+    ]) {
+      expect(await sqlStateOf(enrollment(values)), JSON.stringify(values)).toBeUndefined();
+    }
+    for (const values of [
+      { rejection_email: 'SENT', rejection_emailed_at: now },
+      { rejection_reported_at: now },
+      { rejection_reported_at: now, rejection_email: 'SENT' },
+      { rejection_reported_at: now, rejection_email: 'HELD', rejection_emailed_at: now },
+      { rejection_reported_at: now, rejection_email: 'NONE', rejection_emailed_at: now },
+      { rejection_reported_at: now, rejection_email: 'OTRO' },
+    ]) {
+      expect(await sqlStateOf(enrollment(values)), JSON.stringify(values)).toBe('23514');
+    }
+
+    const event = (values: Record<string, unknown>) =>
+      db.app
+        .insertInto('rotation_events')
+        .values({
+          chain_id: 8453,
+          safe_address: w.safe_address ?? addr(),
+          timelock: addr(),
+          proposal_id: hash(),
+          kind: 'EXECUTED',
+          tx_hash: hash(),
+          log_index: 0,
+          block_number: 1,
+          block_hash: hash(),
+          status: 'CONFIRMED',
+          ...values,
+        })
+        .execute();
+    expect(await sqlStateOf(event({}))).toBeUndefined();
+    expect(
+      await sqlStateOf(event({ quarantined_at: now, retry_at: now, apply_attempts: 1, apply_error: 'x' })),
+    ).toBeUndefined();
+    expect(await sqlStateOf(event({ quarantined_at: now }))).toBe('23514');
+    expect(await sqlStateOf(event({ retry_at: now }))).toBe('23514');
+    expect(await sqlStateOf(event({ applied_at: now, quarantined_at: now, retry_at: now }))).toBe('23514');
+    expect(await sqlStateOf(event({ apply_attempts: -1 }))).toBe('23514');
+    expect(await sqlStateOf(event({ apply_error: 'x'.repeat(501) }))).toBe('23514');
   });
 
   it('mtw_readonly lee todo salvo hashes y secretos cifrados, y no escribe', async () => {

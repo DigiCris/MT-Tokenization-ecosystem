@@ -78,6 +78,18 @@ export interface TemplateParams {
     occurredAt: string;
     origin: RequestOrigin;
   };
+  /** Los avisos de rechazo retenidos durante la ventana del usuario (un email por ventana), juntos. */
+  'recovery-enrollment-rejections-summary': {
+    count: number;
+    /** Motivos distintos, en el orden en que llegaron. */
+    reasons: RecoveryEnrollmentRejection[];
+    /** true si alguno era el reemplazo de R de una wallet activa. */
+    replacement: boolean;
+    /** Safe, si todos son de la misma wallet activa (en el onboarding todavía no existe). */
+    safe: string | null;
+    firstAt: string;
+    lastAt: string;
+  };
   'high-value-challenge': {
     code: string;
     safe: string;
@@ -125,6 +137,7 @@ export const TEMPLATE_NAMES = [
   'executor-rotation-requested',
   'recovery-started',
   'recovery-enrollment-rejected',
+  'recovery-enrollment-rejections-summary',
   'high-value-challenge',
   'high-value-executed',
   'cooperation-paused',
@@ -192,6 +205,23 @@ const REJECTION_REASON: Record<RecoveryEnrollmentRejection, string> = {
   RETURN_LINK_KEY_MISMATCH: 'el enlace de regreso traía otra dirección de clave R',
   RETURN_LINK_UNVERIFIED: 'enlace de regreso que no armó tu app Recovery',
 };
+/**
+ * Qué pasa con la dirección de los pedidos cancelados. En el reemplazo de R la plataforma no la propone, pero una
+ * rotación hacia ella se puede proponer on-chain con tus claves: si te llega un aviso así, hay que cancelarla.
+ */
+function rejectionOutcome(purpose: 'ONBOARDING' | 'REPLACEMENT', plural: boolean): string {
+  const which = plural ? 'esos pedidos' : 'ese pedido';
+  const by = plural ? 'ellos' : 'él';
+  const use =
+    purpose === 'ONBOARDING'
+      ? `no va a usar para crear tu Safe ninguna dirección que haya llegado por ${by}`
+      : `no va a proponer el reemplazo de tu clave R hacia ninguna dirección que haya llegado por ${by}`;
+  const rotation =
+    purpose === 'REPLACEMENT'
+      ? ' Si te llega un aviso de una rotación de tu clave R que no esperabas, cancelala desde la app.'
+      : '';
+  return `La plataforma descartó ${which}: ${use}. Para seguir, generá un pedido nuevo desde la app Wallet.${rotation}`;
+}
 
 const ROLE_NAMES: Record<Role, string> = {
   U: 'clave de usuario (U)',
@@ -484,7 +514,7 @@ const RENDERERS: Renderers = {
   'recovery-enrollment-rejected': (p, ctx) => ({
     subject: 'Posible sustitución de tu clave R',
     heading: 'Cancelamos un pedido para registrar tu clave de recuperación (R)',
-    intro: `${REJECTION_INTRO[p.reason]} Puede ser un error al copiar, pero también que alguien haya intentado cambiar tu clave R en el camino. Esa clave no quedó registrada: para seguir, generá un pedido nuevo desde la app Wallet.`,
+    intro: `${REJECTION_INTRO[p.reason]} Puede ser un error al copiar, pero también que alguien haya intentado cambiar tu clave R en el camino. ${rejectionOutcome(p.purpose, false)}`,
     details: [
       [
         'Acción',
@@ -503,6 +533,24 @@ const RENDERERS: Renderers = {
     ],
     ifNotYou: `si no estabas registrando tu clave R, ${CHANGE_PASSWORD_HINT} No abras enlaces de regreso de la app Recovery que te lleguen por email o por chat.`,
   }),
+  'recovery-enrollment-rejections-summary': (p, ctx) => {
+    const more = p.count === 1 ? 'otro pedido' : `${String(p.count)} pedidos más`;
+    return {
+      subject: 'Más pedidos de tu clave R cancelados',
+      heading: `Cancelamos ${more} para registrar tu clave de recuperación (R)`,
+      intro: `Después de nuestro último aviso, la app Wallet canceló ${more} porque no pudo confirmar la dirección de tu clave R. Para no llenarte de emails te los mandamos juntos: el detalle de cada uno está en los avisos de la app Wallet. Puede ser un error al copiar, pero también que alguien haya intentado cambiar tu clave R en el camino. ${rejectionOutcome(p.replacement ? 'REPLACEMENT' : 'ONBOARDING', p.count > 1)}`,
+      details: [
+        ['Acción', `Cancelación de pedidos de tu ${ROLE_NAMES.R}`],
+        ['Pedidos cancelados', String(p.count)],
+        ['Motivos', p.reasons.map((reason) => REJECTION_REASON[reason]).join('; ')],
+        ['Red', ctx.networkLabel],
+        ...(p.safe === null ? [] : ([['Safe', groupedAddress(p.safe)]] as [string, string][])),
+        ...timeRows(ctx, 'Primero', p.firstAt),
+        ...timeRows(ctx, 'Último', p.lastAt),
+      ],
+      ifNotYou: `si no estabas registrando tu clave R, ${CHANGE_PASSWORD_HINT} No abras enlaces de regreso de la app Recovery que te lleguen por email o por chat.`,
+    };
+  },
   'high-value-challenge': (p, ctx) => ({
     subject: 'Confirmá una operación de alto valor',
     heading: 'Confirmá el envío',

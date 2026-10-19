@@ -43,6 +43,7 @@ import { WhitelistSync } from './whitelist/sync.ts';
 import { CancelRelayer, gasTankJobHandler } from './rotations/cancel-relay.ts';
 import { RotationSync } from './rotations/sync.ts';
 import { MigrationSync } from './recovery/migration.ts';
+import { RejectionEmailDigest } from './recovery/rejection-digest.ts';
 import { IntegrityMonitorClient } from './integrity/monitor-client.ts';
 import { IntegrityStatusRecorder } from './integrity/status-recorder.ts';
 import { OperationPipeline } from './worker/pipeline.ts';
@@ -446,6 +447,11 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       signerKeys: signers,
     });
     // P15.T06: cierre de las migraciones excepcionales (Safe vieja sin saldo → MIGRATED).
+    const rejectionDigest = new RejectionEmailDigest({
+      db,
+      emails,
+      logger: logger.child({ component: 'recovery-rejection-digest' }),
+    });
     const migrationSync = new MigrationSync({
       db,
       rpc,
@@ -462,6 +468,8 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
         { name: 'high-value', runOnce: () => highValue.runOnce() },
         { name: 'rotations', runOnce: () => rotationSync.runOnce() },
         { name: 'migrations', runOnce: () => migrationSync.runOnce() },
+        // Revisión de ADR-033 (BAJO 8): los avisos de rechazo de R retenidos en la ventana del usuario, en un resumen.
+        { name: 'recovery-rejection-digest', runOnce: () => rejectionDigest.runOnce() },
       ],
       logger.child({ component: 'operation-effects' }),
     );

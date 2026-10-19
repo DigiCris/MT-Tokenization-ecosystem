@@ -17,7 +17,9 @@
 // Rechazo (P17.MAN, N10): si la Wallet no puede confirmar la R de un pedido ([F-LNK-02]: la comparación manual no
 // coincide, el enlace de regreso trae otra R o no lo armó la app Recovery del usuario), lo aborta y lo informa: el
 // pedido queda REJECTED con el motivo, su R pendiente deja de estar viva y, como puede ser una sustitución de R en el
-// camino, queda auditado, el usuario recibe una notificación y un email de seguridad y se registra la alerta.
+// camino, queda auditado, el usuario recibe una notificación y un email de seguridad y se registra la alerta. Con la
+// rotación hacia esa R′ ya en curso el rechazo no se acepta (la cadena la ejecutaría igual: se cancela la rotación), y
+// la propuesta de la rotación vuelve a exigir el pedido SUBMITTED con el mismo lock (revisión de ADR-033, ALTO 1).
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
@@ -28,7 +30,7 @@ import type { AuditWriter } from '../audit/audit-writer.ts';
 import { platformDigest } from '../chain/eip712.ts';
 import type { RpcQuorumClient } from '../chain/rpc-quorum.ts';
 import { InvalidSignatureError, recoverStrictSigner } from '../chain/signatures.ts';
-import type { Database, RecoveryMetadataTable, RecoveryRejectionReason } from '../db/schema.ts';
+import type { Database, RecoveryMetadataTable, RecoveryRejectionReason, RotationRequestsTable } from '../db/schema.ts';
 import { withTransaction } from '../db/transaction.ts';
 import type { EmailOutbox } from '../email/email-outbox.ts';
 import { addressToBuffer, bufferToAddress, bufferToHex } from '../lib/bytes.ts';
@@ -53,6 +55,16 @@ import type { StorageFlags } from '../wallets/schemas.ts';
 import type { Selectable } from 'kysely';
 
 export const ENROLLMENT_TTL_SECONDS = 15 * 60;
+/** Un email de seguridad de rechazo por usuario en esta ventana; los demás van juntos en el resumen al cerrarla. */
+export const REJECTION_EMAIL_WINDOW_MS = 60 * 60_000;
+/** Una rotación de R en curso (desde que se preparó la propuesta hasta que se ejecuta): su pedido ya no se rechaza. */
+const ROTATION_IN_PROGRESS = [
+  'AWAITING_SIGNATURE',
+  'PROPOSING',
+  'PENDING_TIMELOCK',
+  'READY_TO_EXECUTE',
+  'EXECUTING',
+] as const satisfies readonly RotationRequestsTable['status'][];
 /** Vigencia máxima del objeto RecoveryEnrollment firmado y tolerancia de reloj. */
 const ENROLLMENT_OBJECT_MAX_SECONDS = 30 * 60;
 const CLOCK_SKEW_SECONDS = 60;
@@ -132,6 +144,21 @@ export interface EnrollmentServiceDeps {
 }
 
 type EnrollmentRow = Selectable<RecoveryMetadataTable>;
+
+/** Cuándo salió el último email de rechazo del usuario (en el momento o en un resumen); null si nunca. */
+export async function lastRejectionEmail(
+  db: Kysely<Database> | Transaction<Database>,
+  userId: string,
+): Promise<Date | null> {
+  const row = await db
+    .selectFrom('recovery_metadata as r')
+    .innerJoin('wallets as w', 'w.id', 'r.wallet_id')
+    .select((eb) => eb.fn.max('r.rejection_emailed_at').as('last'))
+    .where('w.user_id', '=', userId)
+    .where('r.rejection_emailed_at', 'is not', null)
+    .executeTakeFirst();
+  return row?.last ?? null;
+}
 
 function effectiveStatus(row: EnrollmentRow, now: number): EnrollmentView['status'] {
   return row.status === 'REQUESTED' && row.expires_at.getTime() <= now ? 'EXPIRED' : row.status;
@@ -655,7 +682,11 @@ export class EnrollmentService {
    * POST /recovery/enrollments/{id}/reject (Wallet, con la PlatformSession del pedido: ONBOARDING, u OPERATIONS en el
    * reemplazo de R): la Wallet no pudo confirmar la R de este pedido y lo abortó. Idempotente: un pedido que la Wallet ya
    * rechazó devuelve su estado sin repetir nada; uno reemplazado por un pedido nuevo (SUPERSEDED) toma el motivo de la
-   * Wallet, porque el aviso del aborto puede llegar después de que el usuario pidió otro.
+   * Wallet, porque el aviso del aborto puede llegar después de que el usuario pidió otro, y conserva cuándo se lo
+   * reemplazó. Un reemplazo de R con la rotación hacia su R′ ya en curso no se rechaza (409): la cadena la ejecutaría
+   * igual, así que se cancela la rotación (queda auditado y con alerta). Alertas (revisión de ADR-033, BAJO 8): el aviso
+   * tardío de un pedido reemplazado hace más que su vigencia no avisa ni alerta (sólo auditoría y métrica), y el email
+   * de seguridad sale uno por ventana y usuario: los demás de la ventana van juntos en un resumen.
    */
   async reject(actor: WalletActor, enrollmentId: string, reason: WalletRejectionReason): Promise<EnrollmentView> {
     const { db, platformId } = this.#d;
@@ -670,16 +701,67 @@ export class EnrollmentService {
         }
         const now = this.#now();
         if (row.status === 'REJECTED' && row.rejection_reason !== null && row.rejection_reason !== 'SUPERSEDED') {
-          return { view: view(row, now), rejected: null };
+          return { view: view(row, now), rejected: null, refused: null };
         }
         if (row.status !== 'REQUESTED' && row.status !== 'SUBMITTED' && row.status !== 'REJECTED') {
           throw new ApiError('CONFLICT', { detail: `el enrollment está ${row.status}` });
         }
         const previous = effectiveStatus(row, now);
         const recoveryKey = row.r_address === null ? null : bufferToAddress(row.r_address);
+        if (row.purpose === 'REPLACEMENT') {
+          // Con el lock del pedido (la propuesta de la rotación lo toma también): una rotación de R hacia esta R′ en
+          // curso —la que armó la plataforma con este pedido o una propuesta on-chain hacia la misma dirección—.
+          const rotation = await trx
+            .selectFrom('rotation_requests')
+            .select(['id', 'status'])
+            .where('wallet_id', '=', row.wallet_id)
+            .where('role', '=', 'R')
+            .where('status', 'in', ROTATION_IN_PROGRESS)
+            .where((eb) =>
+              row.r_address === null
+                ? eb('enrollment_id', '=', row.id)
+                : eb.or([eb('enrollment_id', '=', row.id), eb('new_key', '=', row.r_address)]),
+            )
+            .forUpdate()
+            .executeTakeFirst();
+          if (rotation) {
+            await this.#audit(trx, actor, row.wallet_id, enrollmentId, 'RECOVERY_ENROLLMENT_REJECTION_REFUSED', {
+              reason,
+              purpose: row.purpose,
+              previousStatus: previous,
+              recoveryKey,
+              rotationId: rotation.id,
+              rotationStatus: rotation.status,
+            });
+            return {
+              view: view(row, now),
+              rejected: null,
+              refused: {
+                walletId: row.wallet_id,
+                recoveryKey,
+                rotationId: rotation.id,
+                rotationStatus: rotation.status,
+              },
+            };
+          }
+        }
+        // Un pedido reemplazado hace más que su vigencia (o rechazado antes de 0009, sin motivo ni momento): su aviso
+        // queda auditado y en la métrica, pero no avisa ni alerta (se podría repetir con cada pedido viejo).
+        const stale =
+          row.status === 'REJECTED' &&
+          (row.rejected_at === null || row.rejected_at.getTime() + ENROLLMENT_TTL_SECONDS * 1000 < now);
+        const email = stale || this.#d.emails === null ? 'NONE' : await this.#emailSlot(trx, actor.userId, now);
         const updated = await trx
           .updateTable('recovery_metadata')
-          .set({ status: 'REJECTED', rejection_reason: reason, rejected_at: new Date(now) })
+          .set({
+            status: 'REJECTED',
+            rejection_reason: reason,
+            // Uno reemplazado conserva cuándo se lo reemplazó; el aviso tiene su propio momento.
+            rejected_at: row.status === 'REJECTED' ? row.rejected_at : new Date(now),
+            rejection_reported_at: new Date(now),
+            rejection_email: email,
+            rejection_emailed_at: email === 'SENT' ? new Date(now) : null,
+          })
           .where('id', '=', row.id)
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -709,19 +791,23 @@ export class EnrollmentService {
           purpose: row.purpose,
           previousStatus: previous,
           recoveryKey,
+          alerted: !stale,
+          email,
         });
-        await notify(
-          trx,
-          {
-            userId: actor.userId,
-            walletId: row.wallet_id,
-            type: 'RECOVERY_ENROLLMENT_REJECTED',
-            payload: { enrollmentId, reason, purpose: row.purpose, recoveryKey, occurredAt },
-            dedupeKey: `recovery-enrollment-rejected:${enrollmentId}`,
-          },
-          this.#d.metrics,
-        );
-        if (this.#d.emails !== null) {
+        if (!stale) {
+          await notify(
+            trx,
+            {
+              userId: actor.userId,
+              walletId: row.wallet_id,
+              type: 'RECOVERY_ENROLLMENT_REJECTED',
+              payload: { enrollmentId, reason, purpose: row.purpose, recoveryKey, occurredAt },
+              dedupeKey: `recovery-enrollment-rejected:${enrollmentId}`,
+            },
+            this.#d.metrics,
+          );
+        }
+        if (email === 'SENT' && this.#d.emails !== null) {
           const user = await trx
             .selectFrom('users')
             .select(['email', 'locale', 'time_zone'])
@@ -747,25 +833,70 @@ export class EnrollmentService {
             product: 'Wallet',
           });
         }
-        return { view: view(updated, now), rejected: { walletId: row.wallet_id, purpose: row.purpose, recoveryKey } };
+        return {
+          view: view(updated, now),
+          rejected: { walletId: row.wallet_id, purpose: row.purpose, recoveryKey, stale, email },
+          refused: null,
+        };
       },
       { auditLock: true },
     );
-    if (result.rejected !== null) {
-      this.#d.metrics.recoveryEnrollmentRejections.inc({ reason, purpose: result.rejected.purpose });
+    if (result.refused !== null) {
       this.#d.logger.error(
         {
           alert: 'RECOVERY_KEY_SUBSTITUTION_SUSPECTED',
-          walletId: result.rejected.walletId,
+          walletId: result.refused.walletId,
           enrollmentId,
           reason,
-          purpose: result.rejected.purpose,
-          recoveryKey: result.rejected.recoveryKey,
+          purpose: 'REPLACEMENT',
+          recoveryKey: result.refused.recoveryKey,
+          rotationId: result.refused.rotationId,
+          rotationStatus: result.refused.rotationStatus,
         },
-        'la Wallet rechazó el enrollment de R: posible sustitución de R',
+        'la Wallet rechazó una R′ con la rotación hacia ella en curso: no se acepta el rechazo (hay que cancelar la rotación)',
       );
+      throw new ApiError('CONFLICT', {
+        detail: 'hay una rotación de R hacia esta clave en curso: cancelala con U o con la R actual',
+      });
+    }
+    const rejected = result.rejected;
+    if (rejected !== null) {
+      this.#d.metrics.recoveryEnrollmentRejections.inc({
+        reason,
+        purpose: rejected.purpose,
+        alerted: String(!rejected.stale),
+      });
+      if (rejected.email === 'HELD' || rejected.stale) {
+        this.#d.metrics.emailsSkipped.inc({
+          template: 'recovery-enrollment-rejected',
+          reason: rejected.stale ? 'stale' : 'held_for_summary',
+        });
+      }
+      if (!rejected.stale) {
+        this.#d.logger.error(
+          {
+            alert: 'RECOVERY_KEY_SUBSTITUTION_SUSPECTED',
+            walletId: rejected.walletId,
+            enrollmentId,
+            reason,
+            purpose: rejected.purpose,
+            recoveryKey: rejected.recoveryKey,
+            email: rejected.email,
+          },
+          'la Wallet rechazó el enrollment de R: posible sustitución de R',
+        );
+      }
     }
     return result.view;
+  }
+
+  /**
+   * Un email de rechazo por ventana y usuario: SENT si ninguno (inmediato o resumen) salió en la ventana; si no, HELD y
+   * lo manda el resumen al cerrar la ventana (rejection-digest.ts). Sin carreras: el rechazo toma el lock de auditoría.
+   */
+  async #emailSlot(trx: Transaction<Database>, userId: string, now: number): Promise<'SENT' | 'HELD'> {
+    const last = await lastRejectionEmail(trx, userId);
+    return last !== null && now - last.getTime() < REJECTION_EMAIL_WINDOW_MS ? 'HELD' : 'SENT';
   }
 
   async #audit(

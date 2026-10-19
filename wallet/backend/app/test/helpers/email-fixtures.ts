@@ -76,6 +76,15 @@ export const TEMPLATE_FIXTURES: { [K in TemplateName]: TemplateParams[K] } = {
     occurredAt: AT,
     origin: ORIGIN,
   },
+  // Los avisos retenidos durante la ventana del usuario, juntos: tres pedidos del reemplazo de R de la misma Safe.
+  'recovery-enrollment-rejections-summary': {
+    count: 3,
+    reasons: ['MANUAL_COMPARISON_FAILED', 'RETURN_LINK_UNVERIFIED'],
+    replacement: true,
+    safe: SAFE,
+    firstAt: AT,
+    lastAt: '2026-10-17T15:40:05.000Z',
+  },
   'high-value-challenge': {
     code: '27182818',
     safe: SAFE,
