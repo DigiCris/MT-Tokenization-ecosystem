@@ -81,7 +81,13 @@ async function usdtWith18Decimals(route: Route): Promise<void> {
   for (const result of results) {
     if (isDecimals(calls.find((call) => call.id === result.id))) result.result = `0x${'12'.padStart(64, '0')}`;
   }
-  await route.fulfill({ response, json: Array.isArray(body) ? results : results[0] });
+  try {
+    await route.fulfill({ response, json: Array.isArray(body) ? results : results[0] });
+  } catch (error) {
+    // La app pudo cancelar el pedido mientras se consultaba el RPC real (al navegar, la vista anterior aborta sus
+    // lecturas): Playwright ya lo dio por terminado y no queda nada que responder.
+    if (!(error instanceof Error && error.message.includes('Route is already handled'))) throw error;
+  }
 }
 
 test('decimales on-chain distintos de los fijados: error bloqueante en Activos, en el inicio y en Enviar', async () => {
