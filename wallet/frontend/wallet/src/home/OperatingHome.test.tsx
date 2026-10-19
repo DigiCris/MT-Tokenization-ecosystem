@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 // P18.MAN (ADR-006, ESC-16, P15.T07): el inicio alerta por cada destino de la whitelist que todavía se está activando
-// (leído de la cadena, con el nombre y la dirección completa y cuánto falta según la hora de la cadena) con acceso
-// directo a la baja, y muestra los avisos in-app del backend sin leer, que se pueden marcar como leídos. La clave U se
-// muestra completa y agrupada.
+// (leído de la cadena, con el nombre entre «» y la dirección completa y cuánto falta según la hora de la cadena) con
+// acceso directo a la baja, también si no es la dirección que se esperaba, y muestra los avisos in-app del backend sin
+// leer, que se pueden marcar como leídos: cada uno con su tono, la hora una sola vez y la IP sin notación de red. La
+// clave U se muestra completa y agrupada.
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { getAddress, type Address } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +12,7 @@ import { pinnedChain } from '../config/chain.ts';
 import type { OperatingWallet } from '../safe/SafeGate.tsx';
 import { groupAddress } from '../ui/AddressText.tsx';
 import { byText, click, render, settle, type Mounted } from '../ui/dom.test-helper.ts';
+import { readableIpPrefix } from '../notifications/NotificationsPanel.tsx';
 import { OperatingHome } from './OperatingHome.tsx';
 
 const m = vi.hoisted(() => ({
@@ -140,8 +142,8 @@ describe('inicio operativo', () => {
     const c = await openHome();
     const alert = c.querySelector(`[data-activating="${DEST}"]`);
     expect(alert?.textContent).toBe(
-      `Un destino nuevo (Proveedor ${groupAddress(DEST)}) se activa en 23 h 12 min: si no lo agregaste vos, ` +
-        'quitalo antes de que se active. Quitarlo',
+      `Un destino nuevo («Proveedor» ${groupAddress(DEST)}) se activa en 23 h 12 min: si no lo agregaste vos o si ` +
+        'no es la dirección que esperabas, quitalo antes de que se active. Quitarlo',
     );
     await click(byText(c, 'a', 'Quitarlo'));
     expect(c.querySelector('[data-probe]')?.textContent).toBe(JSON.stringify({ remove: DEST }));
@@ -152,12 +154,36 @@ describe('inicio operativo', () => {
     const panel = c.querySelector('[data-notifications]');
     expect(panel?.querySelector('h2')?.textContent).toBe('Avisos sin leer (1)');
     const item = panel?.querySelector('[data-notification="WHITELIST_REQUESTED"]');
-    expect(item?.textContent).toContain(`Se pidió agregar a tu whitelist el destino Proveedor ${groupAddress(DEST)}`);
+    expect(item?.textContent).toContain(`Se pidió agregar a tu whitelist el destino «Proveedor» ${groupAddress(DEST)}`);
+    // Una advertencia se ve como tal (no como un aviso informativo).
+    expect(item?.getAttribute('data-tone')).toBe('warning');
     expect(item?.querySelector('a')?.getAttribute('href')).toBe('/whitelist');
+    expect(item?.querySelector('time')?.textContent).toBe(new Date(requested.createdAt).toLocaleString('es-AR'));
     await click(byText(c, 'button', 'Marcar como leído'));
     await settle();
     expect(m.api.markNotificationRead).toHaveBeenCalledWith('n1');
     expect(c.querySelector('[data-notifications]')).toBeNull();
+  });
+
+  it('un aviso que ya dice cuándo pasó no repite la hora; la IP va sin notación de red', async () => {
+    const login: AppNotification = {
+      id: 'n2',
+      walletId: null,
+      type: 'NEW_LOGIN',
+      payload: { occurredAt: '2026-10-19T10:00:00.000Z', app: 'WALLET', ipPrefix: '203.0.113.0/24' },
+      readAt: null,
+      createdAt: '2026-10-19T10:00:01.000Z',
+    };
+    m.api.notifications.mockResolvedValue({ items: [login], unread: 1, nextCursor: null });
+    const c = await openHome();
+    const item = c.querySelector('[data-notification="NEW_LOGIN"]');
+    const at = new Date('2026-10-19T10:00:00.000Z').toLocaleString('es-AR');
+    expect(item?.textContent).toContain(`Nuevo inicio de sesión en Wallet el ${at} desde 203.0.113.x.`);
+    expect(item?.textContent).not.toContain('/24');
+    expect(item?.querySelector('time')).toBeNull();
+    expect(item?.getAttribute('data-tone')).toBe('info');
+    expect(readableIpPrefix('2001:db8:1::/48')).toBe('2001:db8:1:…');
+    expect(readableIpPrefix('algo')).toBe('algo');
   });
 
   it('la clave U desbloqueada se muestra completa y agrupada', async () => {

@@ -41,3 +41,21 @@ export function useChainClock(reader: Pick<BaseClient, 'getBlock'>): ChainClock 
 export function useChainNow(reader: Pick<BaseClient, 'getBlock'>): number | null {
   return useChainClock(reader)?.chainMs ?? null;
 }
+
+/**
+ * Hora del dispositivo (ms) que avanza cada `intervalMs` mientras `active` (cuentas regresivas que no esperan a la
+ * próxima lectura de la cadena); null hasta el primer tic.
+ */
+export function useDeviceNow(active: boolean, intervalMs = 1_000): number | null {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, intervalMs);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [active, intervalMs]);
+  return now;
+}

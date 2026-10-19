@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
-// P18.MAN: el review dice qué se firma con el destino nombrado y la dirección completa, la red y quién paga el gas, y
-// guarda los detalles técnicos (contrato, función, número de orden y el hash completo) en un desplegable. El segundo
-// factor dice desde qué monto se pide (umbral de la policy que informa el backend) y por qué canal. Al terminar hay un
-// cierre claro: título y aviso de éxito con los estados que siguen, link a la transacción y cómo seguir; o el error.
+// P18.MAN: el review dice qué se firma con el destino nombrado (el label del usuario entre «») y la dirección completa,
+// la red y quién paga el gas, y guarda los detalles técnicos (contrato, función, argumentos con el monto en unidades
+// mínimas y su equivalente, número de orden y el hash completo) en un desplegable. El segundo factor dice desde qué
+// monto se pide (umbral de la policy que informa el backend) y por qué canal. Al terminar hay un cierre claro: título,
+// lo hecho contado en pasado, el aviso de éxito (ya no se cancela; Confirmada y Final), el hash de la transacción con
+// su enlace y cómo seguir; o el error con su motivo en texto. Un swap con el plazo vencido (o a menos de un minuto) ya no
+// se ofrece para firmar: se cancela lo preparado y se vuelve a cotizar.
 import type { ReactNode } from 'react';
+import { act } from 'react';
 import { MemoryRouter } from 'react-router';
 import { getAddress, type Address } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +21,7 @@ import { approveCall, swapCall } from '../swap/swap.ts';
 import { groupAddress } from '../ui/AddressText.tsx';
 import { byText, click, render, settle, type Mounted } from '../ui/dom.test-helper.ts';
 import type { UnlockedWallet } from '../unlock/unlock.ts';
+import type { ChainClock } from './describe.ts';
 import { labelsOf } from './names.ts';
 import { OperationReview } from './OperationReview.tsx';
 import type * as SignModule from './sign.ts';
@@ -102,7 +107,7 @@ function verified(
 const send = (amount: bigint, extra: Partial<PreparedOperation> = {}) =>
   verified(transferCall(pinnedChain.tokens.usdc, DEST, amount, 5n), 'SEND', extra);
 
-function status(id: string, state: OperationStatus['status']): OperationStatus {
+function status(id: string, state: OperationStatus['status'], patch: Partial<OperationStatus> = {}): OperationStatus {
   return {
     id,
     walletId: 'w1',
@@ -115,7 +120,7 @@ function status(id: string, state: OperationStatus['status']): OperationStatus {
     blockNumber: null,
     blockHash: null,
     confirmations: { safe: 0, finalized: false },
-    failureReason: state === 'FAILED_FINAL' ? 'POLICY_REJECTED' : null,
+    failureReason: state === 'FAILED_FINAL' ? 'POLICY_REJECTED: DEADLINE_INVALID' : null,
     lastErrorCode: null,
     blockedReason: null,
     requiresTwoFactor: false,
@@ -123,7 +128,21 @@ function status(id: string, state: OperationStatus['status']): OperationStatus {
     cancelsOperationId: null,
     createdAt: '2026-10-19T10:00:00.000Z',
     history: [],
+    ...patch,
   };
+}
+
+/** Las dos SafeTx de un swap con el plazo dado (segundos de la cadena). */
+function swapPair(deadline: bigint): VerifiedOperation[] {
+  const executor = decode.system.contracts.swapExecutor.address;
+  const usdc = pinnedChain.tokens.usdc.address;
+  return [
+    verified(approveCall(usdc, executor, 20_000_000n, 5n), 'SWAP_APPROVE'),
+    verified(
+      swapCall(executor, { tokenIn: usdc, amountIn: 20_000_000n, minAmountOut: 19_940_000n, deadline }, 6n),
+      'SWAP',
+    ),
+  ];
 }
 
 let view: Mounted | null = null;
@@ -136,10 +155,20 @@ beforeEach(() => {
 afterEach(async () => {
   await view?.unmount();
   view = null;
+  vi.useRealTimers();
 });
 
-async function review(items: VerifiedOperation[], props: { doneTitle?: string; result?: ReactNode } = {}) {
+interface ReviewProps {
+  doneTitle?: string;
+  result?: ReactNode;
+  clock?: ChainClock | null;
+  summary?: ReactNode | ((success: boolean) => ReactNode);
+  onRequote?: () => void;
+}
+
+async function review(items: VerifiedOperation[], props: ReviewProps = {}) {
   const onSettled = vi.fn();
+  const onCancel = vi.fn();
   view = await render(
     <MemoryRouter>
       <OperationReview
@@ -150,26 +179,32 @@ async function review(items: VerifiedOperation[], props: { doneTitle?: string; r
         decode={decode}
         labels={labelsOf([{ address: DEST, label: 'Cuenta de Ana' }])}
         onSettled={onSettled}
-        onCancel={vi.fn()}
+        onCancel={onCancel}
         doneActions={<button type="button">Hacer otro envío</button>}
       />
     </MemoryRouter>,
   );
-  return { c: view.container, onSettled };
+  return { c: view.container, onSettled, onCancel };
 }
+
+const buttons = (c: HTMLElement) => [...c.querySelectorAll('button')].map((b) => b.textContent);
 
 describe('review de una operación', () => {
   it('qué se firma: monto destacado, destino nombrado con la dirección completa, red y gas, y detalles técnicos', async () => {
     const item = send(1_500_000n);
     const { c } = await review([item]);
     expect(c.querySelector('.review__what')?.textContent).toBe(
-      `Enviar 1,50 USDC a Cuenta de Ana ${groupAddress(DEST)}`,
+      `Enviar 1,50 USDC a «Cuenta de Ana» ${groupAddress(DEST)}`,
     );
     expect(c.querySelector('.review__amount')?.textContent).toBe('1,50 USDC');
     expect(c.textContent).toContain('Red: Base. El gas de la red lo paga la plataforma: no se descuenta de tu saldo.');
     const details = c.querySelector('details.details');
     expect(details?.querySelector('summary')?.textContent).toBe('Detalles técnicos');
     expect(details?.textContent).toMatch(/transfer\(address \w+, uint256 \w+\)/);
+    // El monto como lo recibe el contrato, aclarado y con su equivalente.
+    expect(details?.querySelector('[data-argument="amount"]')?.textContent).toBe(
+      '1500000 = 1,50 USDC (el contrato recibe el monto en unidades mínimas: USDC tiene 6 decimales)',
+    );
     expect(details?.textContent).toContain('Número de orden en tu Safe (nonce)5');
     expect(details?.querySelector(`[data-hash="${item.hash}"]`)?.textContent).toBe(item.hash);
     expect(byText(c, 'button', 'Firmar con tu clave U')).toBeTruthy();
@@ -197,7 +232,7 @@ describe('review de una operación', () => {
     expect(byText(c, 'button', 'Ingresar el código de mi app')).toBeTruthy();
   });
 
-  it('éxito: título final, aviso con los estados que siguen, link a la transacción y cómo seguir', async () => {
+  it('éxito: título final, lo hecho en pasado, aviso sin "revertir", hash con su enlace y cómo seguir', async () => {
     m.signAndSubmit.mockResolvedValue(status('op-SEND', 'USER_SIGNED'));
     m.waitForOperation.mockImplementation(
       (_api: unknown, id: string, options: { onUpdate?: (s: OperationStatus) => void }) => {
@@ -206,20 +241,38 @@ describe('review de una operación', () => {
         return Promise.resolve(mined);
       },
     );
+    const summary = vi.fn((success: boolean) => <p data-summary>{success ? 'hecho' : 'por hacer'}</p>);
     const { c, onSettled } = await review([send(1_500_000n)], {
       doneTitle: 'Envío realizado',
       result: <p data-result>Comprobado al terminar</p>,
+      summary,
     });
+    expect(c.querySelector('[data-summary]')?.textContent).toBe('por hacer');
     expect(c.textContent).not.toContain('Hacer otro envío');
     expect(c.querySelector('[data-result]')).toBeNull();
     await click(byText(c, 'button', 'Firmar con tu clave U'));
     await settle();
     expect(c.querySelector('#review-title')?.textContent).toBe('Envío realizado');
-    expect(c.querySelector('[data-status="MINED"]')?.textContent).toContain('Estado: Incluida en un bloque');
-    expect(byText(c, 'a', 'ver transacción').getAttribute('href')).toBe(`https://basescan.org/tx/${TX_HASH}`);
+    // Lo que muestra la pantalla final ya pasó: en pasado, no como algo por firmar.
+    expect(c.querySelector('.review__what')?.textContent).toBe(
+      `Enviaste 1,50 USDC a «Cuenta de Ana» ${groupAddress(DEST)}`,
+    );
+    expect(c.querySelector('[data-summary]')?.textContent).toBe('hecho');
+    expect(c.textContent).toContain('El gas de la red lo pagó la plataforma: no se descontó de tu saldo.');
+    expect(c.querySelector('[data-status="MINED"]')?.textContent).toBe('Estado: Incluida en un bloque');
+    // El hash de la transacción completo, y el enlace al explorador.
+    expect(c.querySelector(`.review__tx [data-tx="${TX_HASH}"] code`)?.textContent).toBe(TX_HASH);
+    expect(byText(c, 'a', 'ver en el explorador de bloques').getAttribute('href')).toBe(
+      `https://basescan.org/tx/${TX_HASH}`,
+    );
     const notice = c.querySelector('.notice--success');
-    expect(notice?.textContent).toContain('Listo: la operación ya está incluida en un bloque de Base.');
-    expect(notice?.textContent).toContain('pasa a Confirmada y, en unos 20 minutos, a Final');
+    expect(notice?.textContent).toContain(
+      'Listo: la operación ya está incluida en un bloque de Base y ya no se puede cancelar.',
+    );
+    expect(notice?.textContent).toContain(
+      'pasa a Confirmada y, en unos 20 minutos, a Final (desde ahí, ni una reorganización de la red puede revertirla).',
+    );
+    expect(notice?.textContent).not.toMatch(/ya no se puede revertir/);
     expect(byText(c, 'button', 'Hacer otro envío')).toBeTruthy();
     // Lo que se comprueba al terminar queda dentro del review (p. ej. el permiso que quedó después de un swap).
     expect(c.querySelector('article [data-result]')?.textContent).toBe('Comprobado al terminar');
@@ -227,30 +280,32 @@ describe('review de una operación', () => {
     expect([...c.querySelectorAll('button')].some((b) => b.textContent === 'Cancelar')).toBe(false);
   });
 
-  it('una operación que no se ejecuta: error claro, sin título de éxito y con cómo seguir', async () => {
+  it('una operación que no se ejecuta: error claro con el motivo en texto (sin códigos), sin título de éxito', async () => {
     m.signAndSubmit.mockResolvedValue(status('op-SEND', 'USER_SIGNED'));
-    m.waitForOperation.mockImplementation((_api: unknown, id: string) => Promise.resolve(status(id, 'FAILED_FINAL')));
+    m.waitForOperation.mockImplementation(
+      (_api: unknown, id: string, options: { onUpdate?: (s: OperationStatus) => void }) => {
+        const failed = status(id, 'FAILED_FINAL');
+        options.onUpdate?.(failed);
+        return Promise.resolve(failed);
+      },
+    );
     const { c } = await review([send(1_500_000n)], { doneTitle: 'Envío realizado' });
     await click(byText(c, 'button', 'Firmar con tu clave U'));
     await settle();
     expect(c.querySelector('#review-title')?.textContent).toBe('Revisá el envío');
+    // Lo intentado sigue contado como lo que se iba a hacer (no se ejecutó).
+    expect(c.querySelector('.review__what')?.textContent).toMatch(/^Enviar 1,50 USDC/);
+    expect(c.querySelector('[data-status="FAILED_FINAL"]')?.textContent).toBe(
+      'Estado: Falló (no cumple las reglas de la plataforma: venció el plazo del swap)',
+    );
+    expect(c.textContent).not.toMatch(/POLICY_REJECTED|DEADLINE_INVALID/);
     expect(c.querySelector('.notice--error')?.textContent).toContain('La operación no se ejecutó.');
     expect(byText(c, 'button', 'Hacer otro envío')).toBeTruthy();
   });
 
   it('dos operaciones (swap): numeradas, el permiso nombra al contrato de swap y el botón dice que son 2', async () => {
     const executor = decode.system.contracts.swapExecutor.address;
-    const usdc = pinnedChain.tokens.usdc.address;
-    const approve = verified(approveCall(usdc, executor, 20_000_000n, 5n), 'SWAP_APPROVE');
-    const swap = verified(
-      swapCall(
-        executor,
-        { tokenIn: usdc, amountIn: 20_000_000n, minAmountOut: 19_940_000n, deadline: 1_800_000_600n },
-        6n,
-      ),
-      'SWAP',
-    );
-    const { c } = await review([approve, swap]);
+    const { c } = await review(swapPair(1_800_000_600n));
     const steps = [...c.querySelectorAll('.review__step')].map((s) => s.textContent);
     expect(steps).toEqual(['Operación 1 de 2', 'Operación 2 de 2']);
     const [first, second] = [...c.querySelectorAll('.review__what')].map((w) => w.textContent);
@@ -260,5 +315,72 @@ describe('review de una operación', () => {
     );
     expect(second).toMatch(/^Cambiar 20,00 USDC por al menos 19,94 USDT, que llegan a tu Safe; vence /);
     expect(byText(c, 'button', 'Firmar las 2 operaciones con tu clave U')).toBeTruthy();
+    // Detalles técnicos del swap: montos en unidades mínimas con su equivalente y el plazo con su fecha.
+    const swapDetails = c.querySelectorAll('details.details')[1];
+    expect(swapDetails?.querySelector('[data-argument="amountIn"]')?.textContent).toContain('= 20,00 USDC');
+    expect(swapDetails?.querySelector('[data-argument="minAmountOut"]')?.textContent).toContain('= 19,94 USDT');
+    expect(swapDetails?.querySelector('[data-argument="deadline"]')?.textContent).toMatch(
+      /^1800000600 = .* \(hora de la cadena, en segundos desde 1970\)$/,
+    );
+  });
+});
+
+describe('swap con plazo', () => {
+  const CHAIN = 1_800_000_000_000;
+  const DEVICE = Date.UTC(2026, 9, 19, 10, 0, 0);
+  const deadlineIn = (ms: number) => BigInt((CHAIN + ms) / 1000);
+
+  it('vencido: no se ofrece firmar; "Volver a cotizar" cancela lo preparado en el backend y vuelve a cotizar', async () => {
+    m.api.operation.mockResolvedValue({ status: 'CREATED' });
+    m.api.cancelOperation.mockResolvedValue({});
+    const onRequote = vi.fn();
+    const { c, onCancel } = await review(swapPair(deadlineIn(-30_000)), {
+      clock: { chainMs: CHAIN, deviceMs: DEVICE },
+      onRequote,
+    });
+    expect([...c.querySelectorAll('.review__what')][1]?.textContent).toMatch(/venció a las .*: volvé a cotizar$/);
+    expect(buttons(c).some((b) => b.startsWith('Firmar'))).toBe(false);
+    expect(c.querySelector('[data-expired] .notice--warning')?.textContent).toBe(
+      'Venció el plazo del swap: ya no se puede firmar. Volvé a cotizar: la app cancela lo preparado y pide una ' +
+        'cotización nueva.',
+    );
+    await click(byText(c, 'button', 'Volver a cotizar'));
+    await settle();
+    expect(m.api.cancelOperation).toHaveBeenCalledTimes(2);
+    expect(m.api.cancelOperation).toHaveBeenCalledWith(unlocked.platform, 'op-SWAP_APPROVE');
+    expect(m.api.cancelOperation).toHaveBeenCalledWith(unlocked.platform, 'op-SWAP');
+    expect(onRequote).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it('en el último minuto tampoco se firma (no daría tiempo a ejecutarlo antes del plazo)', async () => {
+    const { c } = await review(swapPair(deadlineIn(30_000)), { clock: { chainMs: CHAIN, deviceMs: DEVICE } });
+    expect(buttons(c).some((b) => b.startsWith('Firmar'))).toBe(false);
+    expect(c.querySelector('[data-expired] .notice--warning')?.textContent).toMatch(
+      /^Queda menos de un minuto del plazo del swap: ya no da tiempo a firmarlo\./,
+    );
+    // Sin onRequote, volver a cotizar es volver al formulario (onCancel).
+    expect(byText(c, 'button', 'Volver a cotizar')).toBeTruthy();
+  });
+
+  it('el botón de firma desaparece cuando vence el plazo, sin esperar la próxima lectura de la cadena', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(DEVICE);
+    const { c } = await review(swapPair(deadlineIn(2 * 60_000)), { clock: { chainMs: CHAIN, deviceMs: DEVICE } });
+    expect(byText(c, 'button', 'Firmar las 2 operaciones con tu clave U')).toBeTruthy();
+    expect([...c.querySelectorAll('.review__what')][1]?.textContent).toMatch(/vence en 2 min/);
+    await act(async () => {
+      vi.setSystemTime(DEVICE + 61_000);
+      vi.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+    expect(buttons(c).some((b) => b.startsWith('Firmar'))).toBe(false);
+    expect(byText(c, 'button', 'Volver a cotizar')).toBeTruthy();
+  });
+
+  it('sin la hora de la cadena no se bloquea (el backend y el contrato igual controlan el plazo)', async () => {
+    const { c } = await review(swapPair(1n), { clock: null });
+    expect(byText(c, 'button', 'Firmar las 2 operaciones con tu clave U')).toBeTruthy();
+    expect(c.querySelector('[data-expired]')).toBeNull();
   });
 });

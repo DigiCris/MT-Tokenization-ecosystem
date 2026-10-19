@@ -1,7 +1,9 @@
-// `/whitelist` (P18.T05): destinos leídos de la cadena (con los labels del backend), cuenta regresiva de activación con
-// la alerta in-app de ADR-006 (si no lo agregaste vos, quitalo), alta (código por email, comparación de la dirección
-// completa con la del email, firma de U de la SafeTx armada por la app) y baja. El inicio puede abrir directamente la
-// baja de un destino en activación (estado de navegación `remove`).
+// `/whitelist` (P18.T05): destinos leídos de la cadena (con los labels del backend, entre «»), cuenta regresiva de
+// activación con la alerta in-app de ADR-006 (si no lo agregaste vos o no es la dirección que esperabas, quitalo), alta
+// (código por email, comparación de la dirección completa con la del email y con la que pasó el destinatario por otro
+// medio —ESC-16: si se sustituyó antes de llegar a la app, app y email coinciden igual—, firma de U de la SafeTx armada
+// por la app) y baja. Un label no puede imitar un nombre de la app (operations/names.ts). El inicio puede abrir
+// directamente la baja de un destino en activación (estado de navegación `remove`).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import type { Address } from 'viem';
@@ -11,7 +13,7 @@ import { verifyPrepared, type VerifiedOperation } from '../chain/safe-tx.ts';
 import { systemContracts } from '../config/index.ts';
 import { useChainNow } from '../chain/ChainNow.tsx';
 import { decodeContext, onchainNonce } from '../operations/context.ts';
-import { labelsOf } from '../operations/names.ts';
+import { labelProblem, labelsOf, userLabel } from '../operations/names.ts';
 import { OperationReview } from '../operations/OperationReview.tsx';
 import { releasePrepared, verifiedOrReleased } from '../operations/prepared.ts';
 import { SafeGate, type OperatingWallet } from '../safe/SafeGate.tsx';
@@ -86,6 +88,8 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
     useCallback(
       async (destinationText: string, label: string) => {
         const destination = parseDestination(destinationText);
+        const problem = labelProblem(label);
+        if (problem !== null) throw new Error(problem);
         setPending({ address: destination, label });
         setRequest(await api.requestWhitelistDestination(unlocked.platform, wallet.id, { destination, label }));
       },
@@ -162,8 +166,14 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
         <ul className="destinations">
           {destinations?.map((d) => (
             <li key={d.address} data-destination={d.address} data-active={String(d.active)}>
-              <strong>{d.label ?? 'Sin nombre'}</strong> <AddressText address={d.address} /> ·{' '}
-              {d.active ? 'Activo' : activationText(d.activatesAt, now)}{' '}
+              <strong>{d.label === null ? 'Sin nombre' : userLabel(d.label)}</strong>{' '}
+              <AddressText address={d.address} /> · {d.active ? 'Activo.' : `${activationText(d.activatesAt, now)}.`}
+              {!d.active && (
+                <span className="muted" data-activation-alert>
+                  {' '}
+                  Si no lo agregaste vos o no es la dirección que esperabas, quitalo antes de que se active.
+                </span>
+              )}{' '}
               <button
                 type="button"
                 className="button button--link"
@@ -173,12 +183,6 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
               >
                 Quitar
               </button>
-              {!d.active && (
-                <span className="muted" data-activation-alert>
-                  {' '}
-                  Si no lo agregaste vos, quitalo antes de que se active.
-                </span>
-              )}
             </li>
           ))}
         </ul>
@@ -220,11 +224,17 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
               </p>
               {pending && (
                 <Notice tone="warning">
-                  <p>Compará esta dirección con la del email, los 10 grupos, antes de escribir el código:</p>
                   <p>
-                    <strong>{pending.label}</strong> <AddressText address={pending.address} />
+                    Antes de escribir el código, compará los 10 grupos de esta dirección con la del email y con la que
+                    te pasó el destinatario por otro medio (no la copies de esta pantalla ni del email):
                   </p>
-                  <p>Si algún grupo no coincide, no escribas el código: alguien pudo cambiar la dirección.</p>
+                  <p>
+                    <strong>{userLabel(pending.label)}</strong> <AddressText address={pending.address} />
+                  </p>
+                  <p>
+                    Si algún grupo no coincide, no escribas el código: alguien pudo cambiar la dirección antes de que
+                    llegara a esta app (en el portapapeles o en el mensaje en que te la pasaron) o en la app misma.
+                  </p>
                 </Notice>
               )}
               <Field
@@ -255,12 +265,23 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
           unlocked={unlocked}
           decode={decodeContext(wallet.safe)}
           labels={review.labels}
-          summary={
+          summary={(success) =>
             review.kind === 'add' ? (
-              <p>
-                Tiene que ser la misma dirección que mostraba el email. El destino se activa 24 h después de que el alta
-                se incluya en un bloque: recién ahí le podés enviar, y mientras tanto lo podés quitar.
-              </p>
+              success ? (
+                <p>
+                  El alta ya está en un bloque de Base: el destino se activa en 24 h y recién ahí le vas a poder enviar.
+                  Mientras tanto lo podés quitar desde la lista de arriba; si no lo agregaste vos o no es la dirección
+                  que esperabas, quitalo.
+                </p>
+              ) : (
+                <p>
+                  Tiene que ser la misma dirección que mostraba el email y la que te pasó el destinatario por otro medio
+                  (no la copies de esta pantalla ni del email). El destino se activa 24 h después de que el alta se
+                  incluya en un bloque: recién ahí le podés enviar, y mientras tanto lo podés quitar.
+                </p>
+              )
+            ) : success ? (
+              <p>La baja ya está en un bloque de Base: ya no le podés enviar a ese destino.</p>
             ) : (
               <p>La baja es inmediata: desde que se incluye en un bloque ya no le podés enviar a ese destino.</p>
             )

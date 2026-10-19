@@ -84,7 +84,7 @@ test('actividad reciente: el envío con su transfer saliente y los transfers ent
     )
     .toBeGreaterThanOrEqual(2);
   const send = recent.locator('li[data-kind="operation"]').filter({ hasText: 'Envío' }).first();
-  await expect(send).toContainText(`enviaste 1,00 USDC a Cuenta de Bruno ${shownAddress(destination)}`);
+  await expect(send).toContainText(`enviaste 1,00 USDC a «Cuenta de Bruno» ${shownAddress(destination)}`);
   await expect(recent.getByText(/Recibiste 12,34 USDC/)).toBeVisible();
   await expect(recent.getByText(/Recibiste 5,00 USDT/)).toBeVisible();
   await expect(recent.getByRole('link', { name: 'Ver toda la actividad' })).toBeVisible();
@@ -94,7 +94,7 @@ test('avisos in-app sin leer (P15.T07): el pedido de alta del destino, con acces
   await goHome(page);
   const requested = page.locator('[data-notifications] [data-notification="WHITELIST_REQUESTED"]');
   await expect(requested).toContainText(
-    `Se pidió agregar a tu whitelist el destino Cuenta de Bruno ${shownAddress(destination)}`,
+    `Se pidió agregar a tu whitelist el destino «Cuenta de Bruno» ${shownAddress(destination)}`,
     { timeout: 60_000 },
   );
   await expect(requested.getByRole('link', { name: 'Revisar la whitelist' })).toHaveAttribute('href', '/whitelist');

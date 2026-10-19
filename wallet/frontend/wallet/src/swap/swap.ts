@@ -2,8 +2,9 @@
 // frontend, sobre el pool fijado del SwapExecutor), el slippage es de hasta 0,5 % y la operación son dos SafeTx que la
 // app arma por su cuenta: `approve(SwapExecutor, monto exacto)` (nonce N) y `swap(tokenIn, monto, minOut, deadline)`
 // (nonce N+1), con la allowance final en 0. El minOut del backend no puede quedar por debajo del piso calculado con la
-// cotización propia, ni el deadline fuera de una ventana corta.
-import { encodeFunctionData, erc20Abi, isAddressEqual, type Address } from 'viem';
+// cotización propia, ni el deadline fuera de una ventana corta. Ejecutado, lo recibido se lee del recibo de la
+// transacción por el mismo RPC (P18.MAN).
+import { encodeFunctionData, erc20Abi, isAddressEqual, parseEventLogs, type Address, type Hex } from 'viem';
 import type { PreparedOperation, SwapQuote, TokenSymbol } from '../api/wallet-api.ts';
 import { swapExecutorV3Abi } from '../chain/abis/SwapExecutorV3.ts';
 import type { BaseClient } from '../chain/client.ts';
@@ -181,4 +182,21 @@ export function verifySwapPair(
     ownExpectedOut: ctx.ownExpectedOut,
     backendQuote: prepared.quote,
   };
+}
+
+/**
+ * Lo que llegó a la Safe en la transacción del swap: los `Transfer` del token de salida hacia la Safe en su recibo,
+ * leído por el RPC del frontend (no depende del indexer del backend).
+ */
+export async function swapReceived(
+  reader: Pick<BaseClient, 'getTransactionReceipt'>,
+  txHash: Hex,
+  tokenOut: Address,
+  safe: Address,
+): Promise<bigint> {
+  const receipt = await reader.getTransactionReceipt({ hash: txHash });
+  const transfers = parseEventLogs({ abi: erc20Abi, eventName: 'Transfer', logs: receipt.logs });
+  return transfers
+    .filter((log) => isAddressEqual(log.address, tokenOut) && isAddressEqual(log.args.to, safe))
+    .reduce((sum, log) => sum + log.args.value, 0n);
 }

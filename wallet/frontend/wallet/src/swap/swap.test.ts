@@ -1,7 +1,7 @@
 // P18.T06/T07: transfer del vector de contracts/; swap: el par approve exacto + swap se acepta sólo si es el que arma la
 // app, con nonces consecutivos, minOut entre el piso de la cotización propia (slippage ≤ 0,5 %) y la cotización, y un
 // deadline cercano; la cotización propia sale del QuoterV2 fijado por eth_call.
-import { encodeFunctionData, type Address } from 'viem';
+import { encodeAbiParameters, encodeEventTopics, encodeFunctionData, erc20Abi, type Address, type Hex } from 'viem';
 import { describe, expect, it } from 'vitest';
 import safeTxVectors from '../../test/vectors/safe-tx.json';
 import systemVector from '../../test/vectors/system.json';
@@ -11,7 +11,7 @@ import { assistedCall, safeTxHash, SafeTxMismatchError, type SafeTx } from '../c
 import { pinnedChain } from '../config/chain.ts';
 import type { SystemContracts } from '../config/system-contracts.ts';
 import { transferCall } from '../send/send.ts';
-import { approveCall, formatBps, minOutFor, ownQuote, swapCall, verifySwapPair } from './swap.ts';
+import { approveCall, formatBps, minOutFor, ownQuote, swapCall, swapReceived, verifySwapPair } from './swap.ts';
 
 const vectors = safeTxVectors as unknown as {
   safe: Address;
@@ -163,5 +163,37 @@ describe('swap', () => {
     expect(encodeFunctionData({ abi: swapExecutorV3Abi, functionName: 'tokenOutFor', args: [EXECUTOR] })).toMatch(
       /^0x/,
     );
+  });
+});
+
+describe('lo recibido en un swap', () => {
+  const POOL = pinnedChain.uniswap.pool.address;
+  const USDT = pinnedChain.tokens.usdt.address;
+  const USDC = pinnedChain.tokens.usdc.address;
+  const transferLog = (token: Address, from: Address, to: Address, value: bigint) => ({
+    address: token,
+    topics: encodeEventTopics({ abi: erc20Abi, eventName: 'Transfer', args: { from, to } }),
+    data: encodeAbiParameters([{ type: 'uint256' }], [value]),
+  });
+
+  it('suma los Transfer del token de salida hacia la Safe en el recibo de la transacción', async () => {
+    const hashes: Hex[] = [];
+    const reader = {
+      getTransactionReceipt: ({ hash }: { hash: Hex }) => {
+        hashes.push(hash);
+        return Promise.resolve({
+          logs: [
+            transferLog(USDC, SAFE, POOL, 20_000_000n),
+            transferLog(USDT, POOL, SAFE, 20_027_338n),
+            // De otro token o hacia otra dirección: no es lo recibido.
+            transferLog(USDT, POOL, EXECUTOR, 5n),
+            transferLog(USDC, POOL, SAFE, 7n),
+          ],
+        });
+      },
+    } as never;
+    const tx: Hex = `0x${'12'.repeat(32)}`;
+    expect(await swapReceived(reader, tx, USDT, SAFE)).toBe(20_027_338n);
+    expect(hashes).toEqual([tx]);
   });
 });

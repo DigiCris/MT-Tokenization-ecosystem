@@ -1,13 +1,15 @@
 // `/swap` (P18.T07): USDC↔USDT con la cotización del backend y una propia (QuoterV2 de Uniswap consultado por el RPC del
 // frontend), slippage de hasta 0,5 %, review de las dos SafeTx que arma la app (approve exacto + swap, con la allowance
 // final en 0), firma de ambas y seguimiento del grupo. La cotización vale sólo para el formulario con el que se pidió:
-// cualquier cambio (monto, sentido o slippage) la descarta y hay que volver a cotizar.
+// cualquier cambio (monto, sentido o slippage) la descarta y hay que volver a cotizar; un swap preparado cuyo plazo
+// vence ya no se firma: se cancela lo preparado y se vuelve a cotizar el mismo monto. Al terminar, el review cuenta lo
+// que pasó con lo recibido de verdad (leído del recibo de la transacción).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { erc20Abi } from 'viem';
-import type { SwapQuote, TokenSymbol } from '../api/wallet-api.ts';
+import type { OperationStatus, SwapQuote, TokenSymbol } from '../api/wallet-api.ts';
 import { api } from '../app/services.ts';
-import { formatAmount, parseAmount } from '../assets/amount.ts';
+import { formatAmount, parseAmount, readAmount } from '../assets/amount.ts';
 import { readAssets, type AssetView } from '../assets/assets.ts';
 import { pinnedChain } from '../config/chain.ts';
 import { systemContracts } from '../config/index.ts';
@@ -16,10 +18,11 @@ import { decodeContext, onchainNonce } from '../operations/context.ts';
 import { tokenAmount } from '../operations/describe.ts';
 import { OperationReview } from '../operations/OperationReview.tsx';
 import { releasePrepared, verifiedOrReleased } from '../operations/prepared.ts';
+import { SETTLED_STATES } from '../operations/sign.ts';
 import { SafeGate, type OperatingWallet } from '../safe/SafeGate.tsx';
 import { useSensitiveScreen } from '../session/context.tsx';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
-import { formatBps, minOutFor, ownQuote, tokenAddress, verifySwapPair, type SwapReview } from './swap.ts';
+import { formatBps, minOutFor, ownQuote, swapReceived, tokenAddress, verifySwapPair, type SwapReview } from './swap.ts';
 
 const SLIPPAGES = [10, 30, 50] as const;
 const DEFAULT_SLIPPAGE_BPS = 30;
@@ -33,6 +36,9 @@ interface Quote {
   backend: SwapQuote;
   own: bigint;
 }
+
+/** Lo que llegó a la Safe con el swap: leído del recibo, todavía leyéndose o sin poder leerse. */
+type Received = { status: 'reading' } | { status: 'read'; units: bigint } | { status: 'unknown' };
 
 const otherToken = (token: TokenSymbol): TokenSymbol => (token === 'USDC' ? 'USDT' : 'USDC');
 
@@ -49,10 +55,12 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
       : preparedClock;
   const [tokenIn, setTokenIn] = useState<TokenSymbol>('USDC');
   const [slippageBps, setSlippageBps] = useState<number>(DEFAULT_SLIPPAGE_BPS);
+  const [amountText, setAmountText] = useState('');
   const [assets, setAssets] = useState<AssetView[] | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [review, setReview] = useState<SwapReview | null>(null);
   const [allowance, setAllowance] = useState<bigint | null>(null);
+  const [received, setReceived] = useState<Received | null>(null);
   const [reload, setReload] = useState(0);
   const version = useRef(0);
 
@@ -79,9 +87,9 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
 
   const quoteAction = useAsyncAction(
     useCallback(
-      async (amountText: string) => {
+      async (amount: string | bigint) => {
         const started = version.current;
-        const amountIn = parseAmount(amountText, 6);
+        const amountIn = typeof amount === 'bigint' ? amount : parseAmount(amount, 6);
         if (amountIn <= 0n) throw new Error('El monto tiene que ser mayor que cero.');
         if (balance !== null && amountIn > balance) throw new Error(`No tenés saldo suficiente de ${tokenIn}.`);
         const [backend, own] = await Promise.all([
@@ -132,6 +140,28 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
     }, [quote, unlocked, wallet, reader, swapExecutor]),
   );
 
+  /** Lo que dejó el swap: el permiso que le quedó al contrato de swap y lo que llegó a la Safe. */
+  const settled = (statuses: OperationStatus[], current: SwapReview, tokenOut: TokenSymbol, token: TokenSymbol) => {
+    void reader
+      .readContract({
+        address: tokenAddress(pinnedChain, token),
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [wallet.safe, swapExecutor],
+      })
+      .then(setAllowance);
+    const swap = statuses.find((status) => status.id === current.swap.operation.operationId);
+    if (!swap?.txHash || !SETTLED_STATES.includes(swap.status)) return;
+    setReceived({ status: 'reading' });
+    swapReceived(reader, swap.txHash, tokenAddress(pinnedChain, tokenOut), wallet.safe)
+      .then((units) => {
+        setReceived(units > 0n ? { status: 'read', units } : { status: 'unknown' });
+      })
+      .catch(() => {
+        setReceived({ status: 'unknown' });
+      });
+  };
+
   if (review && quote) {
     const out = otherToken(quote.tokenIn);
     return (
@@ -142,37 +172,60 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
         unlocked={unlocked}
         decode={decodeContext(wallet.safe)}
         clock={clock}
-        summary={
+        summary={(success) => (
           <div className="stack">
             <p>
-              Son 2 operaciones que se firman juntas: primero un permiso exacto para el contrato de swap de la
-              plataforma y después el cambio. Si el precio se mueve más que el slippage que elegiste, el cambio no se
-              hace y tus fondos no se mueven.
+              {success
+                ? 'Se ejecutaron las 2 operaciones, en orden: el permiso exacto para el contrato de swap de la plataforma y el cambio.'
+                : 'Son 2 operaciones que se firman juntas: primero un permiso exacto para el contrato de swap de la plataforma y después el cambio. Si el precio se mueve más que el slippage que elegiste, el cambio no se hace y tus fondos no se mueven.'}
             </p>
             <dl className="summary" data-swap-summary>
-              <dt>Cambiás</dt>
+              <dt>{success ? 'Cambiaste' : 'Cambiás'}</dt>
               <dd>{tokenAmount(quote.amountIn, quote.tokenIn)}</dd>
-              <dt>Recibirías según la cotización propia</dt>
-              <dd data-expected-out={review.ownExpectedOut.toString()}>{tokenAmount(review.ownExpectedOut, out)}</dd>
-              <dt>Diferencia de precio máxima (slippage)</dt>
-              <dd data-slippage-bps={quote.slippageBps}>{formatBps(quote.slippageBps)}</dd>
-              <dt>Recibís como mínimo</dt>
-              <dd>{tokenAmount(review.minAmountOut, out)}</dd>
+              {success ? (
+                <>
+                  <dt>Recibiste</dt>
+                  <dd data-received-out={received?.status === 'read' ? received.units.toString() : undefined}>
+                    {received?.status === 'read'
+                      ? tokenAmount(received.units, out)
+                      : received?.status === 'unknown'
+                        ? 'no se pudo leer de la red: lo ves en Actividad'
+                        : 'leyendo la transacción en Base…'}
+                  </dd>
+                  <dt>Mínimo que aceptabas</dt>
+                  <dd>{tokenAmount(review.minAmountOut, out)}</dd>
+                  <dt>Cotización propia al preparar</dt>
+                  <dd data-expected-out={review.ownExpectedOut.toString()}>
+                    {tokenAmount(review.ownExpectedOut, out)}
+                  </dd>
+                </>
+              ) : (
+                <>
+                  <dt>Recibirías según la cotización propia</dt>
+                  <dd data-expected-out={review.ownExpectedOut.toString()}>
+                    {tokenAmount(review.ownExpectedOut, out)}
+                  </dd>
+                  <dt>Diferencia de precio máxima (slippage)</dt>
+                  <dd data-slippage-bps={quote.slippageBps}>{formatBps(quote.slippageBps)}</dd>
+                  <dt>Recibís como mínimo</dt>
+                  <dd>{tokenAmount(review.minAmountOut, out)}</dd>
+                </>
+              )}
             </dl>
           </div>
-        }
+        )}
         onCancel={() => {
           setReview(null);
         }}
-        onSettled={() => {
-          void reader
-            .readContract({
-              address: tokenAddress(pinnedChain, quote.tokenIn),
-              abi: erc20Abi,
-              functionName: 'allowance',
-              args: [wallet.safe, swapExecutor],
-            })
-            .then(setAllowance);
+        onRequote={() => {
+          // Lo preparado ya se canceló: se vuelve al formulario con el mismo monto y una cotización nueva.
+          version.current += 1;
+          setQuote(null);
+          setReview(null);
+          void quoteAction.run(quote.amountIn);
+        }}
+        onSettled={(statuses) => {
+          settled(statuses, review, out, quote.tokenIn);
         }}
         result={
           allowance !== null && (
@@ -193,6 +246,8 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
                 setReview(null);
                 setQuote(null);
                 setAllowance(null);
+                setReceived(null);
+                setAmountText('');
                 setReload((n) => n + 1);
               }}
             >
@@ -208,6 +263,7 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
   }
 
   const out = otherToken(tokenIn);
+  const reading = readAmount(amountText, 6);
   return (
     <section className="card stack" aria-labelledby="swap-title">
       <h1 id="swap-title">Swap USDC ↔ USDT</h1>
@@ -243,7 +299,23 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
           autoComplete="off"
           placeholder="0,00"
           required
-          hint={balance === null ? undefined : `Disponible: ${formatAmount(balance, 6)} ${tokenIn}`}
+          defaultValue={amountText}
+          onChange={(event) => {
+            setAmountText(event.currentTarget.value);
+          }}
+          hint={
+            balance === null && reading === null ? undefined : (
+              <>
+                {balance !== null && `Disponible: ${formatAmount(balance, 6)} ${tokenIn}.`}
+                {reading && (
+                  <span data-amount-reading={reading.ok ? reading.units.toString() : 'invalid'}>
+                    {balance !== null && ' '}
+                    {reading.ok ? `Vas a cambiar ${reading.text} ${tokenIn}.` : reading.message}
+                  </span>
+                )}
+              </>
+            )
+          }
         />
         <div className="field">
           <fieldset className="choices" aria-describedby="slippage-hint">
@@ -293,8 +365,10 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
             </dd>
           </dl>
           <p className="field__hint">
-            La cotización propia la calcula esta app preguntándole directamente al pool de Uniswap en Base (contrato
-            QuoterV2), sin pasar por la plataforma: si las dos coinciden, la de la plataforma no está adulterada.
+            La cotización propia la calcula esta app con el contrato QuoterV2 de Uniswap, que simula este cambio contra
+            el pool USDC/USDT de Base; lo consulta por su propia conexión a la red, sin pasar por la plataforma. Si las
+            dos cotizaciones no coinciden, manda la propia: el mínimo a recibir sale de ella y, si la plataforma prepara
+            el swap con un mínimo menor, la app no te deja firmarlo.
           </p>
           {prepare.error && <Notice tone="error">{prepare.error}</Notice>}
           <button

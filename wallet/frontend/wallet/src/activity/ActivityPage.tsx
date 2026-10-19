@@ -1,13 +1,13 @@
-// `/activity` (P18.T08): operaciones con sus estados y transfers entrantes/salientes indexados, por fecha, con link al
-// explorer; paginada por cursor. Los destinos aparecen con su nombre de la whitelist y los estados de la cadena tienen
-// una ayuda breve.
+// `/activity` (P18.T08): operaciones con sus estados y transfers entrantes/salientes indexados, por fecha, con el hash
+// de la transacción y el link al explorer; paginada por cursor. Los destinos aparecen con su nombre de la whitelist y
+// todos los estados que se pueden ver tienen una ayuda breve.
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { OperationStatus, Transfer } from '../api/wallet-api.ts';
 import { api } from '../app/services.ts';
 import { pinnedChain } from '../config/chain.ts';
 import { systemContracts } from '../config/index.ts';
-import { SETTLEMENT_HELP, STATE_TEXT } from '../operations/describe.ts';
-import { addressNames, backendLabels } from '../operations/names.ts';
+import { STATE_HELP, STATE_TEXT } from '../operations/describe.ts';
+import { addressNames, backendLabels, shownLabels } from '../operations/names.ts';
 import { SafeGate, type OperatingWallet } from '../safe/SafeGate.tsx';
 import { useSensitiveScreen } from '../session/context.tsx';
 import { describeError } from '../ui/errors.ts';
@@ -23,18 +23,20 @@ async function whitelistLabels(walletId: string): Promise<Map<string, string>> {
     .catch(() => new Map<string, string>());
 }
 
-/** Qué significa cada estado de una operación que ya está en la cadena. */
-export function SettlementHelp() {
+/** Qué significa cada estado que puede mostrar una operación, en el orden en que los recorre. */
+export function StateHelp() {
   return (
-    <details className="help">
+    <details className="help" data-state-help>
       <summary>¿Qué significa cada estado?</summary>
       <dl className="summary">
-        {SETTLEMENT_HELP.map((help) => (
+        {STATE_HELP.map((help) => (
           <Fragment key={help.state}>
             <dt>{STATE_TEXT[help.state]}</dt>
             <dd>{help.text}</dd>
           </Fragment>
         ))}
+        <dt>Cancelada antes de firmar</dt>
+        <dd>se canceló sin tu firma (la cancelaste vos en el review o la plataforma descartó lo preparado).</dd>
       </dl>
       <p>
         La hora es la de la inclusión en un bloque de Base; las operaciones que no llegaron a la red muestran cuándo se
@@ -87,7 +89,10 @@ function Activity({ ctx }: { ctx: OperatingWallet }) {
     }, [walletId, cursors]),
   );
   const hasMore = cursors !== null && (cursors.operations !== null || cursors.transfers !== null);
-  const nameOf = addressNames({ safe: ctx.wallet.safe, chain: pinnedChain, system: systemContracts }, labels);
+  const nameOf = addressNames(
+    { safe: ctx.wallet.safe, chain: pinnedChain, system: systemContracts },
+    shownLabels(labels),
+  );
   return (
     <section className="card stack" aria-labelledby="activity-title">
       <h1 id="activity-title">Actividad</h1>
@@ -97,7 +102,7 @@ function Activity({ ctx }: { ctx: OperatingWallet }) {
       ) : (
         <ActivityList items={mergeActivity(operations, transfers)} nameOf={nameOf} />
       )}
-      <SettlementHelp />
+      <StateHelp />
       {hasMore && (
         <button
           type="button"

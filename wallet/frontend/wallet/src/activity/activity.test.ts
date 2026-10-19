@@ -1,13 +1,14 @@
 // P18.T08: operaciones y transfers en una lista por fecha, sin duplicar el transfer saliente de una operación propia, y
 // links al explorer fijado. P18.MAN: el swap junta lo que salió y lo que entró en su transacción ("cambiaste … por …"
-// con el pool fijado), una operación sin transfers dice qué era (su intención guardada) y la hora de una operación es
-// la de su inclusión en un bloque, comparable con la de los transfers indexados.
+// con el pool que usa la app), una operación sin transfers dice qué era (su intención guardada, sin un "de" que se lea
+// como origen) y la hora de una operación es la de su inclusión en un bloque, comparable con la de los transfers
+// indexados. Los labels de la whitelist van entre «», como en la pantalla.
 import type { Address } from 'viem';
 import { describe, expect, it } from 'vitest';
 import type { DecodedOperation, OperationStatus, Transfer } from '../api/wallet-api.ts';
 import { pinnedChain } from '../config/chain.ts';
 import { partsText } from '../operations/describe.ts';
-import { addressNames, labelsOf, POOL_NAME } from '../operations/names.ts';
+import { addressNames, labelsOf, POOL_NAME, shownLabels } from '../operations/names.ts';
 import { groupAddress } from '../ui/AddressText.tsx';
 import { explorerAddress, explorerTx, mergeActivity, operationDetail, transferDetail } from './activity.ts';
 
@@ -23,7 +24,11 @@ const transfer = (
 
 const DEST: Address = '0x6DFD2d7600000000000000000000000000003a23';
 const POOL = pinnedChain.uniswap.pool.address;
-const nameOf = addressNames({ chain: pinnedChain }, labelsOf([{ address: DEST, label: 'Cuenta de Carla' }]));
+const nameOf = addressNames(
+  { chain: pinnedChain },
+  shownLabels(labelsOf([{ address: DEST, label: 'Cuenta de Carla' }])),
+);
+const CARLA = `«Cuenta de Carla» (${groupAddress(DEST)})`;
 
 function operationItem(items: ReturnType<typeof mergeActivity>, id: string) {
   const item = items.find((i) => i.kind === 'operation' && i.operation.id === id);
@@ -80,7 +85,7 @@ describe('actividad', () => {
     expect(pending.atKind).toBe('prepared');
   });
 
-  it('el swap junta lo que salió y lo que entró en su transacción, con el pool fijado', () => {
+  it('el swap junta lo que salió y lo que entró en su transacción, con el pool que usa la app', () => {
     const tx = `0x${'12'.repeat(32)}`;
     const items = mergeActivity(
       [
@@ -108,14 +113,14 @@ describe('actividad', () => {
     const [item] = mergeActivity([cancelled], []);
     if (item?.kind !== 'operation') throw new Error('operation');
     const detail = operationDetail(item, nameOf);
-    expect(detail && partsText(detail)).toBe(`de 2,50 USDC a Cuenta de Carla (${groupAddress(DEST)})`);
+    expect(detail && partsText(detail)).toBe(`2,50 USDC a ${CARLA}`);
     const whitelistAdd = op('o2', '2026-10-18T10:00:00Z', null, {
       operationType: 'WHITELIST_ADD',
       decoded: { destination: DEST },
     });
     const [added] = mergeActivity([whitelistAdd], []);
     if (added?.kind !== 'operation') throw new Error('operation');
-    expect(partsText(operationDetail(added, nameOf) ?? [])).toBe(`de Cuenta de Carla (${groupAddress(DEST)})`);
+    expect(partsText(operationDetail(added, nameOf) ?? [])).toBe(CARLA);
     // Sin intención (backend anterior) no se inventa nada.
     const [bare] = mergeActivity([op('o3', '2026-10-18T10:00:00Z', null)], []);
     if (bare?.kind !== 'operation') throw new Error('operation');
@@ -129,37 +134,29 @@ describe('actividad', () => {
       [transfer('t', '2026-10-18T10:00:05Z', 'OUT', tx, { amount: '2500000', counterparty: DEST })],
     );
     const detail = operationDetail(operationItem(items, 'send'), nameOf);
-    expect(detail && partsText(detail)).toBe(`enviaste 2,50 USDC a Cuenta de Carla (${groupAddress(DEST)})`);
+    expect(detail && partsText(detail)).toBe(`enviaste 2,50 USDC a ${CARLA}`);
     const received = transferDetail(
       transfer('in', '2026-10-18T10:00:00Z', 'IN', tx, { amount: '8000000', counterparty: DEST }),
       nameOf,
     );
     expect(received.title).toBe('Recibiste 8,00 USDC');
-    expect(partsText(received.parts)).toBe(`de Cuenta de Carla (${groupAddress(DEST)})`);
+    expect(partsText(received.parts)).toBe(`de ${CARLA}`);
   });
 
   it.each<[OperationStatus['operationType'], DecodedOperation, string | null]>([
-    [
-      'SEND',
-      { token: 'USDT', amount: '1000000', destination: DEST },
-      `de 1,00 USDT a Cuenta de Carla (${groupAddress(DEST)})`,
-    ],
-    [
-      'MIGRATION_TRANSFER',
-      { token: 'USDC', amount: '25000000', destination: DEST },
-      `de 25,00 USDC a Cuenta de Carla (${groupAddress(DEST)})`,
-    ],
+    ['SEND', { token: 'USDT', amount: '1000000', destination: DEST }, `1,00 USDT a ${CARLA}`],
+    ['MIGRATION_TRANSFER', { token: 'USDC', amount: '25000000', destination: DEST }, `25,00 USDC a ${CARLA}`],
     [
       'SWAP',
       { tokenIn: 'USDC', tokenOut: 'USDT', amount: '20000000', minAmountOut: '19940000', deadline: '1' },
-      'de 20,00 USDC por al menos 19,94 USDT',
+      '20,00 USDC por al menos 19,94 USDT',
     ],
-    ['SWAP_APPROVE', { token: 'USDC', amount: '20000000' }, 'de 20,00 USDC para el contrato de swap de la plataforma'],
-    ['APPROVE_REVOKE', { token: 'USDT' }, 'sobre tus USDT'],
-    ['WHITELIST_REMOVE', { destination: DEST }, `de Cuenta de Carla (${groupAddress(DEST)})`],
-    ['ROTATION_PROPOSE', { role: 'R' }, 'de tu clave de recuperación (R)'],
-    ['ROTATION_EXECUTE', { role: 'S' }, 'de la clave de la plataforma (S)'],
-    ['GUARD_UPGRADE', { role: 'GUARD', newKey: DEST }, `a Cuenta de Carla (${groupAddress(DEST)})`],
+    ['SWAP_APPROVE', { token: 'USDC', amount: '20000000' }, '20,00 USDC para el contrato de swap de la plataforma'],
+    ['APPROVE_REVOKE', { token: 'USDT' }, 'el del contrato de swap de la plataforma sobre tus USDT'],
+    ['WHITELIST_REMOVE', { destination: DEST }, CARLA],
+    ['ROTATION_PROPOSE', { role: 'R' }, 'tu clave de recuperación (R)'],
+    ['ROTATION_EXECUTE', { role: 'S' }, 'la clave de la plataforma (S)'],
+    ['GUARD_UPGRADE', { role: 'GUARD', newKey: DEST }, `nueva dirección ${CARLA}`],
     ['NOOP_CANCEL', {}, null],
     // Datos incompletos o inválidos: nada inventado.
     ['SEND', { token: 'USDC', amount: '1,5', destination: DEST }, null],
@@ -182,9 +179,7 @@ describe('actividad', () => {
       ],
     );
     const detail = operationDetail(operationItem(items, 'm'), nameOf);
-    expect(detail && partsText(detail)).toBe(
-      `enviaste 1,00 USDC a Cuenta de Carla (${groupAddress(DEST)}); enviaste 2,00 USDT a Cuenta de Carla (${groupAddress(DEST)})`,
-    );
+    expect(detail && partsText(detail)).toBe(`enviaste 1,00 USDC a ${CARLA}; enviaste 2,00 USDT a ${CARLA}`);
   });
 
   it('links al explorer fijado', () => {

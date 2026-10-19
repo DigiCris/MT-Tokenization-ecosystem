@@ -1,18 +1,19 @@
 // `/send` (P18.T06): token → destino (sólo los activos on-chain de la whitelist) → monto (bigint con los decimales
-// fijados) → review decodificado desde la SafeTx que arma la app, comparada byte a byte con la del backend (si difieren,
-// no se firma) → segundo factor si corresponde → firma de U → seguimiento.
+// fijados; debajo del campo, cómo se interpreta lo escrito) → review decodificado desde la SafeTx que arma la app,
+// comparada byte a byte con la del backend (si difieren, no se firma) → segundo factor si corresponde → firma de U →
+// seguimiento. Los nombres de los destinos son los labels del usuario, entre «».
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { Address } from 'viem';
 import type { TokenSymbol } from '../api/wallet-api.ts';
 import { api } from '../app/services.ts';
 import { verifyPrepared, type VerifiedOperation } from '../chain/safe-tx.ts';
-import { formatAmount, parseAmount } from '../assets/amount.ts';
+import { formatAmount, parseAmount, readAmount } from '../assets/amount.ts';
 import { readAssets, type AssetView } from '../assets/assets.ts';
 import { pinnedChain } from '../config/chain.ts';
 import { systemContracts } from '../config/index.ts';
 import { decodeContext, onchainNonce } from '../operations/context.ts';
-import { labelsOf } from '../operations/names.ts';
+import { labelsOf, userLabel } from '../operations/names.ts';
 import { OperationReview } from '../operations/OperationReview.tsx';
 import { releasePrepared, verifiedOrReleased } from '../operations/prepared.ts';
 import { SafeGate, type OperatingWallet } from '../safe/SafeGate.tsx';
@@ -32,6 +33,7 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
   const [review, setReview] = useState<VerifiedOperation | null>(null);
   const [tokenChoice, setTokenChoice] = useState<TokenSymbol | null>(null);
   const [chosen, setChosen] = useState<Address | null>(null);
+  const [amountText, setAmountText] = useState('');
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
@@ -110,6 +112,7 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
               className="button"
               onClick={() => {
                 setReview(null);
+                setAmountText('');
                 setReload((n) => n + 1);
               }}
             >
@@ -125,6 +128,7 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
   }
   const selectedToken = tokenChoice ?? assets[0]?.symbol ?? 'USDC';
   const selectedAsset = assets.find((a) => a.symbol === selectedToken);
+  const reading = readAmount(amountText, selectedAsset?.decimals ?? 6);
   const destination = active.find((d) => d.address === chosen) ?? active[0];
   return (
     <section className="card stack" aria-labelledby="send-title">
@@ -180,7 +184,7 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
             >
               {active.map((d) => (
                 <option key={d.address} value={d.address}>
-                  {d.label ?? 'Sin nombre'} — {groupAddress(d.address)}
+                  {d.label === null ? 'Sin nombre' : userLabel(d.label)} — {groupAddress(d.address)}
                 </option>
               ))}
             </select>
@@ -196,10 +200,23 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
             autoComplete="off"
             placeholder="0,00"
             required
+            defaultValue={amountText}
+            onChange={(event) => {
+              setAmountText(event.currentTarget.value);
+            }}
             hint={
-              selectedAsset
-                ? `Disponible: ${formatAmount(selectedAsset.balance, selectedAsset.decimals)} ${selectedToken}`
-                : undefined
+              !selectedAsset && reading === null ? undefined : (
+                <>
+                  {selectedAsset &&
+                    `Disponible: ${formatAmount(selectedAsset.balance, selectedAsset.decimals)} ${selectedToken}.`}
+                  {reading && (
+                    <span data-amount-reading={reading.ok ? reading.units.toString() : 'invalid'}>
+                      {selectedAsset && ' '}
+                      {reading.ok ? `Vas a enviar ${reading.text} ${selectedToken}.` : reading.message}
+                    </span>
+                  )}
+                </>
+              )
             }
           />
           {prepare.error && <Notice tone="error">{prepare.error}</Notice>}

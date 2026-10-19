@@ -1,7 +1,8 @@
 // Inicio con la wallet operativa (P18.T03): dirección de la Safe (EIP-55, copiar, QR de recepción con la advertencia de
 // red), saldos leídos de la cadena y cruzados con el backend, alertas leídas on-chain (rotaciones pendientes y destinos
-// de la whitelist que todavía se están activando: la alerta in-app de ADR-006/ESC-16, con acceso directo a la baja),
-// el pedido de rotación de S de la plataforma, los avisos in-app del backend (P15.T07) y la actividad reciente.
+// de la whitelist que todavía se están activando: la alerta in-app de ADR-006/ESC-16 —si no lo agregaste vos o no es
+// la dirección que esperabas—, con acceso directo a la baja), el pedido de rotación de S de la plataforma, los avisos
+// in-app del backend (P15.T07) y la actividad reciente.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { Rotation } from '../api/wallet-api.ts';
@@ -15,7 +16,7 @@ import { pinnedChain } from '../config/chain.ts';
 import { systemContracts } from '../config/index.ts';
 import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
 import { ROLE_TEXT } from '../operations/describe.ts';
-import { addressNames, backendLabels } from '../operations/names.ts';
+import { addressNames, backendLabels, shownLabels, userLabel } from '../operations/names.ts';
 import type { OperatingWallet } from '../safe/SafeGate.tsx';
 import { readPendingProposals, type PendingProposal } from '../security/rotations/rotations.ts';
 import { AddressText } from '../ui/AddressText.tsx';
@@ -82,15 +83,16 @@ export function OperatingHome({ ctx }: { ctx: OperatingWallet }) {
     };
   }, [wallet.id, wallet.safe, reader]);
 
-  const nameOf = addressNames({ safe: wallet.safe, chain: pinnedChain, system: systemContracts }, labels);
+  const nameOf = addressNames({ safe: wallet.safe, chain: pinnedChain, system: systemContracts }, shownLabels(labels));
 
   return (
     <div className="stack">
       {activating(destinations ?? []).map((d) => (
         <Notice key={d.address} tone="warning">
           <span data-activating={d.address}>
-            Un destino nuevo ({d.label ?? 'sin nombre'} <AddressText address={d.address} />){' '}
-            {activationText(d.activatesAt, chainNow)}: si no lo agregaste vos, quitalo antes de que se active.{' '}
+            Un destino nuevo ({d.label === null ? 'sin nombre' : userLabel(d.label)} <AddressText address={d.address} />
+            ) {activationText(d.activatesAt, chainNow)}: si no lo agregaste vos o si no es la dirección que esperabas,
+            quitalo antes de que se active.{' '}
             <Link to="/whitelist" state={{ remove: d.address } satisfies RemoveIntent}>
               Quitarlo
             </Link>

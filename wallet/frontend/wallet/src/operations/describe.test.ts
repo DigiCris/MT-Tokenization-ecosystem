@@ -1,18 +1,32 @@
 // Review de P18: cada tipo de operación decodificada tiene su texto (montos es-AR y direcciones agrupadas), lo no
 // reconocido se anuncia como no firmable, y todos los estados del pipeline tienen texto. P18.MAN: el destino aparece con
-// su nombre (label de la whitelist o contrato del sistema) y la dirección completa al lado; el permiso del swap nombra al
-// contrato de swap de la plataforma; el vencimiento del swap se mide con la hora de la cadena y se muestra en la del
-// dispositivo.
+// su nombre (label de la whitelist entre «» o contrato del sistema) y la dirección completa al lado; el permiso del swap
+// nombra al contrato de swap de la plataforma; el vencimiento del swap se mide con la hora de la cadena (la última
+// lectura más lo que pasó desde entonces) y se muestra en la del dispositivo; ya ejecutada, la operación se cuenta en
+// pasado; cada estado que se puede ver tiene su ayuda y los motivos van en texto, nunca como código crudo.
 import type { Address } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
-import type { OperationState } from '../api/wallet-api.ts';
+import type { OperationState, OperationStatus } from '../api/wallet-api.ts';
 import type { DecodedCall } from '../chain/decoders.ts';
 import { pinnedChain } from '../config/chain.ts';
 import type { SystemContracts } from '../config/system-contracts.ts';
 import { groupAddress } from '../ui/AddressText.tsx';
 import { decodeContext, onchainNonce } from './context.ts';
-import { describeCall, describeParts, expiryText, partsText, SETTLEMENT_HELP, STATE_TEXT } from './describe.ts';
-import { addressNames, labelsOf, POOL_NAME } from './names.ts';
+import {
+  chainNowAt,
+  deadlineRemainingMs,
+  describeCall,
+  describeParts,
+  expiryText,
+  operationReason,
+  partsText,
+  stateLabel,
+  STATE_HELP,
+  STATE_TEXT,
+  swapDeadline,
+  SWAP_SIGN_MARGIN_MS,
+} from './describe.ts';
+import { addressNames, labelsOf, POOL_NAME, shownLabels } from './names.ts';
 
 // La config embebida del build (módulo virtual de Vite) no existe en Vitest: se reemplaza por una mínima.
 vi.mock('../config/index.ts', () => ({
@@ -68,19 +82,75 @@ describe('texto de las operaciones', () => {
   });
 
   it('el destino con su nombre de la whitelist y la dirección completa; monto y token como parte destacada', () => {
-    const nameOf = addressNames({ safe: SAFE, system }, labelsOf([{ address: A, label: 'Cuenta de Ana' }]));
+    const nameOf = addressNames(
+      { safe: SAFE, system },
+      shownLabels(labelsOf([{ address: A, label: 'Cuenta de Ana' }])),
+    );
     const call: DecodedCall = { kind: 'TRANSFER', token: 'USDC', recipient: A, amount: 1_500_000n };
     const parts = describeParts(call, { nameOf });
     expect(parts).toEqual([
       { kind: 'text', text: 'Enviar ' },
       { kind: 'amount', text: '1,50 USDC' },
       { kind: 'text', text: ' a ' },
-      { kind: 'address', address: A, name: 'Cuenta de Ana' },
+      { kind: 'address', address: A, name: '«Cuenta de Ana»' },
     ]);
-    expect(partsText(parts)).toBe(`Enviar 1,50 USDC a Cuenta de Ana (${groupAddress(A)})`);
+    expect(partsText(parts)).toBe(`Enviar 1,50 USDC a «Cuenta de Ana» (${groupAddress(A)})`);
     expect(describeCall({ kind: 'WHITELIST_ADD', destination: A }, { nameOf })).toBe(
-      `Agregar a tu whitelist el destino Cuenta de Ana (${groupAddress(A)}) (se activa 24 h después)`,
+      `Agregar a tu whitelist el destino «Cuenta de Ana» (${groupAddress(A)}) (se activa 24 h después)`,
     );
+  });
+
+  it('ya ejecutada, la operación se cuenta en pasado (sin el plazo del swap)', () => {
+    const nameOf = addressNames(
+      { safe: SAFE, system },
+      shownLabels(labelsOf([{ address: A, label: 'Cuenta de Ana' }])),
+    );
+    const done = { nameOf, done: true };
+    expect(describeCall({ kind: 'TRANSFER', token: 'USDC', recipient: A, amount: 1_500_000n }, done)).toBe(
+      `Enviaste 1,50 USDC a «Cuenta de Ana» (${groupAddress(A)})`,
+    );
+    const approve: DecodedCall = {
+      kind: 'APPROVE',
+      token: 'USDC',
+      spender: EXECUTOR,
+      amount: 20_000_000n,
+      spenderIsSwapExecutor: true,
+    };
+    expect(describeCall(approve, done)).toBe(
+      `Permitiste que el contrato de swap de la plataforma (${groupAddress(EXECUTOR)}) use exactamente 20,00 USDC de ` +
+        'tu Safe, sólo para este swap',
+    );
+    const swap: DecodedCall = {
+      kind: 'SWAP',
+      tokenIn: 'USDC',
+      tokenOut: 'USDT',
+      amountIn: 20_000_000n,
+      minAmountOut: 19_940_000n,
+      deadline: 1n,
+    };
+    expect(describeCall(swap, done)).toBe(
+      'Cambiaste 20,00 USDC por USDT (como mínimo 19,94 USDT), que llegaron a tu Safe',
+    );
+    expect(describeCall({ kind: 'WHITELIST_ADD', destination: A }, done)).toBe(
+      `Agregaste a tu whitelist el destino «Cuenta de Ana» (${groupAddress(A)}) (se activa 24 h después de incluirse ` +
+        'en un bloque)',
+    );
+    const pastTense: [DecodedCall, RegExp][] = [
+      [{ kind: 'WHITELIST_REMOVE', destination: A }, /^Quitaste de tu whitelist/],
+      [{ kind: 'NOOP' }, /anuló la operación pendiente que tenía/],
+      [
+        { kind: 'APPROVE', token: 'USDT', spender: A, amount: 0n, spenderIsSwapExecutor: false },
+        /^Revocaste el permiso sobre tus USDT que tenía/,
+      ],
+      [{ kind: 'APPROVE', token: 'USDC', spender: A, amount: 1n, spenderIsSwapExecutor: false }, /de tu Safe$/],
+      [{ kind: 'ROTATION_PROPOSE', role: 'R', oldValue: A, newValue: A }, /^Propusiste/],
+      [{ kind: 'ROTATION_CANCEL', proposalId: `0x${'1'.repeat(64)}` }, /^Cancelaste/],
+      [{ kind: 'ROTATION_EXECUTE', prevOwner: A, oldOwner: A, newOwner: A }, /^Se reemplazó en la Safe/],
+      [{ kind: 'GUARD_UPGRADE', target: 'GUARD', newGuard: Z }, /^Se quitó el Guard de seguridad de la Safe$/],
+      [{ kind: 'GUARD_UPGRADE', target: 'MODULE_GUARD', newGuard: A }, /^Se cambió el guard de módulos a/],
+      [{ kind: 'GUARD_ROLES_UPDATE', userKey: A, recoveryKey: A, executor: A }, /^Se registraron en el Guard/],
+    ];
+    for (const [call, text] of pastTense) expect(describeCall(call, done)).toMatch(text);
   });
 
   it('el permiso del swap nombra al contrato de swap de la plataforma (un label no lo tapa)', () => {
@@ -95,10 +165,11 @@ describe('texto de las operaciones', () => {
     );
   });
 
-  it('nombres conocidos: tokens, pool fijado y la propia Safe; una dirección desconocida no tiene nombre', () => {
+  it('nombres conocidos: tokens, el pool que usa la app y la propia Safe; una dirección desconocida no tiene nombre', () => {
     const nameOf = addressNames({ safe: SAFE, chain: pinnedChain, system });
     expect(nameOf(pinnedChain.tokens.usdc.address)).toBe('el contrato de USDC');
     expect(nameOf(pinnedChain.uniswap.pool.address)).toBe(POOL_NAME);
+    expect(POOL_NAME).toBe('el pool USDC/USDT de Uniswap que usa la app');
     expect(nameOf(SAFE.toLowerCase() as Address)).toBe('tu Safe');
     expect(nameOf(A)).toBeNull();
   });
@@ -147,7 +218,93 @@ describe('texto de las operaciones', () => {
       'EXPIRED',
     ];
     for (const state of states) expect(STATE_TEXT[state]).toMatch(/\S/);
-    expect(SETTLEMENT_HELP.map((h) => h.state)).toEqual(['MINED', 'CONFIRMED', 'FINALIZED']);
+    // La ayuda cubre todos los estados que se pueden ver, en el orden en que los recorre una operación.
+    expect(STATE_HELP.map((h) => h.state)).toEqual(states);
+    for (const help of STATE_HELP) expect(help.text).toMatch(/^[a-záéíóú].*\.$/);
+  });
+
+  it('cancelada antes de firmar y motivos en texto (sin códigos crudos)', () => {
+    const status = (patch: Partial<OperationStatus>) =>
+      ({ status: 'CANCELLED', failureReason: null, lastErrorCode: null, history: [], ...patch }) as OperationStatus;
+    const unsigned = status({
+      failureReason: 'USER_CANCELLED',
+      history: [
+        { status: 'CREATED', at: '2026-10-19T10:00:00Z' },
+        { status: 'CANCELLED', at: '2026-10-19T10:01:00Z' },
+      ],
+    });
+    expect(stateLabel(unsigned)).toBe('Cancelada antes de firmar');
+    // El nombre del estado ya lo dice: no se repite como motivo.
+    expect(operationReason(unsigned)).toBeNull();
+    const byNoop = status({
+      failureReason: 'SUPERSEDED_BY_NOOP',
+      history: [
+        { status: 'CREATED', at: '2026-10-19T10:00:00Z' },
+        { status: 'USER_SIGNED', at: '2026-10-19T10:00:10Z' },
+        { status: 'CANCELLED', at: '2026-10-19T10:05:00Z' },
+      ],
+    });
+    expect(stateLabel(byNoop)).toBe('Cancelada');
+    expect(operationReason(byNoop)).toBe('la reemplazó la operación vacía que firmaste para cancelarla');
+    // Lo preparado que la plataforma descartó (nunca se firmó) también es "antes de firmar", con su motivo.
+    const consumed = status({
+      failureReason: 'NONCE_CONSUMED',
+      history: [{ status: 'CREATED', at: '2026-10-19T10:00:00Z' }],
+    });
+    expect(stateLabel(consumed)).toBe('Cancelada antes de firmar');
+    expect(operationReason(consumed)).toBe('otra operación ya usó su número de orden en tu Safe');
+    // Sin historial (backend anterior) no se adivina.
+    expect(stateLabel(status({}))).toBe('Cancelada');
+
+    const failed = status({ status: 'FAILED_FINAL', failureReason: 'POLICY_REJECTED: DEADLINE_INVALID' });
+    expect(stateLabel(failed)).toBe('Falló');
+    expect(operationReason(failed)).toBe('no cumple las reglas de la plataforma: venció el plazo del swap');
+    const retrying = status({ status: 'FAILED_RETRYABLE', failureReason: null, lastErrorCode: 'SIGNER_UNAVAILABLE' });
+    expect(operationReason(retrying)).toBe('el servidor de firma de la plataforma no responde');
+    // La mitad ya firmada de un swap cancelado antes de enviarse: el estado no lo dice, el motivo sí.
+    const signedHalf = status({
+      status: 'FAILED_FINAL',
+      failureReason: 'USER_CANCELLED',
+      lastErrorCode: 'USER_CANCELLED',
+      history: [
+        { status: 'CREATED', at: '2026-10-19T10:00:00Z' },
+        { status: 'USER_SIGNED', at: '2026-10-19T10:00:10Z' },
+      ],
+    });
+    expect(stateLabel(signedHalf)).toBe('Falló');
+    expect(operationReason(signedHalf)).toBe('la cancelaste antes de que se enviara a la red');
+    const expired = status({ status: 'EXPIRED', failureReason: 'NOT_SIGNED_IN_TIME' });
+    expect(stateLabel(expired)).toBe('Venció sin firmar');
+    expect(operationReason(expired)).toBeNull();
+    // Una operación en la cadena no muestra motivos viejos.
+    expect(operationReason(status({ status: 'MINED', failureReason: 'TX_DROPPED' }))).toBeNull();
+  });
+
+  it('plazo del swap con la hora de la cadena: la última lectura más lo que pasó, sin margen para firmar al final', () => {
+    const clock = { chainMs: 1_800_000_000_000, deviceMs: 1_000_000 };
+    expect(chainNowAt(clock)).toBe(clock.chainMs);
+    expect(chainNowAt(clock, clock.deviceMs + 30_000)).toBe(clock.chainMs + 30_000);
+    // Un reloj del dispositivo que va para atrás no resta.
+    expect(chainNowAt(clock, clock.deviceMs - 5_000)).toBe(clock.chainMs);
+    const deadline = BigInt((clock.chainMs + 10 * 60_000) / 1000);
+    expect(deadlineRemainingMs(deadline, null)).toBeNull();
+    expect(deadlineRemainingMs(deadline, clock, clock.deviceMs + 60_000)).toBe(9 * 60_000);
+    expect(expiryText(deadline, clock, clock.deviceMs + 60_000)).toMatch(/^vence en 9 min \(/);
+    const closing = clock.deviceMs + 10 * 60_000 - SWAP_SIGN_MARGIN_MS + 1_000;
+    expect(expiryText(deadline, clock, closing)).toMatch(
+      /^vence a las .*: ya no da tiempo a firmarlo, volvé a cotizar$/,
+    );
+    expect(expiryText(deadline, clock, clock.deviceMs + 10 * 60_000)).toMatch(/^venció a las .*: volvé a cotizar$/);
+    const swap = (d: bigint): DecodedCall => ({
+      kind: 'SWAP',
+      tokenIn: 'USDC',
+      tokenOut: 'USDT',
+      amountIn: 1n,
+      minAmountOut: 1n,
+      deadline: d,
+    });
+    expect(swapDeadline([{ kind: 'NOOP' }])).toBeNull();
+    expect(swapDeadline([{ kind: 'NOOP' }, swap(20n), swap(10n)])).toBe(10n);
   });
 
   it('contexto de decodificación de la Safe y nonce on-chain', async () => {

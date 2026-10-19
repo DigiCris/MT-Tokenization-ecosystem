@@ -1,24 +1,35 @@
 // Review, firma y seguimiento de operaciones del camino asistido (P18): muestra lo que hace cada SafeTx decodificada de
 // los bytes que armó la app (ya comparados con los del backend), con el destino nombrado, la red y quién paga el gas,
 // y los detalles técnicos aparte; pide el segundo factor si la operación lo requiere (umbral de la policy y canal), U
-// firma cada una y se sigue su estado hasta que se mina, falla o se cancela, con un cierre claro (éxito o error, link a
-// la transacción y cómo seguir). Antes de firmar se puede cancelar: lo preparado se cancela en el backend y su nonce
-// queda libre (operations/prepared.ts).
+// firma cada una y se sigue su estado hasta que se mina, falla o se cancela, con un cierre claro (éxito contado en
+// pasado o error con su motivo en texto, la transacción y cómo seguir). Antes de firmar se puede cancelar: lo preparado
+// se cancela en el backend y su nonce queda libre (operations/prepared.ts). Un swap con el plazo vencido (o a menos de
+// un minuto de vencer, con la hora de la cadena) ya no se ofrece para firmar: se vuelve a cotizar.
 import { Fragment, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { explorerTx } from '../activity/activity.ts';
 import type { OperationStatus } from '../api/wallet-api.ts';
+import { TxHash } from '../activity/TxHash.tsx';
 import { api } from '../app/services.ts';
 import { formatAmount } from '../assets/amount.ts';
+import { useDeviceNow } from '../chain/ChainNow.tsx';
 import { decodeSafeTx, type DecodeContext, type DecodedCall } from '../chain/decoders.ts';
 import type { VerifiedOperation } from '../chain/safe-tx.ts';
-import { pinnedChain } from '../config/chain.ts';
 import { useSession } from '../session/context.tsx';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import type { UnlockedWallet } from '../unlock/unlock.ts';
 import { CallDescription } from './CallDescription.tsx';
-import { describeParts, STATE_TEXT, tokenAmount, type ChainClock, type DescriptionPart } from './describe.ts';
-import { addressNames, type NameOf } from './names.ts';
+import {
+  deadlineRemainingMs,
+  describeParts,
+  operationReason,
+  stateLabel,
+  swapDeadline,
+  SWAP_SIGN_MARGIN_MS,
+  tokenAmount,
+  type ChainClock,
+  type DescriptionPart,
+} from './describe.ts';
+import { addressNames, shownLabels, type NameOf } from './names.ts';
 import { markSigned, releasePrepared } from './prepared.ts';
 import { DEAD_STATES, SETTLED_STATES, signAndSubmit, waitForOperation } from './sign.ts';
 import { technicalCall } from './technical.ts';
@@ -54,8 +65,9 @@ function TechnicalDetails({
             <dt>
               Argumento <code>{arg.name}</code>
             </dt>
-            <dd>
+            <dd data-argument={arg.name}>
               <code>{arg.value}</code>
+              {arg.note !== undefined && <span className="muted"> {arg.note}</span>}
             </dd>
           </Fragment>
         ))}
@@ -113,6 +125,7 @@ export function OperationReview({
   summary,
   onSettled,
   onCancel,
+  onRequote,
   result,
   doneActions,
   confirmLabel,
@@ -127,11 +140,16 @@ export function OperationReview({
   labels?: ReadonlyMap<string, string>;
   /** Hora de la cadena y del dispositivo leídas juntas: vencimientos que decide la cadena (deadline del swap). */
   clock?: ChainClock | null;
-  /** Contexto arriba de las operaciones (p. ej. la cotización y el slippage del swap). */
-  summary?: ReactNode;
+  /**
+   * Contexto arriba de las operaciones (p. ej. la cotización y el slippage del swap); como función, recibe si ya
+   * terminaron con éxito, para contarlo en pasado.
+   */
+  summary?: ReactNode | ((success: boolean) => ReactNode);
   onSettled?: (statuses: OperationStatus[]) => void;
   /** Después de cancelar en el backend lo preparado (antes de firmar). */
   onCancel: () => void;
+  /** Después de cancelar lo preparado de un swap vencido: volver a cotizar (si no se da, como onCancel). */
+  onRequote?: () => void;
   /** Lo que se comprobó al terminar (p. ej. el permiso que quedó después de un swap), dentro del review. */
   result?: ReactNode;
   /** Cómo seguir cuando termina (volver, hacer otra). */
@@ -143,7 +161,10 @@ export function OperationReview({
   const [passed, setPassed] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, OperationStatus>>({});
   const [finished, setFinished] = useState<OperationStatus[] | null>(null);
-  const nameOf = addressNames({ safe: decode.safe, chain: decode.chain, system: decode.system }, labels);
+  const nameOf = addressNames(
+    { safe: decode.safe, chain: decode.chain, system: decode.system },
+    shownLabels(labels ?? new Map()),
+  );
   const decoded = items.map((item) => decodeSafeTx(item.safeTx, decode));
   const blocked = decoded.some((d) => d.kind === 'UNKNOWN');
   const twoFactorIndex = items.findIndex((item) => item.operation.requiresTwoFactor);
@@ -180,14 +201,30 @@ export function OperationReview({
     setFinished(settled);
     onSettled?.(settled);
   });
-  const cancel = useAsyncAction(async () => {
+  const release = async () => {
     await releasePrepared(
       api,
       unlocked.platform,
       items.map((item) => item.operation.operationId),
     );
+  };
+  const cancel = useAsyncAction(async () => {
+    await release();
     onCancel();
   });
+  const requote = useAsyncAction(async () => {
+    await release();
+    (onRequote ?? onCancel)();
+  });
+
+  // El plazo del swap lo compara la cadena: se mide con su hora (la última lectura más lo que pasó desde entonces) y se
+  // revisa cada segundo mientras todavía se puede firmar.
+  const deadline = swapDeadline(decoded);
+  const unsigned = !signedAny && !sign.pending && finished === null;
+  const deviceNow = useDeviceNow(deadline !== null && clock !== undefined && clock !== null && unsigned);
+  const nowMs = deviceNow ?? clock?.deviceMs;
+  const remaining = deadline === null ? null : deadlineRemainingMs(deadline, clock, nowMs);
+  const expired = unsigned && remaining !== null && remaining <= SWAP_SIGN_MARGIN_MS;
 
   const success = finished !== null && finished.every((status) => SETTLED_STATES.includes(status.status));
   const dead = finished?.filter((status) => DEAD_STATES.includes(status.status)).length ?? 0;
@@ -198,15 +235,17 @@ export function OperationReview({
     requested: twoFactor !== null,
   });
   const ended = finished !== null || (signedAny && !sign.pending && sign.error !== null);
+  const plural = count > 1;
 
   return (
     <article className="card stack" aria-labelledby="review-title" data-review={success ? 'done' : 'open'}>
       <h2 id="review-title">{success && doneTitle ? doneTitle : title}</h2>
-      {summary}
+      {typeof summary === 'function' ? summary(success) : summary}
       <ol className="review">
         {items.map((item, i) => {
           const status = statuses[item.operation.operationId];
           const call: DecodedCall = decoded[i] ?? { kind: 'UNKNOWN', reason: '?' };
+          const reason = status ? operationReason(status) : null;
           return (
             <li key={item.operation.operationId} className="review__item" data-operation={item.operation.operationType}>
               {count > 1 && (
@@ -216,27 +255,25 @@ export function OperationReview({
               )}
               <p className="review__what">
                 <CallDescription
-                  parts={describeParts(call, { nameOf, clock: clock ?? null, showDeadline: finished === null })}
+                  parts={describeParts(call, {
+                    nameOf,
+                    clock: clock ?? null,
+                    nowMs,
+                    showDeadline: finished === null,
+                    done: success,
+                  })}
                 />
               </p>
               <TechnicalDetails item={item} decode={decode} nameOf={nameOf} />
               {status && (
                 <p role="status" className="review__status" data-status={status.status}>
-                  Estado: {STATE_TEXT[status.status]}
-                  {status.failureReason ? ` (${status.failureReason})` : ''}
-                  {status.txHash && (
-                    <>
-                      {' · '}
-                      <a
-                        className="nowrap"
-                        href={explorerTx(pinnedChain, status.txHash)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        ver transacción
-                      </a>
-                    </>
-                  )}
+                  Estado: {stateLabel(status)}
+                  {reason !== null && ` (${reason})`}
+                </p>
+              )}
+              {status?.txHash && (
+                <p className="review__tx">
+                  <TxHash hash={status.txHash} />
                 </p>
               )}
             </li>
@@ -244,10 +281,32 @@ export function OperationReview({
         })}
       </ol>
       <p className="review__facts muted">
-        Red: Base. El gas de la red lo paga la plataforma: no se descuenta de tu saldo.
+        {success
+          ? 'Red: Base. El gas de la red lo pagó la plataforma: no se descontó de tu saldo.'
+          : 'Red: Base. El gas de la red lo paga la plataforma: no se descuenta de tu saldo.'}
       </p>
       {blocked && <Notice tone="error">Hay una operación que esta app no reconoce: no se firma.</Notice>}
-      {!blocked && needsTwoFactor && !passed && !done && (
+      {!blocked && expired && (
+        <div className="stack" data-expired>
+          <Notice tone="warning">
+            {remaining <= 0
+              ? 'Venció el plazo del swap: ya no se puede firmar. '
+              : 'Queda menos de un minuto del plazo del swap: ya no da tiempo a firmarlo. '}
+            Volvé a cotizar: la app cancela lo preparado y pide una cotización nueva.
+          </Notice>
+          {requote.error && <Notice tone="error">{requote.error}</Notice>}
+          <button
+            type="button"
+            className="button"
+            disabled={requote.pending || cancel.pending}
+            aria-busy={requote.pending}
+            onClick={() => void requote.run()}
+          >
+            {requote.pending ? 'Cancelando lo preparado…' : 'Volver a cotizar'}
+          </button>
+        </div>
+      )}
+      {!blocked && !expired && needsTwoFactor && !passed && !done && (
         <div className="stack" data-two-factor={method}>
           <Notice tone="warning">
             <p>{why}</p>
@@ -294,7 +353,7 @@ export function OperationReview({
           )}
         </div>
       )}
-      {!blocked && (!needsTwoFactor || passed) && !done && (
+      {!blocked && !expired && (!needsTwoFactor || passed) && !done && (
         <>
           {sign.error && <Notice tone="error">{sign.error}</Notice>}
           <button
@@ -307,14 +366,14 @@ export function OperationReview({
             {sign.pending
               ? 'Firmando y enviando…'
               : (confirmLabel ??
-                (count > 1 ? `Firmar las ${String(count)} operaciones con tu clave U` : 'Firmar con tu clave U'))}
+                (plural ? `Firmar las ${String(count)} operaciones con tu clave U` : 'Firmar con tu clave U'))}
           </button>
         </>
       )}
       {done && sign.error && <Notice tone="error">{sign.error}</Notice>}
       {signedAny && finished === null && sign.pending && (
         <p className="muted">
-          {count > 1
+          {plural
             ? 'Firmadas: la plataforma las co-firma y las envía a la red, en orden. Esperando que se incluyan en un bloque…'
             : 'Firmada: la plataforma la co-firma y la envía a la red. Esperando que se incluya en un bloque…'}
         </p>
@@ -323,29 +382,31 @@ export function OperationReview({
         <button
           type="button"
           className="button button--ghost"
-          disabled={cancel.pending}
+          disabled={cancel.pending || requote.pending}
           aria-busy={cancel.pending}
           onClick={() => void cancel.run()}
         >
           {cancel.pending ? 'Cancelando…' : 'Cancelar'}
         </button>
       )}
+      {cancel.error && <Notice tone="error">{cancel.error}</Notice>}
       {success && (
         <Notice tone="success">
           <p>
-            {count > 1
-              ? `Listo: las ${String(count)} operaciones ya están incluidas en un bloque de Base.`
-              : 'Listo: la operación ya está incluida en un bloque de Base.'}
+            {plural
+              ? `Listo: las ${String(count)} operaciones ya están incluidas en un bloque de Base y ya no se pueden cancelar.`
+              : 'Listo: la operación ya está incluida en un bloque de Base y ya no se puede cancelar.'}
           </p>
           <p>
-            En unos minutos {count > 1 ? 'pasan' : 'pasa'} a Confirmada y, en unos 20 minutos, a Final: desde ahí ya no
-            se puede revertir. Podés seguir el estado en <Link to="/activity">Actividad</Link>.
+            En unos minutos {plural ? 'pasan' : 'pasa'} a Confirmada y, en unos 20 minutos, a Final (desde ahí, ni una
+            reorganización de la red puede {plural ? 'revertirlas' : 'revertirla'}). Podés seguir el estado en{' '}
+            <Link to="/activity">Actividad</Link>.
           </p>
         </Notice>
       )}
       {finished !== null && dead === count && (
         <Notice tone="error">
-          {count > 1 ? 'Las operaciones no se ejecutaron.' : 'La operación no se ejecutó.'} El motivo está en su estado;
+          {plural ? 'Las operaciones no se ejecutaron.' : 'La operación no se ejecutó.'} El motivo está en su estado;
           tus fondos no se movieron.
         </Notice>
       )}

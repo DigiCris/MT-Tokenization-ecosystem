@@ -1,9 +1,10 @@
 // Actividad (P18.T08): operaciones de la plataforma con su estado (incluidos MINED, CONFIRMED y FINALIZED) y los
-// transfers entrantes y salientes indexados, en una sola lista ordenada por fecha, con link al explorer de la cadena
-// (sólo un link: no se embebe nada de terceros). Cada operación dice qué hizo: con los transfers de su transacción si
-// los hay (en un swap, lo que salió y lo que entró) y, si no llegó a la cadena, con la intención guardada al prepararla.
-// La hora de una operación es la de su inclusión en un bloque (como la de un transfer indexado); sólo las que no
-// llegaron a la red muestran la de preparación.
+// transfers entrantes y salientes indexados, en una sola lista ordenada por fecha, con el hash de la transacción y el
+// link al explorer de la cadena (sólo un link: no se embebe nada de terceros). Cada operación dice qué hizo: con los
+// transfers de su transacción si los hay (en un swap, lo que salió y lo que entró) y, si no llegó a la cadena, con la
+// intención guardada al prepararla ("Envío: 1,00 USDC a …", sin un "de" que se lea como origen). La hora de una
+// operación es la de su inclusión en un bloque (como la de un transfer indexado); sólo las que no llegaron a la red
+// muestran la de preparación.
 import type { Address } from 'viem';
 import type { DecodedOperation, OperationStatus, Transfer } from '../api/wallet-api.ts';
 import type { PinnedChain } from '../config/chain.ts';
@@ -79,30 +80,27 @@ function intentParts(type: OperationStatus['operationType'], decoded: DecodedOpe
   switch (type) {
     case 'SEND':
     case 'MIGRATION_TRANSFER':
-      return parts(text('de '), amount(decoded.amount, decoded.token), text(' a '), party(decoded.destination));
+      return parts(amount(decoded.amount, decoded.token), text(' a '), party(decoded.destination));
     case 'SWAP':
       return parts(
-        text('de '),
         amount(decoded.amount, decoded.tokenIn),
         text(' por al menos '),
         amount(decoded.minAmountOut, decoded.tokenOut),
       );
     case 'SWAP_APPROVE':
-      return parts(
-        text('de '),
-        amount(decoded.amount, decoded.token),
-        text(' para el contrato de swap de la plataforma'),
-      );
+      return parts(amount(decoded.amount, decoded.token), text(' para el contrato de swap de la plataforma'));
     case 'APPROVE_REVOKE':
-      return decoded.token === undefined ? null : [text(`sobre tus ${decoded.token}`)];
+      return decoded.token === undefined
+        ? null
+        : [text(`el del contrato de swap de la plataforma sobre tus ${decoded.token}`)];
     case 'WHITELIST_ADD':
     case 'WHITELIST_REMOVE':
-      return parts(text('de '), party(decoded.destination));
+      return parts(party(decoded.destination));
     case 'ROTATION_PROPOSE':
     case 'ROTATION_EXECUTE':
-      return decoded.role === undefined ? null : [text(`de ${ROLE_TEXT[decoded.role] ?? decoded.role}`)];
+      return decoded.role === undefined ? null : [text(ROLE_TEXT[decoded.role] ?? decoded.role)];
     case 'GUARD_UPGRADE':
-      return parts(text('a '), party(decoded.newKey));
+      return parts(text('nueva dirección '), party(decoded.newKey));
     case 'NOOP_CANCEL':
       return null;
   }

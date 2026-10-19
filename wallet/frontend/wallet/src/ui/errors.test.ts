@@ -1,0 +1,98 @@
+// P18.MAN (M1): los errores de la API llegan en castellano y sin códigos crudos. El swap firmado tarde (POLICY_REJECTED
+// con DEADLINE_INVALID) dice que venció el plazo y que hay que volver a cotizar; los demás rechazos de la policy, los
+// problemas del destino y los estados del detalle se traducen; un título del catálogo sin indicación se muestra tal cual.
+import { describe, expect, it } from 'vitest';
+import { ApiError, NetworkError } from '../api/problem.ts';
+import { describeError } from './errors.ts';
+
+const apiError = (code: string, title: string, detail?: string, retryAfter: number | null = null) =>
+  new ApiError(
+    { type: `urn:mtw:problem:${code}`, title, status: 422, code, requestId: 'r1', ...(detail ? { detail } : {}) },
+    retryAfter,
+  );
+
+describe('mensajes de error', () => {
+  it('el swap vencido: qué pasó y qué hacer, sin el código', () => {
+    const message = describeError(apiError('POLICY_REJECTED', 'La operación no cumple la policy', 'DEADLINE_INVALID'));
+    expect(message).toBe('Venció el plazo del swap: volvé a cotizar.');
+    expect(message).not.toMatch(/DEADLINE_INVALID|policy/);
+  });
+
+  it('otros rechazos de la policy, en texto', () => {
+    expect(describeError(apiError('POLICY_REJECTED', 'La operación no cumple la policy', 'LIMIT_DAILY'))).toBe(
+      'La operación no cumple las reglas de la plataforma: con este monto superarías el máximo que podés enviar en 24 h.',
+    );
+    expect(describeError(apiError('POLICY_REJECTED', 'La operación no cumple la policy'))).toBe(
+      'La operación no cumple las reglas de la plataforma.',
+    );
+  });
+
+  it('un destino que no se puede agregar dice por qué', () => {
+    expect(describeError(apiError('DESTINATION_INVALID', 'El destino no se puede autorizar', 'SYSTEM_CONTRACT'))).toBe(
+      'Ese destino no se puede agregar: es un contrato del sistema de la plataforma.',
+    );
+    expect(describeError(apiError('DESTINATION_INVALID', 'El destino no se puede autorizar'))).toBe(
+      'Ese destino no se puede agregar.',
+    );
+  });
+
+  it('el estado del detalle, con su nombre en la app', () => {
+    expect(
+      describeError(
+        apiError('OPERATION_NOT_PENDING', 'La operación no admite esta acción', 'la operación está en CANCELLED'),
+      ),
+    ).toBe('La operación ya no admite esta acción: su estado es «Cancelada». Revisala en Actividad.');
+    expect(describeError(apiError('OPERATION_NOT_PENDING', 'La operación no admite esta acción'))).toBe(
+      'La operación ya no admite esta acción: revisá su estado en Actividad.',
+    );
+    // Los conflictos que nombran el estado de un pedido de alta o de un swap, también en texto.
+    expect(describeError(apiError('CONFLICT', 'Conflicto con el estado actual', 'el pedido está en EXPIRED'))).toBe(
+      'El pedido de alta ya no admite esta acción: está vencido. Empezá de nuevo si hace falta.',
+    );
+    expect(
+      describeError(
+        apiError(
+          'CONFLICT',
+          'Conflicto con el estado actual',
+          'el swap está en FAILED: no admite una nueva cotización',
+        ),
+      ),
+    ).toBe('El swap ya no admite esta acción: está fallido.');
+    expect(describeError(apiError('CONFLICT', 'Conflicto con el estado actual', 'el 2FA ya está completo'))).toBe(
+      'Conflicto con el estado actual: el 2FA ya está completo',
+    );
+    // Un detalle en texto (sin código de estado) se mantiene.
+    expect(
+      describeError(
+        apiError('OPERATION_NOT_PENDING', 'La operación no admite esta acción', 'la cancelación ya está en curso'),
+      ),
+    ).toBe('La operación ya no admite esta acción: la cancelación ya está en curso.');
+  });
+
+  it('sin jerga del backend (nonce, envelope, Guard on-chain) y con qué hacer', () => {
+    expect(describeError(apiError('NONCE_CONSUMED', 'El nonce de la Safe ya se usó: preparala de nuevo'))).toBe(
+      'Otra operación ya usó el número de orden de esta en tu Safe: preparala de nuevo.',
+    );
+    expect(describeError(apiError('SUBMISSION_INVALID', 'Envelope de envío inválido'))).not.toMatch(/[Ee]nvelope/);
+    expect(describeError(apiError('GUARD_WOULD_REVERT', 'El Guard on-chain rechazaría la operación'))).toBe(
+      'El Guard de seguridad de tu Safe rechazaría la operación en la red: no se envió.',
+    );
+    expect(describeError(apiError('VALIDATION_FAILED', 'El request no cumple el schema'))).not.toMatch(
+      /request|schema/,
+    );
+  });
+
+  it('lo que no necesita traducción se mantiene', () => {
+    expect(
+      describeError(apiError('WHITELIST_DUPLICATE', 'El destino ya está autorizado o tiene un alta en curso')),
+    ).toBe('El destino ya está autorizado o tiene un alta en curso');
+    expect(describeError(apiError('RATE_LIMITED', 'Demasiados requests', undefined, 30))).toBe(
+      'Demasiados intentos seguidos. Esperá un momento antes de volver a probar (podés reintentar en 30 s).',
+    );
+    expect(describeError(new NetworkError('No hay conexión con el servidor'))).toBe(
+      'No hay conexión con el servidor. Revisá tu conexión y reintentá.',
+    );
+    expect(describeError(new Error('otra cosa'))).toBe('otra cosa');
+    expect(describeError('raro')).toBe('Algo salió mal. Reintentá en un momento.');
+  });
+});

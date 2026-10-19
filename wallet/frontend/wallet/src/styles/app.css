@@ -480,9 +480,22 @@ legend {
   white-space: nowrap;
 }
 
+/* El estado en tinta (no en el color de los links); en verde ya en la cadena y en rojo si no se ejecutó. */
 .review__status {
   font-weight: var(--mtw-font-weight-medium);
-  color: var(--mtw-color-brand-strong);
+  color: var(--mtw-color-ink);
+}
+
+.review__status:is([data-status='MINED'], [data-status='CONFIRMED'], [data-status='FINALIZED']) {
+  color: var(--mtw-color-success);
+}
+
+.review__status:is([data-status='FAILED_FINAL'], [data-status='CANCELLED'], [data-status='EXPIRED']) {
+  color: var(--mtw-color-danger);
+}
+
+.review__tx {
+  font-size: var(--mtw-font-size-sm);
 }
 
 .review__facts {
@@ -544,17 +557,51 @@ legend {
 }
 
 .destinations > li,
-.activity > li,
-.notices > li {
+.activity > li {
   padding: var(--mtw-space-3) 0;
   border-bottom: 1px solid var(--mtw-color-line);
   line-height: 1.8;
 }
 
 .destinations > li:last-child,
-.activity > li:last-child,
-.notices > li:last-child {
+.activity > li:last-child {
   border-bottom: 0;
+}
+
+/* Avisos in-app: cada uno con el color de su tono (advertencia y error se distinguen de los informativos). */
+.notices {
+  gap: var(--mtw-space-3);
+}
+
+.notices > li {
+  display: grid;
+  gap: var(--mtw-space-1);
+  padding: var(--mtw-space-3) var(--mtw-space-4);
+  border: 1px solid var(--mtw-color-line);
+  border-left: 4px solid var(--mtw-color-brand);
+  border-radius: var(--mtw-radius-md);
+  background: var(--mtw-color-surface-raised);
+  line-height: 1.8;
+}
+
+.notices > li[data-tone='warning'] {
+  border-color: var(--mtw-color-warning);
+  background: var(--mtw-color-warning-soft);
+}
+
+.notices > li[data-tone='error'] {
+  border-color: var(--mtw-color-danger);
+  background: var(--mtw-color-danger-soft);
+}
+
+/* Hash de una transacción (actividad y review): completo, en monoespaciada y cortable en pantallas angostas. */
+.tx {
+  font-size: var(--mtw-font-size-sm);
+}
+
+.tx__hash {
+  font-size: var(--mtw-font-size-xs);
+  overflow-wrap: anywhere;
 }
 
 .balances {
@@ -706,6 +753,16 @@ legend {
   max-width: 28rem;
   border-radius: var(--mtw-radius-md);
   background: var(--mtw-color-ink);
+}
+
+/* En un apilado el espacio lo da el gap: los márgenes propios de títulos, párrafos y listas lo duplicaban (huecos
+   desparejos), y una lista vacía no ocupa lugar. Va después de los componentes para ganarles a sus márgenes. */
+.stack > :is(h1, h2, h3, p, ul, ol, dl) {
+  margin-block: 0;
+}
+
+.stack > :is(ul, ol):empty {
+  display: none;
 }
 
 @media print {

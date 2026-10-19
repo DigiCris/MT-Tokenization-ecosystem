@@ -1,8 +1,9 @@
 // P18.T08 contra los servicios reales y el fork: la actividad de una Safe con transfers entrantes (fondeo con USDC y
 // USDT reales del fork), un envío de la plataforma (la operación muestra el transfer saliente de su transacción), un
 // transfer saliente soberano U + R que la plataforma no originó (ítem propio) y una operación cancelada antes de firmar.
-// Cada operación con su estado (incluido MINED/CONFIRMED/FINALIZED), los transfers indexados por el backend con su
-// contraparte, y sólo links al explorer: la página no carga nada de terceros.
+// Cada operación con su estado (incluido MINED/CONFIRMED/FINALIZED; "Cancelada antes de firmar"), los transfers
+// indexados por el backend con su contraparte, el hash de cada transacción y sólo links al explorer: la página no carga
+// nada de terceros.
 import { expect, test, type Page } from '@playwright/test';
 import { encodeFunctionData, erc20Abi, getAddress, type Address } from 'viem';
 import {
@@ -86,8 +87,10 @@ test('operaciones con su estado y transfers entrantes y salientes indexados, con
   await expect(send.first()).toHaveAttribute('data-status', /^(MINED|CONFIRMED|FINALIZED)$/);
   // El destino con su nombre de la whitelist y la dirección completa.
   await expect(send.first()).toContainText(
-    `enviaste 2,50 USDC a Cuenta de Carla ${shownAddress(getAddress(destination))}`,
+    `Envío: enviaste 2,50 USDC a «Cuenta de Carla» ${shownAddress(getAddress(destination))}`,
   );
+  // El hash de la transacción, además del enlace.
+  await expect(send.first().locator('[data-tx] code')).toHaveText(/^0x[0-9a-f]{64}$/);
   await expect(outgoing.filter({ hasText: 'Enviaste 2,50 USDC' })).toHaveCount(0);
   await expect(page.locator('li[data-kind="operation"]').filter({ hasText: 'Alta en la whitelist' })).toHaveAttribute(
     'data-status',
@@ -104,21 +107,22 @@ test('una operación cancelada antes de firmar aparece con su estado y sin trans
   await openActivity();
   const cancelled = page.locator('li[data-kind="operation"][data-status="CANCELLED"]');
   await expect(cancelled.filter({ hasText: 'Envío' })).toHaveCount(1);
-  // Sin transacción, la operación dice qué era (su intención guardada) y cuándo se preparó.
+  // Sin transacción, la operación dice qué era (su intención guardada, sin un "de" que se lea como origen), que se
+  // canceló antes de firmarla y cuándo se preparó.
   await expect(cancelled.filter({ hasText: 'Envío' })).toContainText(
-    `de 1,00 USDC a Cuenta de Carla ${shownAddress(getAddress(destination))}`,
+    `Envío: 1,00 USDC a «Cuenta de Carla» ${shownAddress(getAddress(destination))} · Cancelada antes de firmar`,
   );
   await expect(cancelled.filter({ hasText: 'Envío' })).toContainText('preparada el');
-  await expect(cancelled.getByRole('link', { name: 'ver transacción' })).toHaveCount(0);
+  await expect(cancelled.getByRole('link', { name: 'ver en el explorador de bloques' })).toHaveCount(0);
 });
 
 test('sólo links al explorer (en una pestaña nueva, sin referrer) y ningún recurso de terceros', async () => {
-  for (const link of await page.getByRole('link', { name: 'ver transacción' }).all()) {
+  for (const link of await page.getByRole('link', { name: 'ver en el explorador de bloques' }).all()) {
     await expect(link).toHaveAttribute('href', /^https:\/\/basescan\.org\/tx\/0x[0-9a-f]{64}$/);
     await expect(link).toHaveAttribute('target', '_blank');
     await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   }
-  expect(await page.getByRole('link', { name: 'ver transacción' }).count()).toBeGreaterThanOrEqual(5);
+  expect(await page.getByRole('link', { name: 'ver en el explorador de bloques' }).count()).toBeGreaterThanOrEqual(5);
   const origins = await page.evaluate(() =>
     performance.getEntriesByType('resource').map((entry) => new URL(entry.name).origin),
   );

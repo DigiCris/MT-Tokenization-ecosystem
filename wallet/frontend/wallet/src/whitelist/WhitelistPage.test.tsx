@@ -1,17 +1,20 @@
 // @vitest-environment jsdom
 // P18.MAN: el alta en la whitelist alterna dos formularios (pedido del código y confirmación): el campo del código
-// arranca vacío (React no reutiliza el campo del nombre), la confirmación pide comparar la dirección con la del email
-// (los 10 grupos) y "Empezar de nuevo" vuelve al pedido con los campos vacíos. La alerta del inicio abre directamente la
-// baja del destino en activación, con el review nombrando el destino.
+// arranca vacío (React no reutiliza el campo del nombre), la confirmación pide comparar la dirección con la del email y
+// con la que pasó el destinatario por otro medio, sin copiarla de la app ni del email (ESC-16), y "Empezar de nuevo"
+// vuelve al pedido con los campos vacíos. Un nombre que imita uno de la app no se acepta y los labels se muestran
+// entre «». Firmada el alta, la pantalla la cuenta en pasado. La alerta del inicio abre directamente la baja del destino
+// en activación, con el review nombrando el destino; en la lista, la alerta va antes del botón y cerrada con punto.
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router';
 import { getAddress, type Address } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PreparedOperation, WhitelistRequest } from '../api/wallet-api.ts';
+import type { OperationStatus, PreparedOperation, WhitelistRequest } from '../api/wallet-api.ts';
 import { safeTxHash, type SafeTx } from '../chain/safe-tx.ts';
+import type * as SignModule from '../operations/sign.ts';
 import { groupAddress } from '../ui/AddressText.tsx';
 import { byLabel, byText, click, render, settle, submit, typeInto, type Mounted } from '../ui/dom.test-helper.ts';
-import { removeDestinationCall } from './whitelist.ts';
+import { addDestinationCall, removeDestinationCall } from './whitelist.ts';
 import { WhitelistPage } from './WhitelistPage.tsx';
 
 const m = vi.hoisted(() => ({
@@ -26,6 +29,8 @@ const m = vi.hoisted(() => ({
     cancelOperation: vi.fn(),
   },
   reader: { readContract: vi.fn(), getBlock: vi.fn() },
+  signAndSubmit: vi.fn(),
+  waitForOperation: vi.fn(),
 }));
 
 vi.mock('../app/services.ts', () => ({ api: m.api, chainReader: m.reader }));
@@ -52,6 +57,11 @@ vi.mock('../safe/SafeGate.tsx', () => ({
       reader: m.reader,
       state: {},
     }),
+}));
+vi.mock('../operations/sign.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof SignModule>()),
+  signAndSubmit: m.signAndSubmit,
+  waitForOperation: m.waitForOperation,
 }));
 
 const DEST: Address = getAddress('0xf0a10000000000000000000000000000000076a3');
@@ -85,6 +95,18 @@ function prepared(tx: SafeTx, type: PreparedOperation['operationType']): Prepare
   };
 }
 
+const request: WhitelistRequest = {
+  id: 'r1',
+  walletId: 'w1',
+  destination: DEST,
+  label: 'Proveedor',
+  status: 'PENDING_CHALLENGE',
+  challengeExpiresAt: null,
+  operationId: null,
+  failureReason: null,
+  createdAt: '2026-10-19T10:00:00.000Z',
+};
+
 /** La whitelist on-chain: los destinos dados, todavía en activación (se activan en 23 h). */
 function chainWith(destinations: Address[]) {
   m.reader.readContract.mockImplementation(({ functionName }: { functionName: string }) => {
@@ -109,31 +131,29 @@ afterEach(async () => {
   view = null;
 });
 
+async function openWhitelist(state?: unknown): Promise<HTMLElement> {
+  view = await render(
+    <MemoryRouter initialEntries={[{ pathname: '/whitelist', state }]}>
+      <WhitelistPage />
+    </MemoryRouter>,
+  );
+  await settle(10);
+  return view.container;
+}
+
+async function requestCode(c: HTMLElement, label: string): Promise<void> {
+  await typeInto(byLabel(c, 'Dirección en Base'), DEST.toLowerCase());
+  const name = byLabel(c, 'Nombre (para reconocerlo)');
+  await typeInto(name, label);
+  await submit(name.form!);
+  await settle();
+}
+
 describe('alta en la whitelist', () => {
-  it('el código del email arranca vacío, con la dirección para comparar con el email; "Empezar de nuevo" limpia todo', async () => {
-    m.api.requestWhitelistDestination.mockResolvedValue({
-      id: 'r1',
-      walletId: 'w1',
-      destination: DEST,
-      label: 'Proveedor',
-      status: 'PENDING_CHALLENGE',
-      challengeExpiresAt: null,
-      operationId: null,
-      failureReason: null,
-      createdAt: '2026-10-19T10:00:00.000Z',
-    } satisfies WhitelistRequest);
-    view = await render(
-      <MemoryRouter initialEntries={['/whitelist']}>
-        <WhitelistPage />
-      </MemoryRouter>,
-    );
-    await settle();
-    const c = view.container;
-    await typeInto(byLabel(c, 'Dirección en Base'), DEST.toLowerCase());
-    const name = byLabel(c, 'Nombre (para reconocerlo)');
-    await typeInto(name, 'Proveedor');
-    await submit(name.form!);
-    await settle();
+  it('el código del email arranca vacío, con la dirección para comparar con el email y con la fuente; "Empezar de nuevo" limpia todo', async () => {
+    m.api.requestWhitelistDestination.mockResolvedValue(request);
+    const c = await openWhitelist();
+    await requestCode(c, 'Proveedor');
 
     expect(m.api.requestWhitelistDestination).toHaveBeenCalledWith({ sessionId: 's1' }, 'w1', {
       destination: DEST,
@@ -143,15 +163,67 @@ describe('alta en la whitelist', () => {
     expect(code.value).toBe('');
     expect(c.querySelector('input[name="label"]')).toBeNull();
     expect(c.textContent).toContain('Te mandamos un código por email a ana@test.invalid.');
+    // ESC-16: comparar sólo app y email no alcanza si la dirección se cambió antes de llegar a la app.
     expect(c.textContent).toContain(
-      'Compará esta dirección con la del email, los 10 grupos, antes de escribir el código:',
+      'Antes de escribir el código, compará los 10 grupos de esta dirección con la del email y con la que te pasó el ' +
+        'destinatario por otro medio (no la copies de esta pantalla ni del email):',
     );
+    expect(c.querySelector('.notice--warning strong')?.textContent).toBe('«Proveedor»');
     expect(c.querySelector(`[data-address="${DEST}"]`)?.textContent).toBe(groupAddress(DEST));
 
     await typeInto(code, '12345678');
     await click(byText(c, 'button', 'Empezar de nuevo'));
     expect(byLabel(c, 'Dirección en Base').value).toBe('');
     expect(byLabel(c, 'Nombre (para reconocerlo)').value).toBe('');
+  });
+
+  it('un nombre que imita uno de la app no se acepta (y no se pide el código)', async () => {
+    const c = await openWhitelist();
+    await requestCode(c, 'Tu Safe');
+    expect(m.api.requestWhitelistDestination).not.toHaveBeenCalled();
+    expect(c.querySelector('.notice--error')?.textContent).toBe(
+      '«Tu Safe» es un nombre que la app usa para sus propias direcciones (como «tu Safe»): elegí otro.',
+    );
+    expect(byLabel(c, 'Nombre (para reconocerlo)')).toBeTruthy();
+  });
+
+  it('firmada el alta, la pantalla la cuenta en pasado (no repite lo que había que comparar)', async () => {
+    m.api.requestWhitelistDestination.mockResolvedValue(request);
+    m.api.confirmWhitelistRequest.mockResolvedValue({
+      request: { ...request, status: 'AWAITING_SIGNATURE' },
+      operation: prepared(addDestinationCall(m.WHITELIST, DEST, 5n), 'WHITELIST_ADD'),
+    });
+    const mined = { id: 'op-WHITELIST_ADD', status: 'MINED', txHash: null, failureReason: null } as OperationStatus;
+    m.signAndSubmit.mockResolvedValue({ ...mined, status: 'USER_SIGNED' });
+    m.waitForOperation.mockImplementation(
+      (_api: unknown, _id: string, options: { onUpdate?: (s: OperationStatus) => void }) => {
+        options.onUpdate?.(mined);
+        return Promise.resolve(mined);
+      },
+    );
+    const c = await openWhitelist();
+    await requestCode(c, 'Proveedor');
+    const code = byLabel(c, 'Código del email (8 dígitos)');
+    await typeInto(code, '12345678');
+    await submit(code.form!);
+    await settle();
+    expect(c.querySelector('#review-title')?.textContent).toBe('Revisá el alta del destino');
+    expect(c.querySelector('[data-review] > p')?.textContent).toMatch(
+      /^Tiene que ser la misma dirección que mostraba el email y la que te pasó el destinatario por otro medio \(no la copies de esta pantalla ni del email\)\./,
+    );
+    expect(c.querySelector('.review__what')?.textContent).toBe(
+      `Agregar a tu whitelist el destino «Proveedor» ${groupAddress(DEST)} (se activa 24 h después)`,
+    );
+    await click(byText(c, 'button', 'Firmar con tu clave U'));
+    await settle();
+    expect(c.querySelector('#review-title')?.textContent).toBe('Destino agregado');
+    const summary = c.querySelector('[data-review] > p')?.textContent ?? '';
+    expect(summary).toMatch(/^El alta ya está en un bloque de Base: el destino se activa en 24 h/);
+    expect(summary).not.toContain('Tiene que ser la misma dirección');
+    expect(c.querySelector('.review__what')?.textContent).toBe(
+      `Agregaste a tu whitelist el destino «Proveedor» ${groupAddress(DEST)} (se activa 24 h después de incluirse en ` +
+        'un bloque)',
+    );
   });
 
   it('la alerta del inicio abre la baja del destino en activación, una sola vez y con el destino nombrado', async () => {
@@ -174,22 +246,19 @@ describe('alta en la whitelist', () => {
     m.api.removeWhitelistDestination.mockResolvedValue(
       prepared(removeDestinationCall(m.WHITELIST, DEST, 5n), 'WHITELIST_REMOVE'),
     );
-    view = await render(
-      <MemoryRouter initialEntries={[{ pathname: '/whitelist', state: { remove: DEST } }]}>
-        <WhitelistPage />
-      </MemoryRouter>,
-    );
-    await settle(10);
-    const c = view.container;
+    const c = await openWhitelist({ remove: DEST });
     expect(m.api.removeWhitelistDestination).toHaveBeenCalledTimes(1);
     expect(m.api.removeWhitelistDestination).toHaveBeenCalledWith({ sessionId: 's1' }, 'w1', DEST);
     expect(c.querySelector('#review-title')?.textContent).toBe('Revisá la baja del destino');
     expect(c.querySelector('.review__what')?.textContent).toBe(
-      `Quitar de tu whitelist el destino Proveedor ${groupAddress(DEST)}`,
+      `Quitar de tu whitelist el destino «Proveedor» ${groupAddress(DEST)}`,
     );
-    // La lista sigue arriba, con la alerta de activación en el destino.
+    // La lista sigue arriba: el label entre «», cuánto falta cerrado con punto y la alerta antes del botón.
     const row = c.querySelector(`li[data-destination="${DEST}"]`);
-    expect(row?.textContent).toMatch(/se activa en 23 h 0 min/);
-    expect(row?.querySelector('[data-activation-alert]')?.textContent).toContain('Si no lo agregaste vos, quitalo');
+    expect(row?.textContent).toBe(
+      `«Proveedor» ${groupAddress(DEST)} · se activa en 23 h 0 min. Si no lo agregaste vos o no es la dirección que ` +
+        'esperabas, quitalo antes de que se active. Quitar',
+    );
+    expect(row?.querySelector('[data-activation-alert]')?.textContent).toContain('Si no lo agregaste vos');
   });
 });
