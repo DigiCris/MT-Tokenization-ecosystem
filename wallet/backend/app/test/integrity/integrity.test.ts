@@ -221,6 +221,20 @@ describe('registro de integridad, auditoría y GET /platform/status', () => {
     expect((await status()).cooperation).toBe('ACTIVE');
   });
 
+  it('estado estable: el latido mantiene vigente lo registrado y la cooperación sigue ACTIVE pasados 5 min', async () => {
+    // El monitor renueva las atestaciones OK cada minuto sin cambiar de estado: lo registrado no puede quedar más viejo
+    // que ATTESTATION_MAX_AGE_SECONDS, o /platform/status mostraría una pausa que el signer no aplica.
+    for (let minute = 3; minute <= 9; minute += 1) {
+      now = (T0 + minute * 60) * 1000;
+      monitor.state.served = {
+        WALLET: attest('WALLET', 'OK', T0 + minute * 60),
+        RECOVERY: attest('RECOVERY', 'OK', T0 + minute * 60),
+      };
+      expect(await recorder().tick()).toBe('ACTIVE');
+    }
+    expect((await events()).at(-1)).toBe('COOPERATION_RESUMED');
+  });
+
   it('monitor caído: al vencer las atestaciones la cooperación figura pausada', async () => {
     monitor.state.down = true;
     now += 400_000;

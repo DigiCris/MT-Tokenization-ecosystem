@@ -1,6 +1,7 @@
 // Registro de integridad en el backend (P20.T03): cada `intervalMs` el worker pide las atestaciones al monitor, las
-// verifica (monitor-client.ts) y guarda en `integrity_status` cada cambio de estado o de release por app (más un latido
-// cada 10 min). Audita `INTEGRITY_MISMATCH` al entrar en MISMATCH y `COOPERATION_PAUSED` / `COOPERATION_RESUMED` en
+// verifica (monitor-client.ts) y guarda en `integrity_status` cada cambio de estado o de release por app, más un latido
+// cada 2 min (por debajo de los 5 min de antigüedad máxima de una atestación, para que lo registrado siga vigente).
+// Audita `INTEGRITY_MISMATCH` al entrar en MISMATCH y `COOPERATION_PAUSED` / `COOPERATION_RESUMED` en
 // cada cambio de la cooperación de S (calculada igual que el signer, que es quien decide). Con varios workers, un
 // advisory lock serializa cada pasada; el estado anterior se lee de la base (no de memoria): reiniciar no duplica eventos.
 import { sql, type Kysely } from 'kysely';
@@ -20,7 +21,8 @@ import {
 
 /** "MTWINTEG" en ASCII: lock de las pasadas del registro de integridad. */
 const INTEGRITY_LOCK_KEY = 0x4d5457494e544547n;
-const HEARTBEAT_SECONDS = 600;
+/** Menor que ATTESTATION_MAX_AGE_SECONDS: con un estado estable, lo registrado nunca queda vencido. */
+const HEARTBEAT_SECONDS = 120;
 const STATUS_VALUE = { OK: 0, UNREACHABLE: 1, MISMATCH: 2 } as const;
 const COOPERATION_VALUE: Record<CooperationState, number> = { ACTIVE: 0, DEGRADED: 1, PAUSED: 2 };
 
