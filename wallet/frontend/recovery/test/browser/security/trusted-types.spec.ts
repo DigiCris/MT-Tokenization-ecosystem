@@ -1,7 +1,8 @@
 // P16.T04 [F-SEC-02]/[F-SEC-04]: en Chromium contra `vite preview` del build. La app arranca con la CSP y Trusted Types
 // activos sin violaciones (sólo las de sus pruebas de arranque, que no se reportan); el worker de Argon2id y el chunk
 // lazy de wallet externa cargan con Trusted Types forzado; un sink de prueba queda bloqueado y se reporta al backend sin
-// datos sensibles; sin service workers; y ningún request sale del origin salvo el reporte al API host.
+// datos sensibles; sin service workers; y ningún request sale del origin salvo a la API de Recovery del entorno (la
+// consulta de sesión del inicio y los reportes).
 import { expect, test, type Page, type Request } from '@playwright/test';
 import { loadBuildConfig } from '../../../build/config.ts';
 
@@ -168,14 +169,17 @@ test('sin service workers registrados', async ({ page }) => {
   expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
 });
 
-test('ningún request a terceros al cargar (sólo el propio origin)', async ({ page, baseURL }) => {
+test('ningún request a terceros al cargar (sólo el propio origin y la API de Recovery)', async ({ page, baseURL }) => {
   const requests: Request[] = [];
   page.on('request', (r) => requests.push(r));
   await page.goto('/');
   await page.goto('/device-check');
   await page.waitForLoadState('networkidle');
-  const origin = new URL(baseURL ?? '').origin;
-  const foreign = requests.map((r) => r.url()).filter((url) => new URL(url).origin !== origin);
+  const own = new Set([new URL(baseURL ?? '').origin, config.apiOrigin]);
+  const foreign = requests.map((r) => r.url()).filter((url) => !own.has(new URL(url).origin));
   expect(foreign).toEqual([]);
+  // A la API sólo va la consulta de sesión del inicio: sin sesión no se pide nada más.
+  const api = requests.filter((r) => new URL(r.url()).origin === config.apiOrigin);
+  expect([...new Set(api.map((r) => `${r.method()} ${new URL(r.url()).pathname}`))]).toEqual(['GET /api/v1/users/me']);
   expect(requests.length).toBeGreaterThan(3);
 });

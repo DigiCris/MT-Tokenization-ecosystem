@@ -110,4 +110,11 @@ describe('grafo del bundle de Recovery', () => {
     expect(withExternal.some((c) => c.modules.some((m) => /[\\/]@wagmi[\\/]connectors[\\/]/.test(m)))).toBe(true);
     for (const chunk of withExternal) expect(internal.has(chunk.fileName), chunk.fileName).toBe(false);
   });
+
+  it('MetaMask Connect (excluido, docs/CONNECTORS.md) no entra al bundle', () => {
+    const metamask = [...chunks.values()].flatMap((c) =>
+      c.modules.filter((m) => /[\\/]@metamask[\\/]connect-/.test(m)).map((m) => `${c.fileName}: ${m}`),
+    );
+    expect(metamask).toEqual([]);
+  });
 });

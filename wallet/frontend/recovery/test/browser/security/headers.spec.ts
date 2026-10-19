@@ -56,9 +56,16 @@ test('CSP de [F-SEC-01]: sin inline ni eval, Trusted Types exigidos y los hosts 
   expect(directives.get('require-trusted-types-for')).toEqual(["'script'"]);
   expect(directives.get('trusted-types')).toEqual(['mtw-default']);
   expect(directives.get('frame-ancestors')).toEqual(["'none'"]);
+  // Terceros: sólo Drive (API y revocación del token) y el relay de WalletConnect (P19.T07); ningún iframe.
   expect(directives.get('connect-src')).toEqual(
-    expect.arrayContaining(["'self'", config.apiOrigin, config.rpcOrigin, 'https://www.googleapis.com']),
+    [...new Set(["'self'", config.apiOrigin, config.rpcOrigin])].concat([
+      'https://www.googleapis.com',
+      'https://oauth2.googleapis.com',
+      'wss://relay.walletconnect.org',
+      'wss://relay.walletconnect.com',
+    ]),
   );
+  expect(directives.get('frame-src')).toEqual(["'none'"]);
   expect(csp).not.toMatch(/'unsafe-inline'|'unsafe-eval'|\*/);
 });
 

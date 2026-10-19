@@ -43,6 +43,21 @@ export default defineConfig((): UserConfig => {
           entryFileNames: 'assets/[name]-[hash].js',
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash][extname]',
+          // [F-SEC-07]: los paquetes que sólo usa el stack de wallet externa (WalletConnect y sus dependencias) van en un
+          // chunk propio que importan únicamente los chunks lazy. Si no, rolldown los mezcla con módulos que también usa
+          // la entrada (ox, @scure/base, su runtime) y la entrada cargaría código de WalletConnect al arrancar
+          // (test/bundle-graph.test.ts).
+          codeSplitting: {
+            // Sólo los paquetes del grupo: sus dependencias compartidas con la entrada (viem, @noble) quedan afuera.
+            includeDependenciesRecursively: false,
+            groups: [
+              {
+                name: 'walletconnect-core',
+                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:@walletconnect|@msgpack|multiformats|uint8arrays|blakejs|unstorage|idb-keyval|destr|detect-browser|cross-fetch|ws|events)[\\/]/,
+                priority: 10,
+              },
+            ],
+          },
         },
       },
     },

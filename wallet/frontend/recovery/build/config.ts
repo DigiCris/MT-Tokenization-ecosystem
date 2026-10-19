@@ -20,6 +20,8 @@ export const ED25519_SPKI_BASE64 = /^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$/;
 export interface BuildConfig {
   app: typeof APP;
   environment: Environment;
+  /** Plataforma del backend (`PLATFORM_ID`): va en el AAD de `R.enc`, en el enrollment y en la prueba de control. */
+  platformId: string;
   /** Base del API de Recovery, p. ej. `http://localhost:8081/api/v1`. */
   apiBaseUrl: string;
   apiOrigin: string;
@@ -104,6 +106,10 @@ export function loadBuildConfig(env: Source = process.env): BuildConfig {
   };
   const required = (name: string): string => read(name) ?? '';
 
+  const platformId = required('PLATFORM_ID');
+  if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(platformId)) {
+    throw new Error('PLATFORM_ID inválido (a-z, 0-9 y -, de 2 a 63, como lo valida el backend)');
+  }
   const apiBaseUrl = required('RECOVERY_API_BASE_URL').replace(/\/+$/, '');
   const rpcUrl = required('RECOVERY_FRONTEND_RPC_URL');
   const walletOrigin = origin('WALLET_ORIGIN', required('WALLET_ORIGIN'), environment);
@@ -124,6 +130,7 @@ export function loadBuildConfig(env: Source = process.env): BuildConfig {
   return {
     app: APP,
     environment,
+    platformId,
     apiBaseUrl,
     apiOrigin: origin('RECOVERY_API_BASE_URL', apiBaseUrl, environment),
     rpcUrl,

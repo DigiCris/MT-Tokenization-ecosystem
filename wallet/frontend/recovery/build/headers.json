@@ -1,5 +1,5 @@
 {
-  "$comment": "Headers HTTP de la app Recovery ([F-SEC-01], [F-SEC-03], P16.T05). Los aplica `vite preview` en local y el contenedor estático recovery-web en P26 (desde dist/.well-known/security-headers.json, resuelto por entorno y cubierto por el manifest firmado). {apiOrigin} y {rpcOrigin} salen de la configuración del entorno. Sin WASM: script-src sólo 'self'. Los endpoints de WalletConnect se agregan a connect-src cuando se verifican en P19. `remoteOnly` se emite sólo en staging y producción (local y ci corren sobre http://localhost).",
+  "$comment": "Headers HTTP de la app Recovery ([F-SEC-01], [F-SEC-03], P16.T05). Los aplica `vite preview` en local y el contenedor estático recovery-web en P26 (desde dist/.well-known/security-headers.json, resuelto por entorno y cubierto por el manifest firmado). {apiOrigin} y {rpcOrigin} salen de la configuración del entorno. Sin WASM: script-src sólo 'self'. WalletConnect (P19.T07, verificado en la doc oficial de Reown: docs.reown.com/advanced/security/content-security-policy): sólo el relay (wss://relay.walletconnect.org y .com); sin AppKit no hacen falta api.web3modal, keys, notify, echo ni push; la telemetría (pulse) se apaga en el conector y el iframe de Verify queda excluido por frame-src 'none' y COEP (ver docs/CONNECTORS.md). `remoteOnly` se emite sólo en staging y producción (local y ci corren sobre http://localhost).",
   "headers": {
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
     "X-Content-Type-Options": "nosniff",
@@ -47,7 +47,9 @@
       "{apiOrigin}",
       "{rpcOrigin}",
       "https://www.googleapis.com",
-      "https://oauth2.googleapis.com"
+      "https://oauth2.googleapis.com",
+      "wss://relay.walletconnect.org",
+      "wss://relay.walletconnect.com"
     ],
     "worker-src": ["'self'"],
     "frame-src": ["'none'"],

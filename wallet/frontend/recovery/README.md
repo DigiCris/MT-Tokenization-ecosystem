@@ -1,31 +1,47 @@
 # App Recovery
 
 Frontend del trust domain de R (§8): React 19 + TypeScript 6.0 + Vite 8, sin librerías de UI, proyecto independiente
-con su propio lockfile (sin código compartido con Wallet) y con su acento visual propio. wagmi y los conectores
-(MetaMask, Coinbase Wallet sólo EOA, WalletConnect) están declarados pero se importan sólo vía `import()` en
-`src/external-wallet/` ([F-SEC-07]): los flujos de R interna nunca cargan ese chunk. P16 deja la base endurecida; las
-pantallas de enrollment, recuperación, rotaciones, modo soberano, emergencia y migración llegan en P19.
+con su propio lockfile (sin código compartido con Wallet: capa criptográfica, cliente de API, SafeTx y QR propios) y con
+su acento visual propio. wagmi y los conectores se importan sólo vía `import()` en `src/external-wallet/`
+([F-SEC-07]): los flujos de R interna nunca cargan ese chunk.
+
+## Pantallas (P19)
+
+| Ruta         | Qué hace                                                                                                                                                                                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/enroll`    | Desde el link o el QR de la Wallet: login, step-up ENROLLMENT, Enrollment Key, R interna (Password R de 5 palabras, sobre `R.enc`, backups en Drive de Recovery, archivo, QR o 17 palabras) o wallet externa, prueba de control EIP-712 y link de regreso. |
+| `/recover-u` | U′ registrada por la Wallet a la vista, propuesta R + S (timelock de 48 h) con cuenta regresiva en hora de la cadena y ejecución al madurar.                                                                                                               |
+| `/rotations` | Propuestas pendientes leídas del timelock; cancelar con la firma de R (relay del backend, transacción propia con la wallet externa o calldata exportada); ejecutar las maduras; proponer la S′ que pide la plataforma, con su atestación verificada.       |
+| `/emergency` | Con R + S: quitar destinos de la whitelist, anular operaciones pendientes (NoOp del mismo nonce) y revocar permisos del SwapExecutor.                                                                                                                      |
+| `/migration` | Migración excepcional con R sana: Safe destino verificada on-chain y transferencias armadas por la app.                                                                                                                                                    |
+| `/restore`   | R en un dispositivo nuevo: Drive de Recovery, archivo, QR (cámara) o 17 palabras (re-cifrado con Password R nueva), siempre verificada contra el rol R on-chain.                                                                                           |
+| `/sovereign` | Modo soberano sin la plataforma (funciona con el backend apagado): acciones tipadas [W-05] con el nonce on-chain, firma de R, documento para U por archivo o QR animado, combinación y transmisión con una wallet externa o calldata para un relayer.      |
+
+Antes de que R firme algo, la app reconstruye la SafeTx y la compara campo por campo con la del backend, y verifica la
+Safe por su propio RPC (contratos con su codehash, guards, owners = roles y R como recoveryKey). Conectores de wallet
+externa, exclusiones y hosts permitidos: [docs/CONNECTORS.md](../../docs/CONNECTORS.md).
 
 ## Scripts
 
-| Comando                      | Qué hace                                                                                                                                                                                     |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm dev`                   | Servidor de desarrollo en `http://localhost:5174` (`RECOVERY_ORIGIN`) con la CSP y Trusted Types aplicados (en dev la CSP suma sólo el websocket de HMR y `'unsafe-inline'` en `style-src`). |
-| `pnpm build`                 | Design tokens verificados + build de producción en `dist/` con SRI, contratos del sistema del entorno, headers resueltos y release manifest.                                                 |
-| `pnpm build:release`         | `build` + firma Ed25519 del manifest con la clave de release de Recovery (distinta de la de Wallet).                                                                                         |
-| `pnpm preview`               | `vite preview` del build en `http://localhost:4174` (`MTW_PREVIEW_PORT`) con los headers exactos del entorno.                                                                                |
-| `pnpm lint`                  | ESLint (prohibiciones de [F-SEC] y wagmi/conectores sólo en `src/external-wallet/`) + `lint-fixtures/` + Prettier.                                                                           |
-| `pnpm typecheck`             | `tsc` de la app, de los workers y del build/scripts/tests.                                                                                                                                   |
-| `pnpm test`                  | Vitest con cobertura: lógica de seguridad, contratos fijados, Argon2id (R siempre 64 MiB), dos builds de release reales y el grafo del bundle (`test/bundle-graph.test.ts`).                 |
-| `pnpm test:browser [filtro]` | Compila y corre Playwright (Chromium) contra `vite preview`: headers, Trusted Types y el chunk lazy de wallet externa bajo CSP/TT.                                                           |
-| `pnpm verify:manifest`       | Verifica `dist/` contra el manifest firmado.                                                                                                                                                 |
+| Comando                      | Qué hace                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm dev`                   | Servidor de desarrollo en `http://localhost:5174` (`RECOVERY_ORIGIN`) con la CSP y Trusted Types aplicados (en dev la CSP suma sólo el websocket de HMR y `'unsafe-inline'` en `style-src`).                                                                                                                                                                       |
+| `pnpm build`                 | Design tokens verificados + build de producción en `dist/` con SRI, contratos del sistema del entorno, headers resueltos y release manifest.                                                                                                                                                                                                                       |
+| `pnpm build:release`         | `build` + firma Ed25519 del manifest con la clave de release de Recovery (distinta de la de Wallet).                                                                                                                                                                                                                                                               |
+| `pnpm preview`               | `vite preview` del build en `http://localhost:4174` (`MTW_PREVIEW_PORT`) con los headers exactos del entorno.                                                                                                                                                                                                                                                      |
+| `pnpm lint`                  | ESLint (prohibiciones de [F-SEC] y wagmi/conectores sólo en `src/external-wallet/`) + `lint-fixtures/` + Prettier.                                                                                                                                                                                                                                                 |
+| `pnpm typecheck`             | `tsc` de la app, de los workers y del build/scripts/tests.                                                                                                                                                                                                                                                                                                         |
+| `pnpm test`                  | Vitest con cobertura (umbral de 90 % de líneas por módulo): cripto contra los vectores, API, SafeTx, sesión, Drive, restauración, modo soberano, emergencia, migración, dos builds de release reales y el grafo del bundle.                                                                                                                                        |
+| `pnpm test:drive-live`       | El cliente Drive contra la API real de Google con la cuenta de prueba (`GOOGLE_DRIVE_TEST_*`); obligatorio en `ci:local` y en CI.                                                                                                                                                                                                                                  |
+| `pnpm test:browser [filtro]` | Compila y corre Playwright (Chromium): headers y Trusted Types contra `vite preview`, y todas las pantallas contra el stack local real (`scripts/stack/stack.mjs`, fork de Base) con la wallet de prueba EIP-6963, los conectores bajo CSP/TT y WalletConnect por el relay real de Reown (`walletconnect.live`). El modo soberano corre con la plataforma apagada. |
+| `pnpm verify:manifest`       | Verifica `dist/` contra el manifest firmado.                                                                                                                                                                                                                                                                                                                       |
 
 ## Configuración por entorno
 
 Como en Wallet, con sus variables: `RECOVERY_API_BASE_URL`, `RECOVERY_FRONTEND_RPC_URL`, `WALLET_ORIGIN` (link de
 regreso con R), `GOOGLE_CLIENT_ID_RECOVERY`, `GOOGLE_OAUTH_REDIRECT_URI_RECOVERY`, `WALLETCONNECT_PROJECT_ID` y
-`SIGNER_ATTESTATION_PUBLIC_KEY`. La CSP no incluye `'wasm-unsafe-eval'` (Recovery no usa WASM); los endpoints de
-WalletConnect se agregan a `connect-src` cuando se verifican en P19.
+`SIGNER_ATTESTATION_PUBLIC_KEY`. La CSP no incluye `'wasm-unsafe-eval'` (Recovery no usa WASM) y de WalletConnect sólo
+permite el relay (`wss://relay.walletconnect.org` y `.com`, verificado en la documentación de Reown).
 
 ## Seguridad
 

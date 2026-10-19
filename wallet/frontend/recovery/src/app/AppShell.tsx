@@ -1,9 +1,14 @@
 // Marco común de las pantallas de Recovery: marca con su acento propio (el usuario tiene que saber en qué app está, V9
-// §17), entorno (fuera de producción) y release del build.
+// §17), entorno (fuera de producción), la cuenta con su salida, el bloqueo de R y de la PlatformSession, y el release
+// del build.
 import { Link, Outlet } from 'react-router';
 import { appConfig } from '../config/index.ts';
+import { useSession, useSessionStore } from '../session/context.tsx';
 
 export function AppShell() {
+  const session = useSession();
+  const store = useSessionStore();
+  const unlocked = session.recovery !== null || session.external !== null || session.platform !== null;
   return (
     <div className="shell">
       <header className="shell__header">
@@ -11,11 +16,34 @@ export function AppShell() {
           <span className="brand__mark" aria-hidden="true" />
           <span className="brand__name">MT Recovery</span>
         </Link>
-        {appConfig.environment !== 'production' && (
-          <span className="env-badge" title="Entorno del build">
-            {appConfig.environment}
-          </span>
-        )}
+        <nav className="shell__nav" aria-label="Cuenta">
+          {appConfig.environment !== 'production' && (
+            <span className="env-badge" title="Entorno del build">
+              {appConfig.environment}
+            </span>
+          )}
+          {unlocked && (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => {
+                store.lock('MANUAL');
+              }}
+            >
+              Bloquear
+            </button>
+          )}
+          {session.status === 'account' && session.user ? (
+            <span className="shell__account">
+              <span data-account={session.user.email}>{session.user.email}</span>
+              <button type="button" className="button button--link" onClick={() => void store.logout()}>
+                Cerrar sesión
+              </button>
+            </span>
+          ) : (
+            session.status === 'anonymous' && <Link to="/login">Iniciar sesión</Link>
+          )}
+        </nav>
       </header>
       <main className="shell__main">
         <Outlet />

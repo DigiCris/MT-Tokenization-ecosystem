@@ -8,9 +8,12 @@
 //
 //   node scripts/stack/stack.mjs up --state <archivo> --wallet-origin <url> [--recovery-origin <url>]
 //   node scripts/stack/stack.mjs down --state <archivo>
+//   node scripts/stack/stack.mjs backend-stop|backend-start --state <archivo>
 //
 // `up` deja los procesos corriendo en segundo plano y escribe en --state lo que necesitan los tests: URLs, puertos, el
 // archivo de deployment y la clave pública de atestación del signer. Si algo falla, desarma lo que levantó.
+// `backend-stop` detiene la API (los dos listeners), el worker y el gas tank —la plataforma apagada, para probar el modo
+// soberano— y `backend-start` los vuelve a levantar sobre la misma base, cadena y signer.
 import { spawn, spawnSync } from 'node:child_process';
 import {
   copyFileSync,
@@ -446,19 +449,7 @@ async function bringUp(state, { walletOrigin, recoveryOrigin }) {
   );
 
   log('API, worker y gas tank');
-  startProcess(state, 'api', 'node', ['src/main.ts', 'api'], { cwd: BACKEND, env: processEnv(state) });
-  startProcess(state, 'worker', 'node', ['src/main.ts', 'worker'], { cwd: BACKEND, env: processEnv(state) });
-  startProcess(state, 'gas-tank', 'node', ['src/main.ts', 'gas-tank'], { cwd: BACKEND, env: processEnv(state) });
-  await waitFor(
-    'API de Wallet',
-    () => httpOk(`http://127.0.0.1:${String(ports.apiWallet)}/api/v1/health/ready`),
-    180_000,
-  );
-  await waitFor(
-    'API de Recovery',
-    () => httpOk(`http://127.0.0.1:${String(ports.apiRecovery)}/api/v1/health/ready`),
-    60_000,
-  );
+  await startBackendProcesses(state);
 
   Object.assign(state, {
     platformId: env.PLATFORM_ID,
@@ -477,6 +468,67 @@ async function bringUp(state, { walletOrigin, recoveryOrigin }) {
   log(`listo: API de Wallet en ${state.urls.apiWallet}`);
 }
 
+/** Los procesos de la plataforma (sin la base, la cadena ni el signer). */
+const BACKEND_PROCESSES = ['api', 'worker', 'gas-tank'];
+
+async function startBackendProcesses(state) {
+  const { ports } = state;
+  for (const name of BACKEND_PROCESSES) {
+    startProcess(state, name, 'node', ['src/main.ts', name], { cwd: BACKEND, env: processEnv(state) });
+  }
+  await waitFor(
+    'API de Wallet',
+    () => httpOk(`http://127.0.0.1:${String(ports.apiWallet)}/api/v1/health/ready`),
+    180_000,
+  );
+  await waitFor(
+    'API de Recovery',
+    () => httpOk(`http://127.0.0.1:${String(ports.apiRecovery)}/api/v1/health/ready`),
+    60_000,
+  );
+}
+
+async function stopProcesses(list) {
+  for (const { pid } of list) {
+    try {
+      process.kill(-pid, 'SIGTERM');
+    } catch {
+      // ya terminó
+    }
+  }
+  const deadline = Date.now() + 15_000;
+  while (list.some(({ pid }) => alive(pid)) && Date.now() < deadline) await sleep(250);
+  for (const { pid } of list) {
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      // ya terminó
+    }
+  }
+}
+
+function loadState(stateFile) {
+  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  if (!state.ready) throw new Error('el stack no terminó de levantar');
+  return { ...state, stateFile: resolve(stateFile) };
+}
+
+/** Apaga la plataforma (API, worker y gas tank) y deja la base, la cadena y el signer corriendo. */
+export async function stopBackend({ stateFile }) {
+  const state = loadState(stateFile);
+  await stopProcesses(state.processes.filter((p) => BACKEND_PROCESSES.includes(p.name)));
+  state.processes = state.processes.filter((p) => !BACKEND_PROCESSES.includes(p.name));
+  saveState(state);
+}
+
+/** Vuelve a levantar la plataforma apagada con `backend-stop` (mismo .env, puertos y logs). */
+export async function startBackend({ stateFile }) {
+  const state = loadState(stateFile);
+  if (state.processes.some((p) => BACKEND_PROCESSES.includes(p.name)))
+    throw new Error('la plataforma ya está corriendo');
+  await startBackendProcesses(state);
+}
+
 function alive(pid) {
   try {
     process.kill(pid, 0);
@@ -489,22 +541,7 @@ function alive(pid) {
 export async function down({ stateFile, keepLogs = false }) {
   if (!existsSync(stateFile)) return;
   const state = JSON.parse(readFileSync(stateFile, 'utf8'));
-  for (const { pid } of [...state.processes].reverse()) {
-    try {
-      process.kill(-pid, 'SIGTERM');
-    } catch {
-      // ya terminó
-    }
-  }
-  const deadline = Date.now() + 15_000;
-  while (state.processes.some(({ pid }) => alive(pid)) && Date.now() < deadline) await sleep(250);
-  for (const { pid } of state.processes) {
-    try {
-      process.kill(-pid, 'SIGKILL');
-    } catch {
-      // ya terminó
-    }
-  }
+  await stopProcesses([...state.processes].reverse());
   if (state.composeUp) {
     try {
       compose(state, ['down', '-v', '--remove-orphans', '--timeout', '10'], 'docker compose down');
@@ -529,8 +566,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     },
   });
   const command = positionals[0];
-  if (!values.state || (command !== 'up' && command !== 'down')) {
-    process.stderr.write('uso: node scripts/stack/stack.mjs up|down --state <archivo> [--wallet-origin <url>]\n');
+  const commands = ['up', 'down', 'backend-stop', 'backend-start'];
+  if (!values.state || !commands.includes(command)) {
+    process.stderr.write(
+      'uso: node scripts/stack/stack.mjs up|down|backend-stop|backend-start --state <archivo> [--wallet-origin <url>]\n',
+    );
     process.exit(2);
   }
   try {
@@ -540,6 +580,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         walletOrigin: values['wallet-origin'],
         recoveryOrigin: values['recovery-origin'],
       });
+    } else if (command === 'backend-stop') {
+      await stopBackend({ stateFile: values.state });
+    } else if (command === 'backend-start') {
+      await startBackend({ stateFile: values.state });
     } else {
       await down({ stateFile: values.state, keepLogs: values['keep-logs'] });
     }

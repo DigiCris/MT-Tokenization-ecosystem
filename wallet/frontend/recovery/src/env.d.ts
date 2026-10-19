@@ -5,6 +5,7 @@ declare module 'virtual:mtw-config' {
   const config: Readonly<{
     app: 'recovery';
     environment: 'local' | 'ci' | 'staging' | 'production';
+    platformId: string;
     apiBaseUrl: string;
     rpcUrl: string;
     walletOrigin: string;

@@ -146,7 +146,8 @@ export default defineConfig(
     languageOptions: { globals: globals.worker },
   },
   {
-    files: ['src/external-wallet/**'],
+    // El chunk lazy de wallet externa y la wallet headless del test live de WalletConnect (P19.MAN, sólo Node).
+    files: ['src/external-wallet/**', 'test/browser/stack/helpers/walletkit.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
   {
@@ -154,8 +155,13 @@ export default defineConfig(
     rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
   {
+    // Los tests no se publican: leen el storage para probar que no queda nada sensible ([F-KEY-07], P22.T03).
     files: ['src/**/*.test.{ts,tsx}', 'test/**/*.ts'],
-    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+    rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      'no-restricted-globals': 'off',
+      'no-restricted-properties': 'off',
+    },
   },
   {
     files: ['build/**/*.ts', 'test/**/*.ts', '*.config.ts'],
