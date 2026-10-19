@@ -76,4 +76,6 @@ export const REDIS_DBS = {
   notificationsApi: 73,
   // P18: rotación de S pedida por la plataforma.
   executorRotationRequest: 74,
+  // P17.MAN (N10): rechazo de un enrollment de R por la Wallet.
+  recoveryEnrollmentReject: 75,
 } as const;

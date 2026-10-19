@@ -67,6 +67,15 @@ export const TEMPLATE_FIXTURES: { [K in TemplateName]: TemplateParams[K] } = {
     occurredAt: AT,
     origin: ORIGIN,
   },
+  // El reemplazo de R (con la Safe de la wallet) y un enlace de regreso con otra R.
+  'recovery-enrollment-rejected': {
+    reason: 'RETURN_LINK_KEY_MISMATCH',
+    purpose: 'REPLACEMENT',
+    recoveryKey: NEW_KEY,
+    safe: SAFE,
+    occurredAt: AT,
+    origin: ORIGIN,
+  },
   'high-value-challenge': {
     code: '27182818',
     safe: SAFE,

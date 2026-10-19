@@ -13,6 +13,11 @@
 // propósito REPLACEMENT; Recovery (ENROLLMENT) registra su Enrollment Key y envía R' con la prueba de control y además
 // la KeyAcceptance de R' [W-01] (nonce = el del enrollment). No hay paso 4: U propone la rotación de R hacia R'
 // (rotations/service.ts) y, ejecutada on-chain, el enrollment queda CONFIRMED y el anterior RETIRED.
+//
+// Rechazo (P17.MAN, N10): si la Wallet no puede confirmar la R de un pedido ([F-LNK-02]: la comparación manual no
+// coincide, el enlace de regreso trae otra R o no lo armó la app Recovery del usuario), lo aborta y lo informa: el
+// pedido queda REJECTED con el motivo, su R pendiente deja de estar viva y, como puede ser una sustitución de R en el
+// camino, queda auditado, el usuario recibe una notificación y un email de seguridad y se registra la alerta.
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Kysely, Transaction } from 'kysely';
 import { sql } from 'kysely';
@@ -23,12 +28,14 @@ import type { AuditWriter } from '../audit/audit-writer.ts';
 import { platformDigest } from '../chain/eip712.ts';
 import type { RpcQuorumClient } from '../chain/rpc-quorum.ts';
 import { InvalidSignatureError, recoverStrictSigner } from '../chain/signatures.ts';
-import type { Database, RecoveryMetadataTable } from '../db/schema.ts';
+import type { Database, RecoveryMetadataTable, RecoveryRejectionReason } from '../db/schema.ts';
 import { withTransaction } from '../db/transaction.ts';
+import type { EmailOutbox } from '../email/email-outbox.ts';
 import { addressToBuffer, bufferToAddress, bufferToHex } from '../lib/bytes.ts';
 import { canonicalJson } from '../lib/jcs.ts';
 import type { Logger } from '../observability/logger.ts';
 import type { Metrics } from '../observability/metrics.ts';
+import { notify } from '../notifications/notify.ts';
 import { jwkThumbprint, verifyP256, type P256PublicJwk } from '../platform-session/keys.ts';
 import type { BackendPolicySnapshot } from '../policy/snapshot.ts';
 import { keyAcceptanceValid } from '../rotations/facts.ts';
@@ -53,6 +60,18 @@ const CLOCK_SKEW_SECONDS = 60;
 const EIP7702_DESIGNATOR = /^0xef0100[0-9a-f]{40}$/;
 
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+
+/**
+ * Motivos con los que la Wallet aborta un enrollment ([F-LNK-02]): la dirección copiada de Recovery no coincidió en los
+ * intentos de la comparación manual, el enlace de regreso trae otra R, o el enlace de regreso no lo armó la app
+ * Recovery del usuario (no trae el secreto del pedido, o trae otro).
+ */
+export const WALLET_REJECTION_REASONS = [
+  'MANUAL_COMPARISON_FAILED',
+  'RETURN_LINK_KEY_MISMATCH',
+  'RETURN_LINK_UNVERIFIED',
+] as const satisfies readonly RecoveryRejectionReason[];
+export type WalletRejectionReason = (typeof WALLET_REJECTION_REASONS)[number];
 
 /** `RecoveryEnrollment` tal como lo firmó la Enrollment Key (sin transformar: la firma cubre estos strings). */
 export const RecoveryEnrollmentSchema = z
@@ -82,6 +101,8 @@ export interface EnrollmentView {
   rType: 'INTERNAL' | 'EXTERNAL' | null;
   submittedAt: string | null;
   confirmedAt: string | null;
+  /** Por qué quedó REJECTED (null si no lo está o si se rechazó antes de que existiera el motivo). */
+  rejectionReason: RecoveryRejectionReason | null;
 }
 
 export interface WalletCreationAuthorizationInput {
@@ -103,6 +124,8 @@ export interface EnrollmentServiceDeps {
   snapshot: () => BackendPolicySnapshot;
   rpc: RpcQuorumClient;
   audit: AuditWriter;
+  /** Email de seguridad del rechazo (null en los tests que no lo necesitan). */
+  emails: EmailOutbox | null;
   metrics: Metrics;
   logger: Logger;
   now?: () => number;
@@ -126,6 +149,7 @@ function view(row: EnrollmentRow, now: number): EnrollmentView {
     rType: row.r_type,
     submittedAt: row.submitted_at?.toISOString() ?? null,
     confirmedAt: row.confirmed_at?.toISOString() ?? null,
+    rejectionReason: row.status === 'REJECTED' ? row.rejection_reason : null,
   };
 }
 
@@ -203,10 +227,10 @@ export class EnrollmentService {
         if (live?.status === 'CONFIRMED') {
           throw new ApiError('CONFLICT', { detail: 'U ya autorizó la creación con la R vinculada' });
         }
-        // Los enrollments anteriores quedan rechazados y su R (si la había) deja de estar viva.
+        // Los enrollments anteriores quedan rechazados (reemplazados) y su R (si la había) deja de estar viva.
         await trx
           .updateTable('recovery_metadata')
-          .set({ status: 'REJECTED' })
+          .set({ status: 'REJECTED', rejection_reason: 'SUPERSEDED', rejected_at: new Date(this.#now()) })
           .where('wallet_id', '=', walletId)
           .where('status', 'in', ['REQUESTED', 'SUBMITTED'])
           .execute();
@@ -277,10 +301,10 @@ export class EnrollmentService {
           ])
           .executeTakeFirst();
         if (rotating) throw new ApiError('CONFLICT', { detail: 'ya hay una rotación de R en curso' });
-        // Los reemplazos anteriores sin proponer quedan rechazados y su R' deja de estar viva.
+        // Los reemplazos anteriores sin proponer quedan rechazados (reemplazados) y su R' deja de estar viva.
         await trx
           .updateTable('recovery_metadata')
-          .set({ status: 'REJECTED' })
+          .set({ status: 'REJECTED', rejection_reason: 'SUPERSEDED', rejected_at: new Date(this.#now()) })
           .where('wallet_id', '=', walletId)
           .where('purpose', '=', 'REPLACEMENT')
           .where('status', 'in', ['REQUESTED', 'SUBMITTED'])
@@ -624,6 +648,123 @@ export class EnrollmentService {
       { auditLock: true },
     );
     if (result.confirmed) this.#d.metrics.walletOnboarding.inc({ step: 'authorization', result: 'ok' });
+    return result.view;
+  }
+
+  /**
+   * POST /recovery/enrollments/{id}/reject (Wallet, con la PlatformSession del pedido: ONBOARDING, u OPERATIONS en el
+   * reemplazo de R): la Wallet no pudo confirmar la R de este pedido y lo abortó. Idempotente: un pedido que la Wallet ya
+   * rechazó devuelve su estado sin repetir nada; uno reemplazado por un pedido nuevo (SUPERSEDED) toma el motivo de la
+   * Wallet, porque el aviso del aborto puede llegar después de que el usuario pidió otro.
+   */
+  async reject(actor: WalletActor, enrollmentId: string, reason: WalletRejectionReason): Promise<EnrollmentView> {
+    const { db, platformId } = this.#d;
+    const result = await withTransaction(
+      db,
+      async (trx) => {
+        const row = await this.#load(trx, actor.userId, enrollmentId, { forUpdate: true });
+        const wallet = await walletForActor(trx, platformId, actor, row.wallet_id, { forUpdate: true });
+        const scope = row.purpose === 'REPLACEMENT' ? 'OPERATIONS' : 'ONBOARDING';
+        if (actor.platform.scope !== scope) {
+          throw new ApiError('SCOPE_NOT_ALLOWED', { detail: `este pedido se rechaza con una sesión ${scope}` });
+        }
+        const now = this.#now();
+        if (row.status === 'REJECTED' && row.rejection_reason !== null && row.rejection_reason !== 'SUPERSEDED') {
+          return { view: view(row, now), rejected: null };
+        }
+        if (row.status !== 'REQUESTED' && row.status !== 'SUBMITTED' && row.status !== 'REJECTED') {
+          throw new ApiError('CONFLICT', { detail: `el enrollment está ${row.status}` });
+        }
+        const previous = effectiveStatus(row, now);
+        const recoveryKey = row.r_address === null ? null : bufferToAddress(row.r_address);
+        const updated = await trx
+          .updateTable('recovery_metadata')
+          .set({ status: 'REJECTED', rejection_reason: reason, rejected_at: new Date(now) })
+          .where('id', '=', row.id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        // La R que había enviado Recovery para este pedido (el vivo) deja de estar viva: ya no se puede incorporar y,
+        // como al pedir otro enrollment, una Safe esperada calculada con ella ya no vale. Un pedido sin R o ya
+        // reemplazado no toca nada del pedido vigente.
+        if (row.status === 'SUBMITTED' && row.r_address !== null) {
+          await trx
+            .updateTable('wallet_keys_metadata')
+            .set({ status: 'REVOKED', deactivated_at: sql`now()` })
+            .where('wallet_id', '=', row.wallet_id)
+            .where('role', '=', 'R')
+            .where('status', '=', 'PENDING')
+            .where('key_address', '=', row.r_address)
+            .execute();
+          if (row.purpose === 'ONBOARDING' && wallet.status === 'CREATING') {
+            await trx
+              .updateTable('wallets')
+              .set({ expected_safe: null, config_hash: null, updated_at: sql`now()` })
+              .where('id', '=', wallet.id)
+              .execute();
+          }
+        }
+        const occurredAt = new Date(now).toISOString();
+        await this.#audit(trx, actor, row.wallet_id, enrollmentId, 'RECOVERY_ENROLLMENT_REJECTED', {
+          reason,
+          purpose: row.purpose,
+          previousStatus: previous,
+          recoveryKey,
+        });
+        await notify(
+          trx,
+          {
+            userId: actor.userId,
+            walletId: row.wallet_id,
+            type: 'RECOVERY_ENROLLMENT_REJECTED',
+            payload: { enrollmentId, reason, purpose: row.purpose, recoveryKey, occurredAt },
+            dedupeKey: `recovery-enrollment-rejected:${enrollmentId}`,
+          },
+          this.#d.metrics,
+        );
+        if (this.#d.emails !== null) {
+          const user = await trx
+            .selectFrom('users')
+            .select(['email', 'locale', 'time_zone'])
+            .where('id', '=', actor.userId)
+            .executeTakeFirstOrThrow();
+          await this.#d.emails.enqueue(trx, {
+            to: user.email,
+            template: 'recovery-enrollment-rejected',
+            params: {
+              reason,
+              purpose: row.purpose,
+              recoveryKey,
+              // En el onboarding la Safe todavía no existe; en el reemplazo de R es la de la wallet.
+              safe:
+                row.purpose === 'REPLACEMENT' && wallet.safe_address !== null
+                  ? bufferToAddress(wallet.safe_address)
+                  : null,
+              occurredAt,
+              origin: { ipPrefix: actor.meta.ipPrefix, userAgent: actor.meta.userAgent },
+            },
+            locale: user.locale,
+            timeZone: user.time_zone,
+            product: 'Wallet',
+          });
+        }
+        return { view: view(updated, now), rejected: { walletId: row.wallet_id, purpose: row.purpose, recoveryKey } };
+      },
+      { auditLock: true },
+    );
+    if (result.rejected !== null) {
+      this.#d.metrics.recoveryEnrollmentRejections.inc({ reason, purpose: result.rejected.purpose });
+      this.#d.logger.error(
+        {
+          alert: 'RECOVERY_KEY_SUBSTITUTION_SUSPECTED',
+          walletId: result.rejected.walletId,
+          enrollmentId,
+          reason,
+          purpose: result.rejected.purpose,
+          recoveryKey: result.rejected.recoveryKey,
+        },
+        'la Wallet rechazó el enrollment de R: posible sustitución de R',
+      );
+    }
     return result.view;
   }
 

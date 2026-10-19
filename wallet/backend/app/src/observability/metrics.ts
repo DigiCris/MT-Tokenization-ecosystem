@@ -27,6 +27,7 @@ export interface Metrics {
   executorsBelowMinimum: Gauge;
   gasTankTransactions: Counter<'purpose' | 'result'>;
   walletOnboarding: Counter<'step' | 'result'>;
+  recoveryEnrollmentRejections: Counter<'reason' | 'purpose'>;
   walletVerificationFailures: Counter<'item'>;
   operationTransitions: Counter<'to'>;
   operationErrors: Counter<'code'>;
@@ -178,6 +179,12 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_wallet_onboarding_total',
       help: 'Pasos del onboarding de wallets (create, user_key, enrollment, executor, authorization, deploy, verify) por resultado',
       labelNames: ['step', 'result'],
+      registers,
+    }),
+    recoveryEnrollmentRejections: new Counter({
+      name: 'mtw_recovery_enrollment_rejections_total',
+      help: 'Enrollments de R que la Wallet rechazó porque no pudo confirmar la R ([F-LNK-02]): posible sustitución de R (alerta)',
+      labelNames: ['reason', 'purpose'],
       registers,
     }),
     walletVerificationFailures: new Counter({

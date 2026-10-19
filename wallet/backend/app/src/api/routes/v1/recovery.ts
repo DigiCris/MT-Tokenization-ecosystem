@@ -1,13 +1,18 @@
 // Grupo `recovery` de [B-API] (P12, P15): enrollment de la clave de recuperación R y reemplazo de U. Cada listener
-// expone sólo sus rutas ([B-AUTHZ] 3): Wallet crea el enrollment (ONBOARDING, o OPERATIONS para reemplazar R), incorpora
-// la autorización de U y registra U' (U_REPLACEMENT, [W-07]); Recovery registra la Enrollment Key y envía R (o R') con
-// su prueba de control; ambos consultan el estado.
+// expone sólo sus rutas ([B-AUTHZ] 3): Wallet crea el enrollment (ONBOARDING, o OPERATIONS para reemplazar R), lo
+// rechaza si no puede confirmar la R ([F-LNK-02], P17.MAN), incorpora la autorización de U y registra U'
+// (U_REPLACEMENT, [W-07]); Recovery registra la Enrollment Key y envía R (o R') con su prueba de control; ambos
+// consultan el estado.
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Client } from '../../../db/schema.ts';
 import { P256PublicJwkSchema } from '../../../platform-session/keys.ts';
 import { CriticalRequestHeadersSchema } from '../../../platform-session/request-signature.ts';
-import { RecoveryEnrollmentSchema, type EnrollmentService } from '../../../recovery/enrollment.ts';
+import {
+  RecoveryEnrollmentSchema,
+  WALLET_REJECTION_REASONS,
+  type EnrollmentService,
+} from '../../../recovery/enrollment.ts';
 import type { UReplacementService } from '../../../recovery/u-replacement.ts';
 import {
   AddressSchema,
@@ -42,6 +47,12 @@ export const EnrollmentViewSchema = z
     rType: z.enum(['INTERNAL', 'EXTERNAL']).nullable(),
     submittedAt: z.iso.datetime().nullable(),
     confirmedAt: z.iso.datetime().nullable(),
+    rejectionReason: z
+      .enum(['SUPERSEDED', 'MANUAL_COMPARISON_FAILED', 'RETURN_LINK_KEY_MISMATCH', 'RETURN_LINK_UNVERIFIED'])
+      .nullable()
+      .describe(
+        'Sólo con REJECTED: SUPERSEDED (lo reemplazó un pedido nuevo) o el motivo con el que la Wallet lo abortó ([F-LNK-02]); null en los rechazados antes de que existiera el motivo',
+      ),
   })
   .meta({ id: 'RecoveryEnrollmentStatus' });
 
@@ -150,6 +161,37 @@ export const recoveryRoutes: FastifyPluginCallbackZod<RecoveryRoutesOptions> = (
         const actor = walletActor(request);
         await app.enforceRateLimit(request, 'operation-create', { user: actor.userId });
         return enrollments.incorporate(actor, request.params.id, request.body);
+      },
+    );
+
+    app.post(
+      '/recovery/enrollments/:id/reject',
+      {
+        config: { auth: 'account', platformSession: { scopes: ['ONBOARDING', 'OPERATIONS'], critical: true } },
+        schema: {
+          operationId: 'rejectRecoveryEnrollment',
+          tags,
+          summary:
+            'La Wallet aborta el pedido porque no pudo confirmar R ([F-LNK-02]): REJECTED con el motivo, auditoría, aviso y email de seguridad (idempotente)',
+          security: criticalSecurity,
+          headers: CriticalRequestHeadersSchema,
+          params: EnrollmentIdParams,
+          body: z
+            .object({
+              reason: z
+                .enum(WALLET_REJECTION_REASONS)
+                .describe(
+                  'MANUAL_COMPARISON_FAILED: la dirección copiada de Recovery no coincidió en los intentos; RETURN_LINK_KEY_MISMATCH: el enlace de regreso trae otra R; RETURN_LINK_UNVERIFIED: el enlace de regreso no trae el secreto del pedido o trae otro',
+                ),
+            })
+            .strict(),
+          response: { 200: EnrollmentViewSchema, ...errorResponses(401, 403, 404, 409, 415) },
+        },
+      },
+      async (request) => {
+        const actor = walletActor(request);
+        await app.enforceRateLimit(request, 'operation-create', { user: actor.userId });
+        return enrollments.reject(actor, request.params.id, request.body.reason);
       },
     );
 

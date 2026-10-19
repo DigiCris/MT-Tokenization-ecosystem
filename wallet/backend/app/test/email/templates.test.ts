@@ -1,4 +1,4 @@
-// P09.T07 [B-MAIL-02/03]: snapshots de las 20 plantillas y verificación explícita de lo que exige cada email sensible:
+// P09.T07 [B-MAIL-02/03]: snapshots de las plantillas y verificación explícita de lo que exige cada email sensible:
 // acción, dirección completa (EIP-55 en grupos de 4), red, Safe, expiración (hora local del usuario y UTC), origen y
 // qué hacer si no fue el usuario; sin links que ejecuten acciones y con el HTML escapado. P18.MAN: direcciones y montos
 // con el formato de las apps (`0x ` y 10 grupos de 4; montos es-AR con su token), que es lo que la app pide comparar.
@@ -29,6 +29,7 @@ const SAFE_TEMPLATES: TemplateName[] = [
   'rotation-executed',
   'executor-rotation-requested',
   'recovery-started',
+  'recovery-enrollment-rejected',
   'high-value-challenge',
   'high-value-executed',
   'safe-config-modified',
@@ -61,6 +62,7 @@ const WITH_ORIGIN: TemplateName[] = [
   'whitelist-challenge',
   'rotation-proposed',
   'recovery-started',
+  'recovery-enrollment-rejected',
   'high-value-challenge',
 ];
 
@@ -167,6 +169,40 @@ describe('contenido obligatorio', () => {
     expect(text).toContain(`Clave nueva: ${groupedAddress(NEW_KEY)}`);
     expect(text).toMatch(/^Ejecutable desde: 19\/10\/2026, 12:04 \(America\/Argentina\/Buenos_Aires\)$/m);
     expect(text).toContain('48 h');
+  });
+
+  it('rechazo de un enrollment de R (P17.MAN, N10): posible sustitución, motivo, dirección recibida y qué hacer', () => {
+    const { subject, text } = render('recovery-enrollment-rejected');
+    expect(subject).toBe('Posible sustitución de tu clave R');
+    expect(text).toContain('El enlace de regreso de la app Recovery traía una dirección de clave R distinta');
+    expect(text).toContain('alguien haya intentado cambiar tu clave R en el camino');
+    expect(text).toContain('Acción: Cancelación del reemplazo de tu clave de recuperación (R)');
+    expect(text).toContain(`Dirección que recibió la plataforma: ${groupedAddress(NEW_KEY)}`);
+    expect(text).toContain('No abras enlaces de regreso de la app Recovery que te lleguen por email o por chat.');
+    // En el onboarding no hay Safe todavía, y si Recovery no había enviado R no hay dirección que mostrar.
+    const onboarding = renderTemplate(
+      'recovery-enrollment-rejected',
+      {
+        reason: 'RETURN_LINK_UNVERIFIED',
+        purpose: 'ONBOARDING',
+        recoveryKey: null,
+        safe: null,
+        occurredAt: '2026-10-17T15:04:05.000Z',
+        origin: { ipPrefix: null, userAgent: null },
+      },
+      CTX,
+    ).text;
+    expect(onboarding).toContain('Se abrió un enlace de regreso que no armó tu app Recovery para este pedido');
+    expect(onboarding).toContain('Acción: Cancelación del registro de tu clave de recuperación (R)');
+    expect(onboarding).not.toMatch(/^Safe: /m);
+    expect(onboarding).not.toContain('Dirección que recibió la plataforma');
+    expect(
+      renderTemplate(
+        'recovery-enrollment-rejected',
+        { ...TEMPLATE_FIXTURES['recovery-enrollment-rejected'], reason: 'MANUAL_COMPARISON_FAILED' },
+        CTX,
+      ).text,
+    ).toContain('Motivo: la dirección copiada de la app Recovery no coincidió');
   });
 
   it('cada oración del "si no fuiste vos" empieza en mayúscula', () => {

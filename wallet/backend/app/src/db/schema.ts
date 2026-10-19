@@ -204,7 +204,18 @@ export interface RecoveryMetadataTable {
   retired_at: Timestamp | null;
   /** P15: R sana reutilizada por la Safe nueva de una migración excepcional (viva también en la vieja). */
   reused_from_wallet_id: string | null;
+  /** P17.MAN (N10): por qué quedó REJECTED (null en los rechazados antes de 0009) y cuándo. */
+  rejection_reason: RecoveryRejectionReason | null;
+  rejected_at: Timestamp | null;
 }
+
+/**
+ * Motivo del rechazo de un enrollment de R: reemplazado por un pedido nuevo, o abortado por la Wallet porque no pudo
+ * confirmar la R ([F-LNK-02]): la comparación manual no coincidió, el enlace de regreso trae otra R o no lo armó la app
+ * Recovery del usuario (sin el secreto del pedido o con otro).
+ */
+export type RecoveryRejectionReason =
+  'SUPERSEDED' | 'MANUAL_COMPARISON_FAILED' | 'RETURN_LINK_KEY_MISMATCH' | 'RETURN_LINK_UNVERIFIED';
 
 /** KeyAcceptance [W-01] firmada por la clave nueva (U' o R'). */
 export interface KeyAcceptanceJson {

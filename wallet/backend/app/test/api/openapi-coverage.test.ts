@@ -113,7 +113,7 @@ const SECURITY_PATHS = ['/api/v1/security/csp-report'];
 const SHARED_EXTRA_OPERATIONS = 1;
 /**
  * Sólo en el listener de Wallet ([B-API], [B-AUTHZ] 3): desbloqueo con U (OPAQUE), el grupo `wallet` y, del grupo
- * `recovery`, crear el enrollment e incorporar la autorización de U.
+ * `recovery`, crear el enrollment, rechazarlo e incorporar la autorización de U.
  */
 const WALLET_ONLY_PATHS = [
   '/api/v1/platform-sessions/opaque/start',
@@ -130,6 +130,8 @@ const WALLET_ONLY_PATHS = [
   '/api/v1/wallets/{id}/deployment',
   '/api/v1/wallets/{id}/recovery/enrollments',
   '/api/v1/recovery/enrollments/{id}/incorporate',
+  // P17.MAN (N10): la Wallet rechaza el pedido que no pudo confirmar ([F-LNK-02]).
+  '/api/v1/recovery/enrollments/{id}/reject',
   // P15: registro de U' del flujo "perdí U" (scope U_REPLACEMENT, sólo Wallet).
   '/api/v1/recovery/u-replacement',
   // P14: 2FA de alto valor, alta y baja de whitelist con U, send, swap y saldos.
@@ -253,6 +255,16 @@ describe('spec OpenAPI por listener', () => {
       expect(schemas?.OperationStatus?.required).toContain('decoded');
       expect(schemas?.PreparedOperation?.properties?.twoFactorThreshold).toBeDefined();
       expect(schemas?.PreparedOperation?.required).toContain('twoFactorThreshold');
+    },
+  );
+
+  it.each(['WALLET', 'RECOVERY'] as const)(
+    '%s: el estado de un enrollment de R trae el motivo del rechazo (P17.MAN, N10)',
+    async (client) => {
+      const schemas = (await spec(client)).components?.schemas as
+        Record<string, { properties?: Record<string, unknown>; required?: string[] }> | undefined;
+      expect(schemas?.RecoveryEnrollmentStatus?.properties?.rejectionReason).toBeDefined();
+      expect(schemas?.RecoveryEnrollmentStatus?.required).toContain('rejectionReason');
     },
   );
 

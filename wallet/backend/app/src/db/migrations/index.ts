@@ -9,6 +9,7 @@ import * as operationPipeline from './0005_operation_pipeline.ts';
 import * as whitelistSendSwap from './0006_whitelist_send_swap.ts';
 import * as rotationsRecoveryMigration from './0007_rotations_recovery_migration.ts';
 import * as executorRotationRequests from './0008_executor_rotation_requests.ts';
+import * as recoveryEnrollmentRejection from './0009_recovery_enrollment_rejection.ts';
 
 export const MIGRATIONS: Readonly<Record<string, Migration>> = {
   '0001_initial_schema': initialSchema,
@@ -19,4 +20,5 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
   '0006_whitelist_send_swap': whitelistSendSwap,
   '0007_rotations_recovery_migration': rotationsRecoveryMigration,
   '0008_executor_rotation_requests': executorRotationRequests,
+  '0009_recovery_enrollment_rejection': recoveryEnrollmentRejection,
 };

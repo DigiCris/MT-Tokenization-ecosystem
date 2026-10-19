@@ -323,6 +323,90 @@ describe('enrollment de la clave de recuperación', () => {
     expect(fresh.statusCode).toBe(201);
   });
 
+  it('la Wallet rechaza la R enviada (P17.MAN, N10): REJECTED con el motivo, sin incorporar ni reenviar; el pedido nuevo sigue', async () => {
+    const { o, enrollmentId, nonce, enrollment } = await requested();
+    expect((await registerKey(o, enrollment, enrollmentId)).statusCode).toBe(200);
+    const submission = await enrollmentSubmission(env, {
+      userId: o.user.account.id,
+      enrollmentId,
+      nonce,
+      recovery: o.recoveryKey,
+    });
+    const submit = () =>
+      critical(o.user.recovery, enrollment, `/recovery/enrollments/${enrollmentId}/submit`, submission);
+    expect((await submit()).statusCode).toBe(200);
+
+    // El enlace de regreso no lo armó la app Recovery del usuario: la Wallet aborta y lo informa.
+    const rejected = await critical(o.user.wallet, o.onboarding, `/recovery/enrollments/${enrollmentId}/reject`, {
+      reason: 'RETURN_LINK_UNVERIFIED',
+    });
+    expect(rejected.statusCode, rejected.body).toBe(200);
+    expect(rejected.json()).toMatchObject({
+      status: 'REJECTED',
+      rejectionReason: 'RETURN_LINK_UNVERIFIED',
+      recoveryKey: getAddress(o.recoveryKey.account.address),
+    });
+    // La sesión ENROLLMENT de Recovery no lo rechaza (ni existe la ruta en su listener).
+    expect(
+      (
+        await critical(o.user.recovery, enrollment, `/recovery/enrollments/${enrollmentId}/reject`, {
+          reason: 'RETURN_LINK_UNVERIFIED',
+        })
+      ).statusCode,
+    ).toBe(404);
+    // R quedó revocada: el mismo envío ya no entra y la Wallet no puede pedir S para esa R.
+    expect((await submit()).statusCode).toBe(409);
+    const r = await env.db.app
+      .selectFrom('wallet_keys_metadata')
+      .select('status')
+      .where('wallet_id', '=', o.walletId)
+      .where('role', '=', 'R')
+      .executeTakeFirstOrThrow();
+    expect(r.status).toBe('REVOKED');
+    expect((await critical(o.user.wallet, o.onboarding, `/wallets/${o.walletId}/executor`, {})).statusCode).toBe(409);
+    const audit = await env.db.app
+      .selectFrom('audit_events')
+      .select('payload')
+      .where('event_type', '=', 'RECOVERY_ENROLLMENT_REJECTED')
+      .where('target_id', '=', enrollmentId)
+      .execute();
+    expect(audit.map((a) => a.payload)).toMatchObject([
+      { reason: 'RETURN_LINK_UNVERIFIED', previousStatus: 'SUBMITTED' },
+    ]);
+
+    // Un pedido nuevo puede registrar otra R (también la misma, que ya no está viva en ningún lado).
+    const fresh = await critical(
+      o.user.wallet,
+      o.onboarding,
+      `/wallets/${o.walletId}/recovery/enrollments`,
+      {},
+      { idempotencyKey: idempotencyKey() },
+    );
+    expect(fresh.statusCode).toBe(201);
+    const next = fresh.json<{ enrollmentId: string; nonce: `0x${string}` }>();
+    const nextSession = await stepUp(o.user.recovery, o.user.account.email, 'ENROLLMENT');
+    expect(
+      (
+        await critical(o.user.recovery, nextSession, `/recovery/enrollments/${next.enrollmentId}/enrollment-key`, {
+          enrollmentKey: o.recoveryKey.enrollmentKey.jwk,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const again = await enrollmentSubmission(env, {
+      userId: o.user.account.id,
+      enrollmentId: next.enrollmentId,
+      nonce: next.nonce,
+      recovery: o.recoveryKey,
+    });
+    const resubmitted = await critical(
+      o.user.recovery,
+      nextSession,
+      `/recovery/enrollments/${next.enrollmentId}/submit`,
+      again,
+    );
+    expect(resubmitted.statusCode, resubmitted.body).toBe(200);
+  });
+
   it('cada ruta sólo en su listener y con su sesión; enrollments de otro usuario son 404', async () => {
     const { o, enrollmentId, enrollment } = await requested();
     // El envío de R y la Enrollment Key no existen en Wallet; crear e incorporar no existen en Recovery.

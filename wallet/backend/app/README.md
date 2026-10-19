@@ -202,7 +202,12 @@ Todo por la API del listener de Wallet con la PlatformSession ONBOARDING (step-u
    plataforma) y registro OPAQUE PENDING.
 2. `POST /wallets/{id}/recovery/enrollments` (nonce de 32 bytes, 15 min). En Recovery, con la sesión ENROLLMENT:
    `POST /recovery/enrollments/{id}/enrollment-key` (P-256, una vez) y `.../submit` con `RecoveryEnrollment` firmado por
-   la Enrollment Key y la prueba de control EIP-712 de R (EOA, distinta de U, nunca usada por otra wallet).
+   la Enrollment Key y la prueba de control EIP-712 de R (EOA, distinta de U, nunca usada por otra wallet). Si la Wallet
+   no puede confirmar esa R ([F-LNK-02], ADR-033), lo informa con `POST /recovery/enrollments/{id}/reject` (`reason`:
+   `MANUAL_COMPARISON_FAILED`, `RETURN_LINK_KEY_MISMATCH` o `RETURN_LINK_UNVERIFIED`; idempotente): el pedido queda
+   REJECTED con el motivo, su R deja de estar viva y quedan la auditoría `RECOVERY_ENROLLMENT_REJECTED`, la notificación,
+   el email «Posible sustitución de tu clave R», la alerta `RECOVERY_KEY_SUBSTITUTION_SUSPECTED` y la métrica
+   `mtw_recovery_enrollment_rejections_total`. Un pedido reemplazado por otro queda REJECTED con `SUPERSEDED`.
 3. `POST /wallets/{id}/executor`: el shard asignado crea S con su `SignerKeyAttestation` y el backend fija la Safe
    esperada — cálculo local (initializer + CREATE2 con el creation code fijado y
    `saltNonce = uint256(keccak256(abi.encode("MTW_SALT_V1", platformId, walletId)))`) igual a
@@ -272,7 +277,8 @@ CANCEL_REQUESTED ──se mina la NoOp──▶ CANCELLED · CANCEL_REQUESTED �
   notificación y email al usuario, y el signer también se niega por su cuenta.
 
 Alertas en logs (campo `alert`): `REORG_DETECTED`, `TX_REVERTED`, `TX_STUCK`, `FEE_CAP`, `RETRIES_EXHAUSTED`,
-`SAFE_CONFIG_MODIFIED`, `RECONCILIATION_DISCREPANCY`, `SIGNER_RESPONSE_MISMATCH`. Métricas: `mtw_operation_transitions_total`,
+`SAFE_CONFIG_MODIFIED`, `RECONCILIATION_DISCREPANCY`, `SIGNER_RESPONSE_MISMATCH` y, del onboarding,
+`RECOVERY_KEY_SUBSTITUTION_SUSPECTED` (con `mtw_recovery_enrollment_rejections_total`). Métricas: `mtw_operation_transitions_total`,
 `mtw_wallet_operations{status}`, `mtw_wallet_operations_stuck`, `mtw_worker_step_duration_seconds`,
 `mtw_executor_transactions_total`, `mtw_reorgs_detected_total`, `mtw_reconciler_discrepancies_total`,
 `mtw_indexer_head_block`. Cada proceso registra al arrancar el snapshot de policy que cargó (anti-rollback,

@@ -212,6 +212,7 @@ export function createWalletServices(input: {
       ...common,
       rpc: onchain.rpc,
       audit: account.audit,
+      emails: account.emails,
       logger: logger.child({ component: 'recovery-enrollment' }),
     }),
     keyRestore: account.keyRestore,

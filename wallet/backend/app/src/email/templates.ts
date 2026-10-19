@@ -68,6 +68,16 @@ export interface TemplateParams {
     occurredAt: string;
   };
   'recovery-started': { safe: string; action: string; occurredAt: string; origin: RequestOrigin };
+  'recovery-enrollment-rejected': {
+    reason: RecoveryEnrollmentRejection;
+    purpose: 'ONBOARDING' | 'REPLACEMENT';
+    /** Dirección de R que recibió la plataforma (null si Recovery todavía no había enviado ninguna). */
+    recoveryKey: string | null;
+    /** Safe de la wallet (sólo en el reemplazo de R: en el onboarding todavía no existe). */
+    safe: string | null;
+    occurredAt: string;
+    origin: RequestOrigin;
+  };
   'high-value-challenge': {
     code: string;
     safe: string;
@@ -114,6 +124,7 @@ export const TEMPLATE_NAMES = [
   'rotation-executed',
   'executor-rotation-requested',
   'recovery-started',
+  'recovery-enrollment-rejected',
   'high-value-challenge',
   'high-value-executed',
   'cooperation-paused',
@@ -162,6 +173,24 @@ const EXECUTOR_ROTATION_REASON_TEXT: Record<TemplateParams['executor-rotation-re
   HSM_MIGRATION: 'migración de la clave a un módulo de hardware (HSM)',
   KEY_COMPROMISE: 'posible compromiso del servidor que guarda la clave',
   MAINTENANCE: 'mantenimiento preventivo de la clave',
+};
+
+/** Por qué la app Wallet abortó un enrollment de R ([F-LNK-02]); SUPERSEDED (pedido reemplazado) no se notifica. */
+export type RecoveryEnrollmentRejection =
+  'MANUAL_COMPARISON_FAILED' | 'RETURN_LINK_KEY_MISMATCH' | 'RETURN_LINK_UNVERIFIED';
+
+const REJECTION_INTRO: Record<RecoveryEnrollmentRejection, string> = {
+  MANUAL_COMPARISON_FAILED:
+    'La dirección de la clave R que copiaste de la app Recovery no coincidió con la que recibió la plataforma, así que la app Wallet canceló el pedido.',
+  RETURN_LINK_KEY_MISMATCH:
+    'El enlace de regreso de la app Recovery traía una dirección de clave R distinta de la que recibió la plataforma, así que la app Wallet canceló el pedido.',
+  RETURN_LINK_UNVERIFIED:
+    'Se abrió un enlace de regreso que no armó tu app Recovery para este pedido, así que la app Wallet lo canceló.',
+};
+const REJECTION_REASON: Record<RecoveryEnrollmentRejection, string> = {
+  MANUAL_COMPARISON_FAILED: 'la dirección copiada de la app Recovery no coincidió',
+  RETURN_LINK_KEY_MISMATCH: 'el enlace de regreso traía otra dirección de clave R',
+  RETURN_LINK_UNVERIFIED: 'enlace de regreso que no armó tu app Recovery',
 };
 
 const ROLE_NAMES: Record<Role, string> = {
@@ -451,6 +480,28 @@ const RENDERERS: Renderers = {
       originRow(p.origin),
     ],
     ifNotYou: 'cancelá desde la app con tu clave de usuario y contactá a soporte.',
+  }),
+  'recovery-enrollment-rejected': (p, ctx) => ({
+    subject: 'Posible sustitución de tu clave R',
+    heading: 'Cancelamos un pedido para registrar tu clave de recuperación (R)',
+    intro: `${REJECTION_INTRO[p.reason]} Puede ser un error al copiar, pero también que alguien haya intentado cambiar tu clave R en el camino. Esa clave no quedó registrada: para seguir, generá un pedido nuevo desde la app Wallet.`,
+    details: [
+      [
+        'Acción',
+        p.purpose === 'REPLACEMENT'
+          ? `Cancelación del reemplazo de tu ${ROLE_NAMES.R}`
+          : `Cancelación del registro de tu ${ROLE_NAMES.R}`,
+      ],
+      ['Motivo', REJECTION_REASON[p.reason]],
+      ...(p.recoveryKey === null
+        ? []
+        : ([['Dirección que recibió la plataforma', groupedAddress(p.recoveryKey)]] as [string, string][])),
+      ['Red', ctx.networkLabel],
+      ...(p.safe === null ? [] : ([['Safe', groupedAddress(p.safe)]] as [string, string][])),
+      ...timeRows(ctx, 'Fecha', p.occurredAt),
+      originRow(p.origin),
+    ],
+    ifNotYou: `si no estabas registrando tu clave R, ${CHANGE_PASSWORD_HINT} No abras enlaces de regreso de la app Recovery que te lleguen por email o por chat.`,
   }),
   'high-value-challenge': (p, ctx) => ({
     subject: 'Confirmá una operación de alto valor',

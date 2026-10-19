@@ -23,6 +23,7 @@ const ALL_MIGRATIONS = [
   '0006_whitelist_send_swap',
   '0007_rotations_recovery_migration',
   '0008_executor_rotation_requests',
+  '0009_recovery_enrollment_rejection',
 ];
 const hash = () => randomBytes(32);
 const sig = () => randomBytes(65);
@@ -715,6 +716,37 @@ describe('esquema [B-DB]', () => {
       db.app.insertInto('chain_cursors').values({ name, block_number: 1, block_hash: hash() }).execute();
     expect(await sqlStateOf(cursor('safe-events'))).toBeUndefined();
     expect(await sqlStateOf(cursor('Safe Events'))).toBe('23514');
+  });
+
+  it('0009: el motivo y el momento del rechazo de un enrollment de R sólo existen en uno REJECTED', async () => {
+    const w = await insertWallet('CREATING', await insertUser(db.app));
+    const enrollment = (values: Record<string, unknown>) =>
+      db.app
+        .insertInto('recovery_metadata')
+        .values({
+          wallet_id: w.id,
+          enrollment_id: randomUUID(),
+          status: 'REQUESTED',
+          expires_at: new Date(Date.now() + 60_000),
+          nonce: hash(),
+          ...values,
+        })
+        .execute();
+    for (const reason of [
+      'SUPERSEDED',
+      'MANUAL_COMPARISON_FAILED',
+      'RETURN_LINK_KEY_MISMATCH',
+      'RETURN_LINK_UNVERIFIED',
+    ]) {
+      expect(
+        await sqlStateOf(enrollment({ status: 'REJECTED', rejection_reason: reason, rejected_at: new Date() })),
+      ).toBe(undefined);
+    }
+    // Los rechazados antes de 0009 no tienen motivo.
+    expect(await sqlStateOf(enrollment({ status: 'REJECTED' }))).toBeUndefined();
+    expect(await sqlStateOf(enrollment({ status: 'REJECTED', rejection_reason: 'OTRO' }))).toBe('23514');
+    expect(await sqlStateOf(enrollment({ rejection_reason: 'RETURN_LINK_UNVERIFIED' }))).toBe('23514');
+    expect(await sqlStateOf(enrollment({ rejected_at: new Date() }))).toBe('23514');
   });
 
   it('mtw_readonly lee todo salvo hashes y secretos cifrados, y no escribe', async () => {
