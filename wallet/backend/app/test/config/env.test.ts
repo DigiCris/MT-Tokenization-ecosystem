@@ -72,6 +72,11 @@ function productionEnv(overrides: Record<string, string | undefined> = {}): Reco
     EMAIL_PROVIDER_DOMAIN: 'mail.mtw-prod.test',
     EMAIL_FROM: 'no-reply@mail.mtw-prod.test',
     SESSION_ISSUER_PUBLIC_KEY: publicKey.export({ type: 'spki', format: 'der' }).toString('base64'),
+    // Integrity monitor en la red interna del backend (P20): obligatorio fuera de local.
+    INTEGRITY_MONITOR_URL: 'http://integrity-monitor:8092',
+    INTEGRITY_MONITOR_PUBLIC_KEY: generateKeyPairSync('ed25519')
+      .publicKey.export({ type: 'spki', format: 'der' })
+      .toString('base64'),
   };
   for (const [name, value] of Object.entries(files)) env[`${name}_FILE`] = secretFile(name, value);
   return { ...env, ...overrides };
@@ -229,6 +234,27 @@ describe('configuración de staging y producción', () => {
     expect(config.api.docsTryItOut).toBe(false);
     expect(config.api.rateLimitGlobalPerMinute).toBe(300);
     expect(config.rpc.quorumMode).toBe('dual');
+    expect(config.integrity).toMatchObject({ required: true, monitorUrl: 'http://integrity-monitor:8092' });
+  });
+
+  it('exige el integrity monitor y la integridad (fail-closed, P20)', () => {
+    const error = configError(() =>
+      loadConfig({
+        env: productionEnv({
+          INTEGRITY_REQUIRED: 'false',
+          INTEGRITY_MONITOR_URL: undefined,
+          INTEGRITY_MONITOR_PUBLIC_KEY: undefined,
+        }),
+        envFile: null,
+      }),
+    );
+    expect(error.problems).toEqual(
+      expect.arrayContaining([
+        'INTEGRITY_REQUIRED: en production debe ser true (fail-closed)',
+        'INTEGRITY_MONITOR_PUBLIC_KEY: falta (la clave pública del integrity monitor)',
+        'INTEGRITY_MONITOR_URL: falta',
+      ]),
+    );
   });
 
   it('exige la forma _FILE para cada secreto (ADR-030)', () => {
