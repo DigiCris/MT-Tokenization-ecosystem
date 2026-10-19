@@ -326,7 +326,8 @@ export async function startSignerShard(options: ShardOptions): Promise<SignerSha
     SIGNER_RPC_QUORUM_MODE: 'local-single',
     // Anvil trae el estado del fork bajo demanda desde un RPC remoto con límite de ritmo (en CI, varios forks a la
     // vez): una lectura en frío puede tardar más que el timeout por defecto (5 s) de un nodo real.
-    RPC_TIMEOUT_MS: '30000',
+    // Dos intentos de 20 s entran en el presupuesto de reintentos del RPC del signer (45 s, chain/rpc.ts).
+    RPC_TIMEOUT_MS: '20000',
     MTLS_CA_CERT_PATH: options.pki.ca,
     MTLS_SIGNER_SERVER_CERT_PATH: options.pki.server.cert,
     MTLS_SIGNER_SERVER_KEY_PATH: options.pki.server.key,

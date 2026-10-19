@@ -63,6 +63,8 @@ const ACCOUNT_PATHS = [
   '/api/v1/health',
   '/api/v1/health/live',
   '/api/v1/health/ready',
+  // P20.T03: estado público de la cooperación (pausa por integridad).
+  '/api/v1/platform/status',
   '/api/v1/auth/csrf',
   '/api/v1/auth/register',
   '/api/v1/auth/verify-email',

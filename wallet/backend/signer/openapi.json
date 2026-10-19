@@ -589,9 +589,13 @@
                     "type": "string",
                     "pattern": "^0x[0-9a-fA-F]{64}$"
                   },
-                  "integrityAttestation": {
-                    "type": "string",
-                    "maxLength": 8192
+                  "integrityAttestations": {
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 8192
+                    }
                   },
                   "policySnapshotVersion": {
                     "type": "integer",
@@ -1002,7 +1006,7 @@
               "POLICY_VERSION_MISMATCH",
               "SESSION_INVALID",
               "SIGNATURE_STALE",
-              "INTEGRITY_PAUSED",
+              "COOPERATION_PAUSED",
               "OWNER_SIGNATURE_INVALID",
               "OWNER_NOT_ROLE",
               "SAFE_NOT_REGISTERED",
