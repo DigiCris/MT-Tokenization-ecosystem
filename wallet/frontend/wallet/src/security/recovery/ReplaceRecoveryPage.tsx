@@ -101,7 +101,7 @@ function ReplaceRecovery({ ctx }: { ctx: OperatingWallet }) {
       )}
       {review && (
         <OperationReview
-          title="Proponer el reemplazo de tu clave de recuperación"
+          title="Revisá la propuesta de reemplazo de tu clave de recuperación"
           items={[review]}
           unlocked={unlocked}
           decode={decodeContext(wallet.safe)}

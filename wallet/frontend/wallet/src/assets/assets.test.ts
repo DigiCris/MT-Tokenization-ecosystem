@@ -6,7 +6,7 @@ import type { Address } from 'viem';
 import { describe, expect, it } from 'vitest';
 import type { Balances } from '../api/wallet-api.ts';
 import { pinnedChain } from '../config/chain.ts';
-import { AmountError, formatAmount, parseAmount, readAmount, withoutThousands } from './amount.ts';
+import { AmountError, formatAmount, parseAmount, parseDecimalAmount, readAmount, withoutThousands } from './amount.ts';
 import { readAssets, TokenConfigError, type TokenReader } from './assets.ts';
 
 const SAFE: Address = '0x2Ffa853A9213C92A16295C55FA6A5b27A6498688';
@@ -24,6 +24,19 @@ describe('montos', () => {
 
   it.each(['', 'abc', '1.000,50', '-1', '1,2345678', '1e3', '12.', '1.000.5'])('rechaza %s', (text) => {
     expect(() => parseAmount(text, 6)).toThrow(AmountError);
+  });
+
+  it.each([
+    ['1500', 1_500_000_000n],
+    ['500.125', 500_125_000n],
+    ['1.000', 1_000_000n],
+    ['0.000001', 1n],
+  ])('monto de máquina del backend %s → %s unidades (punto decimal, sin miles)', (text, units) => {
+    expect(parseDecimalAmount(text, 6)).toBe(units);
+  });
+
+  it.each(['', '1,5', '1.000,50', '-1', '1.2345678', '1e3', '12.'])('el parser de máquina rechaza %s', (text) => {
+    expect(() => parseDecimalAmount(text, 6)).toThrow(AmountError);
   });
 
   it.each([

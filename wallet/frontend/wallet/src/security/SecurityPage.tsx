@@ -119,7 +119,7 @@ export function SecurityPage() {
             aria-busy={exportFile.pending}
             onClick={() => void exportFile.run()}
           >
-            Descargar el sobre cifrado
+            Descargar el archivo cifrado
           </button>
           {qrFrames === null && (
             <button

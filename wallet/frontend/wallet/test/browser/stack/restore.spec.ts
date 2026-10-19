@@ -6,6 +6,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { getAddress } from 'viem';
 import { keyToBackupWords } from '../../../src/crypto/backup-words.ts';
 import { keysForEnvelope, openEnvelope, parseEnvelope, serializeEnvelope } from '../../../src/crypto/envelope.ts';
 import { addressOf, generatePrivateKey } from '../../../src/crypto/keys.ts';
@@ -57,7 +58,9 @@ test('desde el QR del sobre leído con la cámara', async ({ page }) => {
   await page.goto('/restore');
   await page.getByRole('button', { name: /Con el sobre cifrado/ }).click();
   await page.getByRole('button', { name: 'Desde el QR' }).click();
-  await expect(page.getByText(`Sobre de la clave ${wallet.userAddress}`)).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByText('Sobre cifrado de tu clave U').locator(`[data-address="${getAddress(wallet.userAddress)}"]`),
+  ).toBeVisible({ timeout: 60_000 });
   await page.getByLabel('Password U').fill(wallet.passwordWords.join(' '));
   await page.getByRole('button', { name: 'Restaurar y desbloquear' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Wallet desbloqueada' })).toContainText(

@@ -1,10 +1,10 @@
 // Avisos in-app que crea el backend ([B-MAIL-03], P15.T07: los mismos eventos que van por email) en texto para la app:
 // qué pasó, con las direcciones completas, y a qué pantalla ir. Son la "alerta in-app" de ADR-006 y del threat model
-// (ESC-02, ESC-16, ESC-23, ESC-33, ESC-34). El payload viene del backend: sólo se muestra como texto, una dirección
-// inválida no se renderiza como dirección y un tipo desconocido queda como aviso genérico.
+// (ESC-02, ESC-16, ESC-20, ESC-23, ESC-33, ESC-34). El payload viene del backend: sólo se muestra como texto, una
+// dirección inválida no se renderiza como dirección y un tipo desconocido queda como aviso genérico.
 import { getAddress, isAddress, type Address } from 'viem';
 import type { AppNotification } from '../api/wallet-api.ts';
-import { formatAmount, parseAmount } from '../assets/amount.ts';
+import { formatAmount, parseDecimalAmount } from '../assets/amount.ts';
 import { ROLE_TEXT, type DescriptionPart } from '../operations/describe.ts';
 import type { NameOf } from '../operations/names.ts';
 
@@ -39,7 +39,8 @@ function dateField(payload: Record<string, unknown>, key: string): string | null
 function amountText(value: string | null, token: string | null, minimalUnits: boolean): string | null {
   if (value === null || token === null) return null;
   try {
-    const units = minimalUnits ? BigInt(value) : parseAmount(value, 6);
+    // Formato de máquina del backend (punto decimal, sin miles): nunca el parser de lo que tipea el usuario.
+    const units = minimalUnits ? BigInt(value) : parseDecimalAmount(value, 6);
     return `${formatAmount(units, 6)} ${token}`;
   } catch {
     return null;
@@ -104,7 +105,7 @@ export function notificationView(notification: AppNotification, nameOf?: NameOf)
       return view(
         'warning',
         [
-          text(`Se propuso reemplazar ${roleText(p)} por `),
+          text(`Se propuso reemplazar ${roleText(p)} por la clave con la dirección `),
           party('newKey'),
           text(
             `${at === null ? '' : `; se puede ejecutar desde el ${at}`}. Si no la propusiste vos, cancelala antes de esa fecha.`,
@@ -118,21 +119,55 @@ export function notificationView(notification: AppNotification, nameOf?: NameOf)
     case 'ROTATION_CANCELLED':
       return view('info', [text(`Se canceló la rotación de ${roleText(p)}.`)], ROTATIONS);
     case 'ROTATION_EXECUTED':
-      return view('info', [text(`Se reemplazó ${roleText(p)}: la clave nueva es `), party('newKey'), text('.')]);
+      return view('info', [
+        text(`Se reemplazó ${roleText(p)}: la dirección de la clave nueva es `),
+        party('newKey'),
+        text('.'),
+      ]);
     case 'RECOVERY_STARTED':
       return view(
         'warning',
         [
-          text('Se inició el reemplazo de tu clave de usuario (U) con tu clave de recuperación (R) hacia '),
+          text(
+            'Se inició el reemplazo de tu clave de usuario (U) con tu clave de recuperación (R) hacia la clave con la dirección ',
+          ),
           party('newKey'),
           text('. Si no fuiste vos, cancelalo desde las rotaciones.'),
         ],
         ROTATIONS,
       );
+    case 'RECOVERY_ENROLLMENT_REJECTED': {
+      // [F-LNK-02] (N10): la Wallet abortó un pedido de R que no pudo confirmar.
+      const reason = field(p, 'reason');
+      const why =
+        reason === 'MANUAL_COMPARISON_FAILED'
+          ? 'la dirección que copiaste de la app Recovery no coincidió con la que recibió la plataforma'
+          : reason === 'RETURN_LINK_KEY_MISMATCH'
+            ? 'el enlace de regreso de la app Recovery traía otra dirección de clave R'
+            : 'se abrió un enlace de regreso que no armó tu app Recovery';
+      const received = addressField(p, 'recoveryKey');
+      return view('error', [
+        text(`Se canceló un pedido para registrar tu clave de recuperación (R) porque ${why}. `),
+        ...(received === null
+          ? []
+          : [
+              text('La plataforma había recibido la dirección '),
+              party('recoveryKey'),
+              text(', que no quedó registrada. '),
+            ]),
+        text(
+          'Puede ser un error al copiar, pero también que alguien haya intentado cambiar tu clave R: si no estabas registrándola, cambiá tu contraseña de cuenta.',
+        ),
+      ]);
+    }
     case 'EXECUTOR_ROTATION_REQUESTED':
       return view('info', [text('La plataforma pidió rotar su clave (S): revisá y firmá la propuesta.')], ROTATIONS);
     case 'EXECUTOR_REPLACED':
-      return view('info', [text('Se reemplazó la clave de la plataforma (S) por '), party('newKey'), text('.')]);
+      return view('info', [
+        text('Se reemplazó la clave de la plataforma (S) por la clave con la dirección '),
+        party('newKey'),
+        text('.'),
+      ]);
     case 'HIGH_VALUE_EXECUTED': {
       const amount = amountText(field(p, 'amount'), field(p, 'token'), false);
       return view(
@@ -211,6 +246,7 @@ export function notificationView(notification: AppNotification, nameOf?: NameOf)
       );
     }
     default:
-      return view('info', [text(`Aviso de la plataforma (${notification.type}).`)]);
+      // Un tipo que esta versión de la app todavía no conoce: se muestra sin el código interno.
+      return view('info', [text('Aviso de la plataforma: abrí la app actualizada para ver el detalle.')]);
   }
 }

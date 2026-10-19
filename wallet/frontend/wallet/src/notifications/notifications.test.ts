@@ -55,7 +55,9 @@ describe('avisos in-app', () => {
       }),
     );
     expect(partsText(view.parts)).toMatch(
-      new RegExp(`^Se propuso reemplazar tu clave de recuperación \\(R\\) por ${groupAddress(KEY)}; se puede ejecutar`),
+      new RegExp(
+        `^Se propuso reemplazar tu clave de recuperación \\(R\\) por la clave con la dirección ${groupAddress(KEY)}; se puede ejecutar`,
+      ),
     );
     expect(view.link?.to).toBe('/security/rotations');
   });
@@ -65,6 +67,13 @@ describe('avisos in-app', () => {
       notification('HIGH_VALUE_EXECUTED', { token: 'USDC', amount: '1500', destination: DEST, txHash: '0x' }),
     );
     expect(partsText(high.parts)).toBe(`Se ejecutó un envío de alto valor de 1.500,00 USDC a ${groupAddress(DEST)}.`);
+    // Con 3 decimales («500.125») el parser de lo que tipea el usuario lo tomaría por miles: el aviso usa el de máquina.
+    const fraction = notificationView(
+      notification('HIGH_VALUE_EXECUTED', { token: 'USDC', amount: '500.125', destination: DEST, txHash: '0x' }),
+    );
+    expect(partsText(fraction.parts)).toBe(
+      `Se ejecutó un envío de alto valor de 500,125 USDC a ${groupAddress(DEST)}.`,
+    );
     const residual = notificationView(notification('RESIDUAL_ALLOWANCE', { token: 'USDT', allowance: '20000000' }));
     expect(partsText(residual.parts)).toContain('Quedó un permiso de 20,00 USDT para el contrato de swap');
   });
@@ -82,6 +91,27 @@ describe('avisos in-app', () => {
     expect(notificationView(notification('PASSWORD_RESET_COMPLETED', {})).tone).toBe('warning');
   });
 
+  it('pedido de R cancelado por la Wallet (N10): por qué, la dirección que recibió la plataforma y qué hacer', () => {
+    const forged = notificationView(
+      notification('RECOVERY_ENROLLMENT_REJECTED', {
+        enrollmentId: 'e1',
+        reason: 'RETURN_LINK_UNVERIFIED',
+        purpose: 'ONBOARDING',
+        recoveryKey: KEY,
+        occurredAt: '2026-10-19T10:00:00.000Z',
+      }),
+    );
+    expect(forged.tone).toBe('error');
+    const text = partsText(forged.parts);
+    expect(text).toContain('porque se abrió un enlace de regreso que no armó tu app Recovery.');
+    expect(text).toContain(`La plataforma había recibido la dirección ${groupAddress(KEY)}, que no quedó registrada.`);
+    expect(text).toContain('si no estabas registrándola, cambiá tu contraseña de cuenta.');
+    const otherR = notificationView(
+      notification('RECOVERY_ENROLLMENT_REJECTED', { reason: 'RETURN_LINK_KEY_MISMATCH', recoveryKey: KEY }),
+    );
+    expect(partsText(otherR.parts)).toContain('porque el enlace de regreso de la app Recovery traía otra dirección');
+  });
+
   it('payload incompleto o inválido: no inventa direcciones ni montos; un tipo desconocido queda genérico', () => {
     const broken = notificationView(notification('WHITELIST_ACTIVATED', { destination: 'no-es-una-direccion' }));
     expect(partsText(broken.parts)).toBe('El destino (dirección no informada) ya está activo: le podés enviar.');
@@ -90,7 +120,7 @@ describe('avisos in-app', () => {
     const unknown = notificationView(notification('ALGO_NUEVO', {}));
     expect(unknown).toEqual({
       tone: 'info',
-      parts: [{ kind: 'text', text: 'Aviso de la plataforma (ALGO_NUEVO).' }],
+      parts: [{ kind: 'text', text: 'Aviso de la plataforma: abrí la app actualizada para ver el detalle.' }],
       link: null,
     });
     const badAmount = notificationView(notification('RESIDUAL_ALLOWANCE', { token: 'USDT', allowance: 'mucho' }));
@@ -120,7 +150,13 @@ describe('avisos in-app', () => {
       '/security/rotations',
     ],
     ['ROTATION_CANCELLED', {}, 'info', 'Se canceló la rotación de una clave de tu Safe.', '/security/rotations'],
-    ['ROTATION_EXECUTED', { role: 'U', newKey: KEY }, 'info', `la clave nueva es ${groupAddress(KEY)}.`, null],
+    [
+      'ROTATION_EXECUTED',
+      { role: 'U', newKey: KEY },
+      'info',
+      `la dirección de la clave nueva es ${groupAddress(KEY)}.`,
+      null,
+    ],
     [
       'RECOVERY_STARTED',
       { newKey: KEY },
@@ -135,7 +171,14 @@ describe('avisos in-app', () => {
       'La plataforma pidió rotar su clave (S)',
       '/security/rotations',
     ],
-    ['EXECUTOR_REPLACED', { newKey: KEY }, 'info', `por ${groupAddress(KEY)}.`, null],
+    ['EXECUTOR_REPLACED', { newKey: KEY }, 'info', `por la clave con la dirección ${groupAddress(KEY)}.`, null],
+    [
+      'RECOVERY_ENROLLMENT_REJECTED',
+      { reason: 'MANUAL_COMPARISON_FAILED', recoveryKey: null },
+      'error',
+      'porque la dirección que copiaste de la app Recovery no coincidió con la que recibió la plataforma.',
+      null,
+    ],
     ['SWAP_FAILED', { groupId: 'g' }, 'error', 'Un swap no se pudo ejecutar', '/activity'],
     ['SAFE_CONFIG_MODIFIED', { items: [] }, 'error', 'la plataforma dejó de co-firmar operaciones', null],
     ['MIGRATION_APPROVED', {}, 'warning', 'Se aprobó la migración excepcional de tu wallet', '/security/migration'],

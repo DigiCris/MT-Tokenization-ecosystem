@@ -1,12 +1,14 @@
-// Link de regreso de Recovery ([F-LNK-02]): abre otra pestaña de la Wallet; esa pestaña le pasa `eid` y `r` a la que
-// está activando Recovery por un BroadcastChannel del mismo origin (sólo datos públicos: la R se compara igual contra
-// la que informa el backend) y, si ninguna responde, sigue ella misma.
+// Enlace de regreso de Recovery ([F-LNK-02]): abre otra pestaña de la Wallet; esa pestaña le pasa `eid`, `r` y `k` a la
+// que está activando Recovery por un BroadcastChannel del mismo origin (nunca a un servidor). La pestaña del pedido es la
+// única que conoce su `k` (ADR-033): compara el del enlace y, sólo si coincide, la R contra la que informa el backend.
 export const RETURN_CHANNEL = 'mtw-recovery-return';
 
 export interface ReturnMessage {
   type: 'recovery-return';
   enrollmentId: string;
   recoveryKey: string;
+  /** `k` del enlace de regreso (null si no lo trae). */
+  secret: string | null;
 }
 
 export interface AckMessage {
@@ -14,7 +16,7 @@ export interface AckMessage {
   enrollmentId: string;
 }
 
-/** Ofrece el link de regreso a otra pestaña; true si alguna lo tomó. */
+/** Ofrece el enlace de regreso a otra pestaña; true si alguna lo tomó. */
 export function offerReturn(message: Omit<ReturnMessage, 'type'>, timeoutMs = 1_500): Promise<boolean> {
   return new Promise((resolve) => {
     const channel = new BroadcastChannel(RETURN_CHANNEL);
@@ -34,8 +36,11 @@ export function offerReturn(message: Omit<ReturnMessage, 'type'>, timeoutMs = 1_
   });
 }
 
-/** Escucha links de regreso para un enrollment; devuelve la función para dejar de escuchar. */
-export function listenForReturn(enrollmentId: string, onReturn: (recoveryKey: string) => void): () => void {
+/** Escucha enlaces de regreso para un enrollment; devuelve la función para dejar de escuchar. */
+export function listenForReturn(
+  enrollmentId: string,
+  onReturn: (recoveryKey: string, secret: string | null) => void,
+): () => void {
   const channel = new BroadcastChannel(RETURN_CHANNEL);
   channel.addEventListener('message', (event: MessageEvent<unknown>) => {
     const data = event.data as Partial<ReturnMessage> | null;
@@ -47,7 +52,7 @@ export function listenForReturn(enrollmentId: string, onReturn: (recoveryKey: st
       return;
     }
     channel.postMessage({ type: 'recovery-ack', enrollmentId } satisfies AckMessage);
-    onReturn(data.recoveryKey);
+    onReturn(data.recoveryKey, typeof data.secret === 'string' ? data.secret : null);
   });
   return () => {
     channel.close();

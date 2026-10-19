@@ -22,6 +22,7 @@ import { StepUpForm } from '../session/StepUpForm.tsx';
 import { rememberEnvelope } from '../storage/envelope-cache.ts';
 import { EnvelopeSource } from '../unlock/EnvelopeSource.tsx';
 import { unlockWallet } from '../unlock/unlock.ts';
+import { AddressText } from '../ui/AddressText.tsx';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import {
   commitRestore,
@@ -112,7 +113,7 @@ function RestoreFromEnvelope() {
       }}
     >
       <p className="muted">
-        Sobre de la clave <code>{envelope.keyAddress}</code>
+        Sobre cifrado de tu clave U (dirección <AddressText address={envelope.keyAddress} />)
       </p>
       <Field label="Password U" name="passwordU" type="password" autoComplete="off" spellCheck={false} required />
       <label className="check">

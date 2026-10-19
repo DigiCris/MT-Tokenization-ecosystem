@@ -1,19 +1,49 @@
 // Onboarding por la UI hasta "Activar Recovery" (sin Drive, backup en archivo) y la confirmación manual de la dirección
 // de R, para los specs de activación de Recovery y creación de la Safe. La dirección se tipea desde la fuente
 // independiente —lo que muestra la app Recovery: la R que el test envió por el listener de Recovery—, nunca desde el DOM
-// de la Wallet, que no la muestra hasta que coincide ([F-LNK-02]).
+// de la Wallet, que no la muestra hasta que coincide ([F-LNK-02]). El enlace de regreso se arma con el secreto `k` que
+// la Wallet puso en el enlace de ida (ADR-033), como lo haría la app Recovery.
 import { expect, type Page } from '@playwright/test';
 import { getAddress, type Address, type Hex } from 'viem';
 import { addressGroups } from '../../../../src/recovery-activation/activation.ts';
 import { verifiedAccount, type Account } from './onboard.ts';
 import { backupToFile, completeStepUp, login, writeDownAndConfirmPassword } from './ui.ts';
 
+/** El pedido del enlace de ida a Recovery que muestra la Wallet: id, nonce y el secreto `k`. */
+export interface RecoveryRequest {
+  enrollmentId: string;
+  nonce: Hex;
+  secret: string;
+}
+
 export interface ToRecovery {
   account: Account;
   envelopeJson: string;
   passwordWords: string[];
   link: URL;
-  enrollment: { enrollmentId: string; nonce: Hex };
+  enrollment: RecoveryRequest;
+}
+
+/** El pedido del enlace (o el QR) para la app Recovery que muestra la Wallet. */
+export async function recoveryRequest(page: Page): Promise<RecoveryRequest & { link: URL }> {
+  const link = new URL((await page.locator('[data-recovery-link]').getAttribute('data-recovery-link')) ?? '');
+  const fragment = new URLSearchParams(link.hash.slice(1));
+  return {
+    link,
+    enrollmentId: fragment.get('eid') ?? '',
+    nonce: (fragment.get('n') ?? '0x') as Hex,
+    secret: fragment.get('k') ?? '',
+  };
+}
+
+/**
+ * El enlace de regreso que arma la app Recovery para ese pedido: `eid`, la dirección de R y el mismo `k` del enlace de
+ * ida (`secret: null` lo arma sin `k`, como uno falsificado por quien no lo conoce).
+ */
+export function returnLinkPath(request: RecoveryRequest, recoveryKey: Address, secret: string | null = request.secret) {
+  const params = new URLSearchParams({ eid: request.enrollmentId, r: getAddress(recoveryKey) });
+  if (secret !== null) params.set('k', secret);
+  return `/onboarding/confirm-recovery#${params.toString()}`;
 }
 
 export async function onboardUpToRecovery(page: Page, prefix: string): Promise<ToRecovery> {
@@ -28,15 +58,8 @@ export async function onboardUpToRecovery(page: Page, prefix: string): Promise<T
   await page.getByRole('button', { name: 'Continuar' }).click();
   await page.getByRole('button', { name: 'Registrar', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Activar Recovery' })).toBeVisible();
-  const link = new URL((await page.locator('[data-recovery-link]').getAttribute('data-recovery-link')) ?? '');
-  const fragment = new URLSearchParams(link.hash.slice(1));
-  return {
-    account,
-    envelopeJson,
-    passwordWords,
-    link,
-    enrollment: { enrollmentId: fragment.get('eid') ?? '', nonce: (fragment.get('n') ?? '0x') as Hex },
-  };
+  const { link, ...enrollment } = await recoveryRequest(page);
+  return { account, envelopeJson, passwordWords, link, enrollment };
 }
 
 /**

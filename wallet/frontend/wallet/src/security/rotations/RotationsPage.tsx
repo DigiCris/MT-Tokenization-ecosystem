@@ -160,7 +160,7 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
         await api.relayRotationCancellation(rotation.id, signature);
         setCancelled((current) => ({
           ...current,
-          [proposal.id]: 'Cancelación enviada: se confirma con el evento on-chain.',
+          [proposal.id]: 'Cancelación enviada: se confirma con el evento en Base.',
         }));
       },
       [timelock, wallet.safe, unlocked, rotationFor],
@@ -189,7 +189,10 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
           });
         });
         setReviewDone(false);
-        setReview({ title: `Ejecutar la rotación de tu ${ROLE_TEXT[proposal.role] ?? proposal.role}`, item });
+        setReview({
+          title: `Revisá la ejecución de la rotación de tu ${ROLE_TEXT[proposal.role] ?? proposal.role}`,
+          item,
+        });
       },
       [unlocked, reader, wallet.safe, rotationFor],
     ),
@@ -211,7 +214,7 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
         });
       });
       setReviewDone(false);
-      setReview({ title: 'Proponer la rotación de la clave de la plataforma (S)', item });
+      setReview({ title: 'Revisá la propuesta de rotación de la clave de la plataforma (S)', item });
     }, [request, attested, unlocked, wallet, reader, timelock, state.roles.executor]),
   );
 
@@ -222,11 +225,11 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
           <h2 id="s-request-title">La plataforma pidió rotar su clave (S)</h2>
           <p>Motivo: {REASON_TEXT[request.requestReason ?? ''] ?? request.requestReason}</p>
           <dl className="summary">
-            <dt>Clave actual (on-chain)</dt>
+            <dt>Dirección de la clave actual (leída de Base)</dt>
             <dd>
               <AddressText address={state.roles.executor} />
             </dd>
-            <dt>Clave nueva</dt>
+            <dt>Dirección de la clave nueva</dt>
             <dd>
               <AddressText address={request.newKey} />
             </dd>
@@ -287,8 +290,8 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
             return (
               <li key={p.id} className="stack" data-proposal={p.id} data-role={p.role}>
                 <p>
-                  <strong>{ROLE_TEXT[p.role] ?? p.role}</strong>: <AddressText address={p.oldValue} /> →{' '}
-                  <AddressText address={p.newValue} />
+                  <strong>{ROLE_TEXT[p.role] ?? p.role}</strong>: de la dirección <AddressText address={p.oldValue} /> a
+                  la dirección <AddressText address={p.newValue} />
                 </p>
                 <p>
                   {mature

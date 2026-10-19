@@ -208,7 +208,7 @@ export function LostPasswordUPage() {
           </p>
           <p>
             Si no las tenés, sin la Password U tu clave actual no se puede usar. Vas a crear una clave U nueva (con su
-            Password U y sus backups) y tu clave de recuperación R va a proponer el reemplazo desde la app Recovery. El
+            Password U y sus backups), y tu clave de recuperación R va a proponer el reemplazo desde la app Recovery. El
             cambio se ejecuta después de 48 horas: te avisamos por email y en la app, y si no fuiste vos, cancelalo en{' '}
             <Link to="/security/rotations">Seguridad → Rotaciones</Link>.
           </p>

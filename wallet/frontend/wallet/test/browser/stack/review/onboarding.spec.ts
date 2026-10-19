@@ -1,34 +1,38 @@
 // P17.MAN (R-14): recorrido del onboarding completo contra los servicios reales con capturas de cada pantalla para el
 // agente revisor (textos de advertencia): registro y olvido de contraseña de cuenta, conexión de Drive, step-up (pedido y
 // código), Password U y su confirmación, sobre (con las opciones avanzadas abiertas), subida a Drive, backups
-// independientes (archivo, QR y 17 palabras con su confirmación), alta de U, activación de Recovery con R confirmada a
-// mano (la Wallet no muestra la R antes de confirmar; una dirección distinta avisa y, al agotar los intentos, el pedido se
-// cancela y se genera otro), creación de la Safe con sus mensajes de progreso, Seguridad (con el QR re-exportado) y
-// "perdí mi Password U". Corre en cada navegador de MTW_BROWSERS y sólo con MTW_REVIEW_DIR (capturas en
-// <dir>/onboarding/<navegador>/).
+// independientes (archivo, QR y 17 palabras con su confirmación), alta de U y la activación de Recovery con la app
+// Recovery real (segunda revisión): /enroll desde el enlace de ida con el secreto k del pedido, step-up, creación de R
+// con la Password R y su confirmación, backups de R (archivo, QR estático y 17 palabras con su confirmación), envío y la
+// pantalla final con la dirección en grupos. En la Wallet, la confirmación manual (la R no se muestra antes de
+// confirmar; ningún grupo coincide, un error de tipeo y, al agotar los intentos, el pedido se cancela y se genera otro
+// que obliga a crear otra R), la dirección confirmada a mano, la creación retomada en una pestaña recargada y el camino
+// del enlace de regreso con k desde la pantalla de Recovery. Después, la creación de la Safe con sus mensajes de
+// progreso, Seguridad (con el QR re-exportado) y "perdí mi Password U". Corre en cada navegador de MTW_BROWSERS y sólo
+// con MTW_REVIEW_DIR (capturas en <dir>/onboarding/<navegador>/).
 import { expect, test, type Page, type Route } from '@playwright/test';
-import type { Hex } from 'viem';
 import { serializeEnvelope, parseEnvelope } from '../../../../src/crypto/envelope.ts';
 import {
   addressGroups,
   MANUAL_ABORT_TEXT,
   MANUAL_MISMATCH_TEXT,
+  NEW_REQUEST_TEXT,
 } from '../../../../src/recovery-activation/activation.ts';
-import { typeRecoveryGroups, waitForManualConfirmation } from '../helpers/activation.ts';
+import { recoveryRequest, typeRecoveryGroups, waitForManualConfirmation } from '../helpers/activation.ts';
 import { answerGoogleConsent, removeEnvelopeBackup } from '../helpers/drive.ts';
 import { nextCode } from '../helpers/mailpit.ts';
-import { submitRecovery, verifiedAccount } from '../helpers/onboard.ts';
+import { verifiedAccount } from '../helpers/onboard.ts';
 import { randomAddress } from '../helpers/operate.ts';
+import { enrollInRecovery, serveRecoveryApp, type RecoveryApp } from '../helpers/recovery-app.ts';
 import { advanceRateLimitWindows, stack } from '../helpers/stack.ts';
-import { backupToFile, login, writeDownAndConfirmBackupWords, writeDownAndConfirmPassword } from '../helpers/ui.ts';
+import {
+  backupToFile,
+  completeStepUp,
+  login,
+  writeDownAndConfirmBackupWords,
+  writeDownAndConfirmPassword,
+} from '../helpers/ui.ts';
 import { reviewCamera } from './camera.ts';
-
-/** El pedido del enlace a Recovery que muestra la Wallet. */
-async function recoveryRequest(page: Page): Promise<{ enrollmentId: string; nonce: Hex }> {
-  const link = new URL((await page.locator('[data-recovery-link]').getAttribute('data-recovery-link')) ?? '');
-  const fragment = new URLSearchParams(link.hash.slice(1));
-  return { enrollmentId: fragment.get('eid') ?? '', nonce: (fragment.get('n') ?? '0x') as Hex };
-}
 
 /**
  * Retiene el primer pedido que coincide hasta capturar el mensaje de progreso (no cambia mientras la app lo espera) y
@@ -52,9 +56,23 @@ function holdForProgress(page: Page, progress: string, capture: () => Promise<vo
   };
 }
 
+/** Una dirección que no coincide con `address` en ningún grupo (cada carácter cambiado). */
+function everyGroupDifferent(address: `0x${string}`): string[] {
+  return addressGroups(address).map((group) => group.replace(/./g, (c) => (c.toLowerCase() === 'a' ? 'b' : 'a')));
+}
+
+let recoveryApp: RecoveryApp | null = null;
+
+test.afterAll(() => {
+  recoveryApp?.stop();
+});
+
 test('onboarding completo con capturas para la revisión de textos', async ({ page }, testInfo) => {
-  test.setTimeout(600_000);
+  test.setTimeout(1_200_000);
   const snap = reviewCamera(page, 'onboarding', testInfo.project.name);
+  // La app Recovery real, compilada contra este stack (tarda: se hace antes de empezar a capturar).
+  const app = await serveRecoveryApp();
+  recoveryApp = app;
   await page.goto('/register');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await snap('registro');
@@ -98,6 +116,7 @@ test('onboarding completo con capturas para la revisión de textos', async ({ pa
   });
   await snap('backups-completos');
   const envelope = parseEnvelope(JSON.parse(file));
+  const recovery = await page.context().newPage();
   try {
     await page.getByRole('button', { name: 'Continuar' }).click();
     await expect(page.getByRole('button', { name: 'Registrar', exact: true })).toBeVisible();
@@ -107,29 +126,82 @@ test('onboarding completo con capturas para la revisión de textos', async ({ pa
     await expect(page.locator('[data-recovery-link]')).toBeVisible();
     await snap('activar-recovery');
 
-    // La app Recovery informa R; la Wallet pide copiarla de Recovery sin mostrarla.
-    const first = await submitRecovery(account, await recoveryRequest(page));
-    await waitForManualConfirmation(page, first.address);
+    // Pedido 1, en la app Recovery real (otro dispositivo en la vida real): el enlace de ida con k abre /enroll; todas
+    // las pantallas del enrollment, con los tres backups de R, hasta la dirección enviada en grupos.
+    const first = await recoveryRequest(page);
+    expect(first.secret).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    const sentFirst = await enrollInRecovery(recovery, account, first.link, {
+      snap: (name) => snap(name, recovery),
+      allBackups: true,
+    });
+    expect(new URLSearchParams(sentFirst.returnLink.hash.slice(1)).get('k')).toBe(first.secret);
+
+    // La Wallet pide copiar la dirección de Recovery y no la muestra.
+    await page.bringToFront();
+    await waitForManualConfirmation(page, sentFirst.recoveryKey);
     await snap('confirmar-r');
-    // Lo que muestra Recovery no coincide con lo que recibió la plataforma (R cambiada en el camino).
-    await typeRecoveryGroups(page, addressGroups(randomAddress()));
+    // Lo que se tipeó no coincide en ningún grupo con lo que recibió la plataforma (R cambiada en el camino).
+    await typeRecoveryGroups(page, everyGroupDifferent(sentFirst.recoveryKey));
     await expect(page.getByText(MANUAL_MISMATCH_TEXT)).toBeVisible();
+    await expect(page.getByText(/^No coincide ningún grupo: no parece un error de tipeo\./)).toBeVisible();
     await snap('confirmar-r-no-coincide');
-    for (let attempt = 2; attempt <= 3; attempt++) await typeRecoveryGroups(page, addressGroups(randomAddress()));
+    // Un error de tipeo en dos grupos: cuáles revisar.
+    const typo = addressGroups(sentFirst.recoveryKey).map((g, i) =>
+      i === 1 || i === 4 ? (g === '0000' ? '1111' : '0000') : g,
+    );
+    await typeRecoveryGroups(page, typo);
+    await expect(page.getByText(/revisá los grupos 2 y 5, y volvé a confirmar \(te queda 1 intento\)/)).toBeVisible();
+    await snap('confirmar-r-error-de-tipeo');
+    await typeRecoveryGroups(page, addressGroups(randomAddress()));
     await expect(page.getByText(MANUAL_ABORT_TEXT)).toBeVisible();
     await expect(page.getByLabel(/^Grupo \d+ de 10$/)).toHaveCount(0);
     await snap('confirmar-r-pedido-cancelado');
     await page.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
     await expect(page.getByText('Esperando que Recovery informe la dirección de tu clave R…')).toBeVisible();
-    // Un pedido nuevo con su propio step-up de Recovery: las ventanas de los códigos por email se adelantan.
+    await expect(page.getByText(NEW_REQUEST_TEXT)).toBeVisible();
+    await snap('activar-recovery-pedido-nuevo');
+
+    // Pedido 2: Recovery crea otra R (sólo archivo) y la dirección se confirma a mano, como desde otro dispositivo.
     advanceRateLimitWindows();
-    const r = await submitRecovery(account, await recoveryRequest(page));
-    await waitForManualConfirmation(page, r.address);
-    await typeRecoveryGroups(page, addressGroups(r.address));
+    const second = await recoveryRequest(page);
+    expect(second.enrollmentId).not.toBe(first.enrollmentId);
+    const sentSecond = await enrollInRecovery(recovery, account, second.link);
+    expect(sentSecond.recoveryKey).not.toBe(sentFirst.recoveryKey);
+    await page.bringToFront();
+    await waitForManualConfirmation(page, sentSecond.recoveryKey);
+    await typeRecoveryGroups(page, addressGroups(sentSecond.recoveryKey));
     await expect(page.getByText('Dirección de tu clave R (confirmada):')).toBeVisible();
     await snap('confirmar-r-confirmada');
-    await page.getByRole('button', { name: 'Continuar' }).click();
 
+    // La pestaña se recarga antes de seguir: se retoma con el sobre y la Password U, y Activar Recovery pide otro.
+    advanceRateLimitWindows();
+    await page.goto('/onboarding');
+    await expect(page.getByRole('heading', { name: 'Seguir con la creación' })).toBeVisible();
+    await snap('seguir-con-la-creacion');
+    await page.getByRole('button', { name: 'Desde un archivo' }).click();
+    await page.getByLabel(/Archivo del sobre cifrado/).setInputFiles({
+      name: 'mtw-U.enc.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(file),
+    });
+    await page.getByLabel('Password U').fill(words.join(' '));
+    await page.getByRole('button', { name: 'Abrir el sobre' }).click();
+    await expect(page.getByRole('heading', { name: 'Confirmá que sos vos' })).toBeVisible({ timeout: 60_000 });
+    await completeStepUp(page, account.email);
+    await expect(page.locator('[data-recovery-link]')).toBeVisible();
+
+    // Pedido 3, el camino del enlace de regreso: «Volver a la Wallet» en Recovery abre la Wallet en esa pestaña, que le
+    // pasa el pedido, la R y el k a la pestaña del pedido; ésta comprueba el k y la R, y sigue sola.
+    advanceRateLimitWindows();
+    const third = await recoveryRequest(page);
+    const sentThird = await enrollInRecovery(recovery, account, third.link);
+    expect(new URLSearchParams(sentThird.returnLink.hash.slice(1)).get('k')).toBe(third.secret);
+    await snap('recovery-regreso-direccion-enviada', recovery);
+    await recovery.getByRole('link', { name: 'Volver a la Wallet' }).click();
+    await expect(recovery.getByText(/volvé a la pestaña de la Wallet/)).toBeVisible();
+    expect(await recovery.evaluate(() => window.location.hash)).toBe('');
+    await snap('regreso-a-la-wallet', recovery);
+    await page.bringToFront();
     await expect(page.getByRole('heading', { name: 'Crear tu Safe' })).toBeVisible();
     await snap('preparar-safe');
     await page.getByRole('button', { name: 'Preparar la Safe' }).click();
@@ -169,6 +241,9 @@ test('onboarding completo con capturas para la revisión de textos', async ({ pa
     await snap('perdi-la-password-u');
     expect(words).toHaveLength(5);
   } finally {
+    await recovery.close();
+    app.stop();
+    recoveryApp = null;
     await removeEnvelopeBackup(serializeEnvelope(envelope));
   }
 });

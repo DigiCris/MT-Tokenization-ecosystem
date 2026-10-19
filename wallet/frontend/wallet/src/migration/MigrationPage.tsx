@@ -150,7 +150,7 @@ export function MigrationPage() {
             Safe destino verificada en Base: <AddressText address={plan.preparation.destination.safe} />
           </Notice>
           <OperationReview
-            title="Transferir todo el saldo a tu Safe nueva"
+            title="Revisá la transferencia de todo el saldo a tu Safe nueva"
             items={plan.items}
             unlocked={old}
             decode={decodeContext(old.session.safe ?? plan.preparation.destination.safe)}

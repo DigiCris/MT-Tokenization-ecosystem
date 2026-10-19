@@ -83,7 +83,7 @@ export function StepUpForm({
             void complete.run(event.currentTarget);
           }}
         >
-          <Notice>Te mandamos el código. {codeExpiryText(pending.expiresAt)}</Notice>
+          <Notice>Código enviado. {codeExpiryText(pending.expiresAt)}</Notice>
           <Field
             label="Código del email"
             name="code"

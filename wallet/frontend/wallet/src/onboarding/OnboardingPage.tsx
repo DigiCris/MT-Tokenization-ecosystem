@@ -3,7 +3,9 @@
 // → sobre cifrado (64 MiB, o 128 MiB como opción avanzada para computadoras, [F-KEY-03]) → subir a Drive y verificar →
 // backup independiente obligatorio → registro OPAQUE y alta de U → activar Recovery y confirmar R → crear la Safe con
 // la verificación propia. Si la pestaña se recargó con U ya registrada, se retoma abriendo el sobre con la Password U
-// (U sólo se descifra para firmar la autorización). El indicador de pasos marca el actual con aria-current.
+// (U sólo se descifra para firmar la autorización). El indicador de pasos marca el actual con aria-current. Un enlace
+// de regreso de Recovery que ninguna otra pestaña tomó no confirma R acá (esta pestaña no tiene el secreto del pedido,
+// ADR-033): en el paso de Recovery se explica por qué y se ofrece generar un pedido nuevo.
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { isAddressEqual, type Address } from 'viem';
@@ -13,8 +15,9 @@ import { appConfig } from '../config/index.ts';
 import { zeroize } from '../crypto/bytes.ts';
 import { keysForEnvelope, openEnvelope, type KeyEnvelope } from '../crypto/envelope.ts';
 import { normalizePassword } from '../crypto/password.ts';
-import { confirmWithReturnLink } from '../recovery-activation/activation.ts';
+import type { RecoveryReturn } from '../recovery-activation/activation.ts';
 import { RecoveryActivationStep, type ConfirmedRecovery } from '../recovery-activation/RecoveryActivationStep.tsx';
+import { ReturnedLinkCard } from '../recovery-activation/ReturnedLinkCard.tsx';
 import { SafeCreationStep } from '../safe/SafeCreationStep.tsx';
 import { EnvelopeSource } from '../unlock/EnvelopeSource.tsx';
 import { loadWordlist } from '../crypto/wordlist.ts';
@@ -50,11 +53,13 @@ interface UserKeyInMemory {
   encryptionKey: CryptoKey;
 }
 
-export function OnboardingPage({ returned }: { returned?: { enrollmentId: string; recoveryKey: Address } } = {}) {
+export function OnboardingPage({ returned }: { returned?: RecoveryReturn } = {}) {
   useSensitiveScreen();
   const store = useSessionStore();
   const { wallet, user } = useSession();
   const [step, setStep] = useState<Step>(() => (hasDriveToken() ? 'step-up' : 'drive'));
+  // Enlace de regreso abierto en esta pestaña: se deja de lado al generar un pedido nuevo.
+  const [returnedLink, setReturnedLink] = useState<RecoveryReturn | null>(returned ?? null);
   const [userKey, setUserKey] = useState<UserKeyInMemory | null>(null);
   const [recovery, setRecovery] = useState<ConfirmedRecovery | null>(null);
   const [registeredU, setRegisteredU] = useState<Address | null>(null);
@@ -151,17 +156,6 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
       },
       [resumeEnvelope, wallet, registeredU],
     ),
-  );
-
-  // Link de regreso de Recovery abierto en esta pestaña (ninguna otra lo tomó): R del enrollment de ese link.
-  const fromReturn = useAsyncAction(
-    useCallback(async () => {
-      if (!returned) return;
-      const enrollment = await api.getRecoveryEnrollment(returned.enrollmentId);
-      const recoveryKey = confirmWithReturnLink(enrollment, returned);
-      setRecovery({ recoveryKey, enrollmentId: enrollment.id, enrollmentNonce: null });
-      setStep('safe');
-    }, [returned]),
   );
 
   const live = stepUp !== null && isLive(stepUp.session);
@@ -394,24 +388,14 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
         wallet &&
         userKey &&
         (live ? (
-          returned ? (
-            <article className="card stack" aria-labelledby="return-title">
-              <h2 id="return-title">Confirmar la dirección de tu clave R</h2>
-              <p>
-                Volviste desde la app Recovery: se compara la dirección de la clave R que trae el enlace con la que
-                recibió la plataforma para ese pedido.
-              </p>
-              {fromReturn.error && <Notice tone="error">{fromReturn.error}</Notice>}
-              <button
-                type="button"
-                className="button"
-                disabled={fromReturn.pending}
-                aria-busy={fromReturn.pending}
-                onClick={() => void fromReturn.run()}
-              >
-                Confirmar la dirección de R
-              </button>
-            </article>
+          returnedLink ? (
+            <ReturnedLinkCard
+              returned={returnedLink}
+              platform={stepUp.platform}
+              onNewRequest={() => {
+                setReturnedLink(null);
+              }}
+            />
           ) : (
             <RecoveryActivationStep
               walletId={wallet.id}

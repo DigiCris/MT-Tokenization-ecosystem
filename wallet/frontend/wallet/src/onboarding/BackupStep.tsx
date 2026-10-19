@@ -2,7 +2,8 @@
 // QR del sobre (canvas; si son varias partes hacen falta todas) y las 17 palabras (sólo en este paso, con opción de
 // imprimir sin otros datos). Las 17 palabras cuentan como backup recién cuando el usuario reingresa 3 al azar: hasta
 // entonces puede volver a verlas, y después se borran de la memoria. Hace falta al menos un backup que no dependa de la
-// plataforma (archivo, QR o palabras) para seguir.
+// plataforma (archivo, QR o palabras) para seguir, y no se sigue con las palabras a la vista sin confirmar (después de
+// este paso no se vuelven a mostrar): hay que confirmarlas u ocultarlas.
 import { useCallback, useEffect, useState } from 'react';
 import type { StorageFlags } from '../api/wallet-api.ts';
 import { drive } from '../app/services.ts';
@@ -46,6 +47,8 @@ export function BackupStep({
   });
   const [downloaded, setDownloaded] = useState(false);
   const [frames, setFrames] = useState<string[] | null>(null);
+  // Las 17 palabras a la vista (o en su confirmación) sin confirmar: si se sigue, ya no se ven.
+  const [wordsOpen, setWordsOpen] = useState(false);
   const driveConnected = hasDriveToken();
 
   const upload = useAsyncAction(
@@ -115,7 +118,7 @@ export function BackupStep({
             setDownloaded(true);
           }}
         >
-          Descargar archivo cifrado
+          Descargar el archivo cifrado
         </button>
         <label className="check">
           <input type="checkbox" disabled={!downloaded} checked={flags.file} onChange={check('file')} />
@@ -152,16 +155,22 @@ export function BackupStep({
       {wordsKey && (
         <BackupWords
           wordsKey={wordsKey}
+          onOpenChange={setWordsOpen}
           onConfirmed={() => {
             setFlags((f) => ({ ...f, words: true }));
           }}
         />
       )}
 
+      {wordsOpen && (
+        <Notice tone="warning">
+          Antes de seguir, confirmá las 17 palabras u ocultalas: después de este paso no se vuelven a mostrar.
+        </Notice>
+      )}
       <button
         type="button"
         className="button"
-        disabled={!hasIndependentBackup(flags)}
+        disabled={!hasIndependentBackup(flags) || wordsOpen}
         onClick={() => {
           onDone(flags);
         }}
@@ -176,10 +185,18 @@ type WordsStep = 'hidden' | 'shown' | 'confirm' | 'confirmed';
 
 /**
  * Las 17 palabras ([F-KEY-06].4): se muestran sólo en este paso y quedan como backup recién cuando el usuario reingresa
- * 3 palabras al azar (un clic de más no las pierde: hasta confirmar se pueden volver a ver). Al confirmar se borran de
- * la memoria.
+ * 3 palabras al azar (un clic de más no las pierde: hasta confirmar se pueden volver a ver). Al confirmarlas u
+ * ocultarlas se borran de la memoria; mientras están a la vista sin confirmar, el paso no deja seguir (`onOpenChange`).
  */
-function BackupWords({ wordsKey, onConfirmed }: { wordsKey: Uint8Array; onConfirmed: () => void }) {
+function BackupWords({
+  wordsKey,
+  onOpenChange,
+  onConfirmed,
+}: {
+  wordsKey: Uint8Array;
+  onOpenChange: (open: boolean) => void;
+  onConfirmed: () => void;
+}) {
   const [step, setStep] = useState<WordsStep>('hidden');
   const [words, setWords] = useState<string[] | null>(null);
   const [written, setWritten] = useState(false);
@@ -190,9 +207,13 @@ function BackupWords({ wordsKey, onConfirmed }: { wordsKey: Uint8Array; onConfir
   const show = useAsyncAction(
     useCallback(async () => {
       setWords(await keyToBackupWords('U', wordsKey, await loadWordlist()));
+      setWritten(false);
       setStep('shown');
     }, [wordsKey]),
   );
+  useEffect(() => {
+    onOpenChange(step === 'shown' || step === 'confirm');
+  }, [step, onOpenChange]);
   useEffect(
     () => () => {
       setWords(null);
@@ -230,15 +251,27 @@ function BackupWords({ wordsKey, onConfirmed }: { wordsKey: Uint8Array; onConfir
               ))}
             </ol>
           </div>
-          <button
-            type="button"
-            className="button button--ghost"
-            onClick={() => {
-              printSection('words-print');
-            }}
-          >
-            Imprimir sólo las palabras
-          </button>
+          <div className="choices">
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={() => {
+                printSection('words-print');
+              }}
+            >
+              Imprimir sólo las palabras
+            </button>
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={() => {
+                setWords(null);
+                setStep('hidden');
+              }}
+            >
+              Ocultar las palabras
+            </button>
+          </div>
           <p className="muted">Si las imprimís, usá una impresora de confianza y no guardes el PDF.</p>
           <label className="check">
             <input

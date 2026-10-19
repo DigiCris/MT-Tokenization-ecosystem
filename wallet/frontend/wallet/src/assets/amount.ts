@@ -39,6 +39,18 @@ export function parseAmount(text: string, decimals: number): bigint {
   return BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, '0') || '0');
 }
 
+/**
+ * Un monto decimal de máquina (el que manda el backend en un aviso: "1500", "1500.25"; punto decimal y sin separador
+ * de miles) → unidades mínimas. No es para lo que tipea el usuario: eso va por `parseAmount`.
+ */
+export function parseDecimalAmount(text: string, decimals: number): bigint {
+  const match = /^(\d{1,30})(?:\.(\d+))?$/.exec(text.trim());
+  if (!match) throw new AmountError('monto con formato inválido');
+  const [, whole = '0', fraction = ''] = match;
+  if (fraction.length > decimals) throw new AmountError(`más de ${String(decimals)} decimales`);
+  return BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, '0') || '0');
+}
+
 /** Unidades mínimas → texto es-AR con al menos `minFraction` decimales (sin perder precisión). */
 export function formatAmount(units: bigint, decimals: number, minFraction = 2): string {
   const negative = units < 0n;

@@ -6,6 +6,7 @@ import { OperatingHome } from '../home/OperatingHome.tsx';
 import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
 import { SafeGate } from '../safe/SafeGate.tsx';
 import { useSession, useSessionStore } from '../session/context.tsx';
+import { AddressText } from '../ui/AddressText.tsx';
 
 const STATUS_TEXT: Record<string, string> = {
   CREATING: 'Creación en curso: falta terminar el alta de tus claves.',
@@ -63,7 +64,9 @@ export function HomePage() {
                 (unlocked ? (
                   <div className="actions">
                     <p role="status">
-                      Wallet desbloqueada (clave <code>{unlocked.envelope.keyAddress}</code>).
+                      Wallet desbloqueada (dirección de tu clave U:{' '}
+                      <AddressText address={unlocked.envelope.keyAddress} />
+                      ).
                     </p>
                     <button type="button" className="button button--ghost" onClick={() => void store.lock('MANUAL')}>
                       Bloquear

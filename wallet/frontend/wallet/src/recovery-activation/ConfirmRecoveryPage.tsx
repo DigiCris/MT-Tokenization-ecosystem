@@ -1,6 +1,7 @@
-// `/onboarding/confirm-recovery#eid=<id>&r=<R>` ([F-LNK-02]): enlace de regreso de la app Recovery. Limpia el fragmento,
-// le pasa `eid` y `r` (la dirección de R, nunca la clave) a la pestaña que está activando Recovery (BroadcastChannel) y,
-// si ninguna lo toma, sigue la creación en esta pestaña (la R se compara igual contra la que informa la plataforma).
+// `/onboarding/confirm-recovery#eid=<id>&r=<R>&k=<k>` ([F-LNK-02], ADR-033): enlace de regreso de la app Recovery.
+// Limpia el fragmento y le pasa `eid`, `r` (la dirección de R, nunca la clave) y `k` a la pestaña que está activando
+// Recovery (BroadcastChannel del mismo origin): sólo esa pestaña conoce el `k` del pedido y decide. Si ninguna lo toma,
+// esta pestaña no puede confirmar nada con el enlace: sigue la creación y ofrece generar un pedido nuevo.
 import { useEffect, useState } from 'react';
 import { OnboardingPage } from '../onboarding/OnboardingPage.tsx';
 import { Notice } from '../ui/forms.tsx';
@@ -29,8 +30,8 @@ export function ConfirmRecoveryPage() {
   if (state === 'taken') {
     return (
       <Notice tone="success">
-        Listo: volvé a la pestaña de la Wallet donde estás creando tu wallet; la dirección de tu clave R se está
-        confirmando ahí.
+        Listo: volvé a la pestaña de la Wallet donde estás creando tu wallet; ahí se comprueba la dirección de tu clave
+        R.
       </Notice>
     );
   }

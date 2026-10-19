@@ -71,7 +71,7 @@ export function UnlockPage() {
           }}
         >
           <p className="muted">
-            Clave <code>{envelope.keyAddress}</code>
+            Sobre cifrado de la clave U con la dirección <code>{envelope.keyAddress}</code>
           </p>
           <Field
             label="Password U"

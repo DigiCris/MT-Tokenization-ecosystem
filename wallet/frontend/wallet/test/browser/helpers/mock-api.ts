@@ -1,7 +1,7 @@
 // API de Wallet simulada para los specs de navegador sin backend (contra `vite preview` del build): intercepta el API
 // host del build en todo el contexto (también en otras pestañas), responde con CORS para el origin de la vista previa
-// (con cookies) y registra los pedidos. Lo que no se declara responde 404 (problem+json). Sólo datos públicos y de
-// prueba: la cuenta, la wallet en creación, el step-up y los pedidos a Recovery que la app espera.
+// (con cookies) y registra los pedidos con su cuerpo. Lo que no se declara responde 404 (problem+json). Sólo datos
+// públicos y de prueba: la cuenta, la wallet en creación, el step-up y los pedidos a Recovery que la app espera.
 import type { BrowserContext, Request } from '@playwright/test';
 import type { Address } from 'viem';
 import { loadBuildConfig } from '../../../build/config.ts';
@@ -21,6 +21,8 @@ export interface MockRoute {
 export interface ApiCall {
   method: string;
   path: string;
+  /** Cuerpo del pedido (null si no tiene). */
+  body: string | null;
 }
 
 export const USER = {
@@ -63,7 +65,7 @@ export async function mockApi(context: BrowserContext, origin: string, routes: M
       return;
     }
     const path = new URL(request.url()).pathname.slice(base.length);
-    calls.push({ method: request.method(), path });
+    calls.push({ method: request.method(), path, body: request.postData() });
     for (const { method, path: pattern, handle } of routes) {
       const match = pattern.exec(path);
       if (method !== request.method() || match === null) continue;
@@ -147,5 +149,6 @@ export function enrollmentView(id: string, recoveryKey: Address | null) {
     rType: recoveryKey === null ? null : 'INTERNAL',
     submittedAt: recoveryKey === null ? null : new Date().toISOString(),
     confirmedAt: null,
+    rejectionReason: null,
   };
 }

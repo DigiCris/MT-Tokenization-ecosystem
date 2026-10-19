@@ -111,7 +111,9 @@ describe('alta de U', () => {
 
   it('el aviso de U y R perdidas a la vez dice la consecuencia y por qué se piden los backups', () => {
     expect(LOST_U_AND_R_WARNING).toContain('Tu Safe necesita 2 de sus 3 firmas.');
-    expect(LOST_U_AND_R_WARNING).toContain('nadie —tampoco MT Wallet— puede mover tus fondos');
+    // Cada raya pegada a su palabra con U+2060 (word joiner): no queda sola al final de un renglón (N9).
+    expect(LOST_U_AND_R_WARNING).toContain('nadie —⁠tampoco MT Wallet⁠— puede mover tus fondos');
+    expect(LOST_U_AND_R_WARNING.replaceAll('⁠', '')).toContain('nadie —tampoco MT Wallet— puede mover tus fondos');
     expect(LOST_U_AND_R_WARNING).toContain('con la clave de la plataforma sola no alcanza');
     expect(LOST_U_AND_R_WARNING).toContain('Por eso pedimos backups de las dos.');
   });

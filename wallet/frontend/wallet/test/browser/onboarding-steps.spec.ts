@@ -4,7 +4,8 @@
 // espera una acción no muestra el cursor de carga y uno que carga sí; la Password U avisa que las palabras están en
 // inglés; el cifrado ofrece la opción avanzada de 128 MiB desactivada y con su advertencia, y el sobre elegido la lleva
 // ([F-KEY-03]); los backups dicen qué pasa si se pierden U y R (B1) y qué abre cada backup (O2); y las 17 palabras
-// cuentan como backup recién al reingresar 3 al azar: una casilla no las oculta y un error permite volver a verlas.
+// cuentan como backup recién al reingresar 3 al azar: una casilla no las oculta, un error permite volver a verlas y,
+// mientras están a la vista sin confirmar, no se puede seguir (se confirman o se ocultan, N8).
 import { expect, test } from '@playwright/test';
 import { LOST_U_AND_R_WARNING } from '../../src/onboarding/user-key.ts';
 import { accountRoutes, creatingWallet, mockApi, onboardingStepUpRoutes, WALLET_ID } from './helpers/mock-api.ts';
@@ -76,7 +77,7 @@ test('pasos, step-up, Password U, cifrado de 128 MiB y backups con las 17 palabr
   await expect(sending).toHaveCSS('cursor', 'progress');
   releaseCode();
   // El vencimiento sale del expiresAt del backend (15:10 UTC = 12:10 en Buenos Aires), no de un plazo fijo.
-  await expect(page.getByText('Te mandamos el código. Vence a las 12:10.')).toBeVisible();
+  await expect(page.getByText('Código enviado. Vence a las 12:10.')).toBeVisible();
   await expect(
     page.getByText('Para crear tu wallet ingresá el código de 8 dígitos que te mandamos a tu email.'),
   ).toBeVisible();
@@ -126,7 +127,7 @@ test('pasos, step-up, Password U, cifrado de 128 MiB y backups con las 17 palabr
   ).toBeVisible();
   // El sobre se cifró con los 128 MiB elegidos.
   const downloading = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Descargar archivo cifrado' }).click();
+  await page.getByRole('button', { name: 'Descargar el archivo cifrado' }).click();
   const envelope = JSON.parse(await downloadedText(await downloading)) as { kdf: { memoryKiB: number } };
   expect(envelope.kdf.memoryKiB).toBe(131_072);
 
@@ -152,11 +153,23 @@ test('pasos, step-up, Password U, cifrado de 128 MiB y backups con las 17 palabr
     ).toBeVisible();
   }
 
-  // 17 palabras: marcar la casilla no las oculta ni las da por anotadas.
+  // 17 palabras: a la vista sin confirmar no dejan seguir (N8): hay que confirmarlas u ocultarlas.
+  const openWords = page.getByText(
+    'Antes de seguir, confirmá las 17 palabras u ocultalas: después de este paso no se vuelven a mostrar.',
+  );
+  await expect(openWords).toHaveCount(0);
   await page.getByRole('button', { name: 'Mostrar las 17 palabras' }).click();
   const list = page.getByRole('list', { name: '17 palabras de la clave' });
   await expect(list.locator('.words__word')).toHaveCount(17);
   const backupWords = await list.locator('.words__word').allTextContents();
+  await expect(openWords).toBeVisible();
+  await page.getByRole('button', { name: 'Ocultar las palabras' }).click();
+  await expect(list).toHaveCount(0);
+  await expect(openWords).toHaveCount(0);
+  // Se pueden volver a mostrar (las mismas) hasta confirmarlas; marcar la casilla no las oculta ni las da por anotadas.
+  await page.getByRole('button', { name: 'Mostrar las 17 palabras' }).click();
+  await expect(list.locator('.words__word')).toHaveText(backupWords);
+  await expect(openWords).toBeVisible();
   await expect(page.getByText(/Están en inglés: copialas letra por letra/)).toBeVisible();
   await expect(page.getByText('Si las imprimís, usá una impresora de confianza y no guardes el PDF.')).toBeVisible();
   await page.getByLabel(/Anoté las 17 palabras/).check();
@@ -184,6 +197,7 @@ test('pasos, step-up, Password U, cifrado de 128 MiB y backups con las 17 palabr
   await expect(page.getByText('Palabras anotadas y confirmadas.')).toBeVisible();
   await expect(list).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Mostrar las 17 palabras' })).toHaveCount(0);
+  await expect(openWords).toHaveCount(0);
 
   // Con las palabras confirmadas alcanza el backup independiente; el registro dice qué recibe la plataforma.
   await proceed.click();

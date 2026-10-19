@@ -77,7 +77,7 @@ export async function completeStepUp(page: Page, email: string, second?: () => P
 /** Descarga el archivo cifrado del paso de backups, lo confirma y devuelve su contenido. */
 export async function backupToFile(page: Page): Promise<string> {
   const downloading = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Descargar archivo cifrado' }).click();
+  await page.getByRole('button', { name: 'Descargar el archivo cifrado' }).click();
   const download = await downloading;
   expect(download.suggestedFilename()).toMatch(/^mtw-U-[0-9a-f-]{36}\.enc\.json$/);
   const content = await downloadedText(download);

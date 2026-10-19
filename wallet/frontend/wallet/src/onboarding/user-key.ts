@@ -20,10 +20,11 @@ export const ONBOARDING_KEY_VERSION = 1;
 
 /**
  * Qué pasa si se pierden U y R a la vez (RR-14): la Safe es 2-de-3 y S sola nunca alcanza el umbral. Se muestra donde se
- * piden los backups y al activar Recovery.
+ * piden los backups y al activar Recovery. El U+2060 (word joiner) pega cada raya a la palabra de al lado, para que no
+ * quede sola al final de un renglón (hallazgo N9).
  */
 export const LOST_U_AND_R_WARNING =
-  'Tu Safe necesita 2 de sus 3 firmas. Si perdés tu clave U (Password U y backups) y también tu clave R, nadie —tampoco MT Wallet— puede mover tus fondos: con la clave de la plataforma sola no alcanza. Por eso pedimos backups de las dos.';
+  'Tu Safe necesita 2 de sus 3 firmas. Si perdés tu clave U (Password U y backups) y también tu clave R, nadie —\u2060tampoco MT Wallet\u2060— puede mover tus fondos: con la clave de la plataforma sola no alcanza. Por eso pedimos backups de las dos.';
 
 /**
  * Memoria de Argon2id del sobre de U ([F-KEY-03]): el baseline de 64 MiB o, con la opción avanzada para computadoras

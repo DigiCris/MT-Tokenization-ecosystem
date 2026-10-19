@@ -114,7 +114,7 @@ test('la plataforma pide rotar S: aviso, motivo, S′ atestada, propuesta firmad
 test('U cancela con su firma EIP-712 por el relay: la propuesta sale del timelock', async () => {
   const row = page.locator('li[data-role="S"]');
   await row.getByRole('button', { name: 'Cancelar con mi firma' }).click();
-  await expect(page.getByText('Cancelación enviada: se confirma con el evento on-chain.')).toBeVisible();
+  await expect(page.getByText('Cancelación enviada: se confirma con el evento en Base.')).toBeVisible();
   await expect.poll(activeExecutorProposal, { timeout: 120_000 }).toMatch(/^0x0{64}$/);
   await openSecurity(page, ROTATIONS);
   await expect(page.getByText('No hay rotaciones pendientes.')).toBeVisible({ timeout: 60_000 });
