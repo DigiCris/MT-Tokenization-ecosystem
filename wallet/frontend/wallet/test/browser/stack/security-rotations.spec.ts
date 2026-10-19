@@ -4,7 +4,6 @@
 // EIP-712 por el relay, o exportando la firma para que la transmita cualquiera (aquí, un relayer sin relación con la
 // plataforma); un nuevo pedido madura con las 48 h y U lo ejecuta (swapOwner con el owner anterior leído de la cadena):
 // S′ queda como owner y como S del Guard. Seguridad muestra el estado de Recovery (R leída del Guard).
-import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { createWalletClient, getAddress, http, type Address, type Hex } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
@@ -14,6 +13,7 @@ import { rotationTimelockAbi } from '../../../src/chain/abis/RotationTimelock.ts
 import { securityGuardAbi } from '../../../src/chain/abis/SecurityGuard.ts';
 import { anvil, chain, increaseTime, receipt } from './helpers/chain.ts';
 import { activeWallet, type ActiveWallet } from './helpers/onboard.ts';
+import { downloadedText } from './helpers/download.ts';
 import { backendKnowsProposal, contract, ROTATION_KIND } from './helpers/operate.ts';
 import { addOperator, type StackOperator } from './helpers/operators.ts';
 import { stack } from './helpers/stack.ts';
@@ -128,7 +128,7 @@ test('U exporta la firma de cancelación y un relayer cualquiera la transmite', 
   const row = page.locator('li[data-role="S"]');
   const downloading = page.waitForEvent('download');
   await row.getByRole('button', { name: 'Exportar la firma de cancelación' }).click();
-  const exported = JSON.parse(readFileSync(await (await downloading).path(), 'utf8')) as {
+  const exported = JSON.parse(await downloadedText(await downloading)) as {
     chainId: number;
     timelock: Address;
     proposalId: Hex;

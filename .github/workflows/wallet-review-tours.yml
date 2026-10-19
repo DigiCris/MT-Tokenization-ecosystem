@@ -1,0 +1,71 @@
+# Recorridos de revisión de los checks manuales (R-14: P17.MAN, P18.MAN y los de fases siguientes): corre un spec de
+# test/browser/stack/review/ de la app elegida contra el stack local y el fork, en los navegadores pedidos (instalados
+# con sus dependencias en el runner), y sube las capturas de cada pantalla como artefacto para el agente revisor
+# independiente. Sólo a mano: no es un required check.
+name: wallet-review-tours
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App
+        required: true
+        default: wallet
+        type: choice
+        options:
+          - wallet
+          - recovery
+      tour:
+        description: Recorrido (spec de test/browser/stack/review/ sin .spec.ts)
+        required: true
+        default: onboarding
+        type: string
+      browsers:
+        description: Navegadores separados por comas (chromium, firefox, webkit)
+        required: true
+        default: chromium,firefox
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.app }}-${{ inputs.tour }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    name: review
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    environment: wallet-ci-frontend-${{ inputs.app }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm foundry
+          foundry-rpc-cache: "true"
+      - name: Recorrido
+        env:
+          APP: ${{ inputs.app }}
+          TOUR: ${{ inputs.tour }}
+          MTW_BROWSERS: ${{ inputs.browsers }}
+          MTW_REVIEW_DIR: ${{ runner.temp }}/review
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+          GOOGLE_DRIVE_TEST_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_TEST_CLIENT_ID }}
+          GOOGLE_DRIVE_TEST_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_TEST_CLIENT_SECRET }}
+          GOOGLE_DRIVE_TEST_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_TEST_REFRESH_TOKEN }}
+          WALLETCONNECT_PROJECT_ID: ${{ secrets.WALLETCONNECT_PROJECT_ID }}
+        run: bash wallet/ci/scripts/review-tour.sh
+      - name: Capturas
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: review-${{ inputs.app }}-${{ inputs.tour }}
+          path: ${{ runner.temp }}/review
+          if-no-files-found: error
+          retention-days: 14

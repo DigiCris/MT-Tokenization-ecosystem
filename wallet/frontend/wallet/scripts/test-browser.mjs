@@ -6,6 +6,9 @@
 //     corre los specs y desarma el stack (también si fallan);
 //  3. con el filtro `perf/argon2` (P17.T08), la medición de Argon2id con la CPU limitada en Chromium y WebKit
 //     (scripts/perf-browser.mjs).
+// Navegadores: MTW_BROWSERS (por defecto, chromium; p. ej. `chromium,firefox`). Fuera de GitHub Actions, Firefox y WebKit
+// corren en la imagen fijada de Playwright (wallet/scripts/lib/browser-server.mjs). Con MTW_REVIEW_DIR corren también los
+// recorridos de revisión de test/browser/stack/review/ (capturas para P17.MAN y P18.MAN).
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -57,9 +60,26 @@ if (!perfRequested && staticSpecs === 0 && stackSpecs === 0) {
   process.exit(1);
 }
 
+// Navegadores en el contenedor si hacen falta (wallet/scripts/lib/browser-server.mjs, como proceso); el contenedor se
+// borra al salir, también si un paso falla.
+let browserEnv = {};
+if (staticSpecs > 0 || stackSpecs > 0) {
+  const browserDir = mkdtempSync(join(tmpdir(), 'mtw-browsers-'));
+  const browserState = join(browserDir, 'state.json');
+  const browserCli = join(WALLET_ROOT, 'scripts/lib/browser-server.mjs');
+  process.on('exit', () => {
+    spawnSync('node', [browserCli, 'stop', '--state', browserState], { stdio: 'ignore' });
+    rmSync(browserDir, { recursive: true, force: true });
+  });
+  process.on('SIGINT', () => process.exit(130));
+  run('node', [browserCli, 'start', '--project', APP_ROOT, '--state', browserState]);
+  const { wsEndpoint } = JSON.parse(readFileSync(browserState, 'utf8'));
+  if (wsEndpoint) browserEnv = { PW_TEST_CONNECT_WS_ENDPOINT: wsEndpoint };
+}
+
 if (staticSpecs > 0) {
   run('pnpm', ['exec', 'vite', 'build', '--logLevel', 'warn']);
-  run('pnpm', ['exec', 'playwright', 'test', '-c', 'playwright.config.ts', ...args]);
+  run('pnpm', ['exec', 'playwright', 'test', '-c', 'playwright.config.ts', ...args], { ...process.env, ...browserEnv });
 }
 
 if (stackSpecs > 0) {
@@ -97,7 +117,7 @@ if (stackSpecs > 0) {
     const result = run(
       'pnpm',
       ['exec', 'playwright', 'test', '-c', 'playwright.stack.config.ts', ...args],
-      { ...process.env, MTW_STACK_STATE: stateFile, MTW_STACK_PREVIEW_PORT: STACK_PREVIEW_PORT },
+      { ...process.env, ...browserEnv, MTW_STACK_STATE: stateFile, MTW_STACK_PREVIEW_PORT: STACK_PREVIEW_PORT },
       { allowFailure: true },
     );
     status = result.status ?? 1;

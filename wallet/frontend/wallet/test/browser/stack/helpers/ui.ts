@@ -3,6 +3,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import type { Address } from 'viem';
 import { serializeEnvelope, type KeyEnvelope } from '../../../../src/crypto/envelope.ts';
 import { addressGroups } from '../../../../src/recovery-activation/activation.ts';
+import { downloadedText } from './download.ts';
 import { nextCode } from './mailpit.ts';
 
 export async function login(page: Page, email: string, password: string): Promise<void> {
@@ -42,9 +43,7 @@ export async function backupToFile(page: Page): Promise<string> {
   await page.getByRole('button', { name: 'Descargar archivo cifrado' }).click();
   const download = await downloading;
   expect(download.suggestedFilename()).toMatch(/^mtw-U-[0-9a-f-]{36}\.enc\.json$/);
-  const path = await download.path();
-  const { readFileSync } = await import('node:fs');
-  const content = readFileSync(path, 'utf8');
+  const content = await downloadedText(download);
   await page.getByLabel(/Guardé el archivo fuera de este dispositivo/).check();
   return content;
 }

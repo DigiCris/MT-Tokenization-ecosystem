@@ -3,7 +3,7 @@
 // leído con la cámara simulada de Chromium), abre U en el navegador con el sobre y la Password U, muestra lo que hace la
 // SafeTx decodificada de sus bytes y la firma de R que trae, U firma el hash recalculado y exporta el documento (archivo
 // y QR animado, que se lee de vuelta cuadro por cuadro); con las dos firmas un relayer cualquiera lo ejecuta.
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -25,6 +25,7 @@ import { serializeEnvelope } from '../../../src/crypto/envelope.ts';
 import { decodeFrames, encodeFrames } from '../../../src/qr/frames.ts';
 import { parseSovereignDocument, sovereignContent } from '../../../src/sovereign/document.ts';
 import { anvil, chain, fund, receipt, tokenBalance, USDC, USDC_HOLDER } from './helpers/chain.ts';
+import { downloadedText } from './helpers/download.ts';
 import { activeWallet, type ActiveWallet } from './helpers/onboard.ts';
 import { randomAddress } from './helpers/operate.ts';
 import { readCanvasQr } from './helpers/qr.ts';
@@ -146,7 +147,7 @@ test('documento por archivo: R firmó en Recovery, U firma en Wallet sin la plat
   await openKeyAndSign(page);
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Descargar el documento firmado' }).click();
-  const signed = JSON.parse(readFileSync(await (await downloading).path(), 'utf8')) as {
+  const signed = JSON.parse(await downloadedText(await downloading)) as {
     signatures: { signer: string; role: string; signature: Hex }[];
   };
   const userSignature = signed.signatures.find((s) => s.role === 'U');
