@@ -2391,9 +2391,9 @@ Checks del preflight:
       Verificación: `pnpm --dir frontend/wallet test:browser -- activity`.
 - [x] **P18.T09** — Seguridad: rotaciones (pendientes on-chain, cancelar con firma U → relay o exportar firma; ejecutar maduras), estado de Recovery, sesiones, TOTP.
       Verificación: `pnpm --dir frontend/wallet test:browser -- security-rotations`.
-- [ ] **P18.T09.a** — Reemplazar Recovery (R perdida o comprometida): iniciar enrollment de R' (mismo flujo QR/link de P18.T01 hacia Recovery), U firma la propuesta, cuenta regresiva de 48 h, U firma la ejecución.
+- [x] **P18.T09.a** — Reemplazar Recovery (R perdida o comprometida): iniciar enrollment de R' (mismo flujo QR/link de P18.T01 hacia Recovery), U firma la propuesta, cuenta regresiva de 48 h, U firma la ejecución.
       Verificación: `pnpm --dir frontend/wallet test:browser -- replace-recovery`.
-- [ ] **P18.T09.b** — Rotación de S solicitada por la plataforma (shard, migración a HSM, compromiso): banner con motivo, revisión de la nueva dirección S' (leída on-chain del timelock tras proponer), U firma propuesta y, al madurar, ejecución.
+- [x] **P18.T09.b** — Rotación de S solicitada por la plataforma (shard, migración a HSM, compromiso): banner con motivo, revisión de la nueva dirección S' (leída on-chain del timelock tras proponer), U firma propuesta y, al madurar, ejecución.
       Verificación: `pnpm --dir frontend/wallet vitest run src/security/rotations` + test de integración contra backend y fork.
 - [x] **P18.T10** — Co-firma soberana: importar SafeTx (JSON/QR) de Recovery, decodificar y mostrar, firmar con U, exportar firma; **sin backend**.
       Verificación: `pnpm --dir frontend/wallet vitest run src/sovereign` + `pnpm --dir frontend/wallet test:browser -- sovereign-cosign`.
@@ -2511,7 +2511,7 @@ Checks del preflight:
       Verificación: `node scripts/check-release-keys.mjs` (públicas fijadas, privadas ausentes del repo y del backend).
 - [x] **P20.T02** — Integrity monitor (contenedor propio, clave de atestación propia): cada 60 s y por app/entorno descarga `/.well-known/release-manifest.json(.sig)`, verifica firma, descarga cada archivo listado y verifica SHA-256, verifica headers (CSP, HSTS, etc.) y SRI de `index.html`, detecta archivos/scripts no listados; registra `integrity_status` y emite la atestación firmada `IntegrityAttestation` de [W-03] (`{platformId, app, environment, releaseId, manifestSha256, status, observedAt, expiresAt}`) que consume el signer.
       Verificación: `pnpm --dir backend/integrity-monitor vitest run`.
-- [ ] **P20.T02.a** — Chequeo **off-host**: workflow programado de GitHub Actions (cada 15 min) que hace las mismas verificaciones contra las URLs públicas con las claves públicas de release del repo y alerta por email/webhook ante discrepancia; no depende del host de producción (si el host se compromete, la alerta igual sale), no pausa al signer.
+- [x] **P20.T02.a** — Chequeo **off-host**: workflow programado de GitHub Actions (cada 15 min) que hace las mismas verificaciones contra las URLs públicas con las claves públicas de release del repo y alerta por email/webhook ante discrepancia; no depende del host de producción (si el host se compromete, la alerta igual sale), no pausa al signer.
       Verificación: ejecución manual del workflow contra un `vite preview` expuesto en un runner de prueba con un archivo alterado → falla y notifica.
 - [x] **P20.T03** — Signer: con `INTEGRITY_REQUIRED=true` (staging/prod) exige atestaciones OK de ambas apps con antigüedad ≤ 5 min; ante MISMATCH rechaza cooperar de inmediato (`COOPERATION_PAUSED`); ante UNREACHABLE alerta y concede 15 min de gracia antes de pausar; alerta crítica, auditoría y banner en Wallet; el camino soberano no se afecta.
       Verificación: `pnpm --dir backend/signer vitest run test/policy/integrity.test.ts`.
