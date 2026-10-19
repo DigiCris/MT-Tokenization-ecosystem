@@ -1,5 +1,6 @@
 // Utilidades de red sin dependencias: fetch con timeout, JSON-RPC, chequeo de puertos.
 // Nunca incluye URLs con credenciales en mensajes de error (se reporta sólo el host).
+import { randomInt } from 'node:crypto';
 import net from 'node:net';
 
 export function hostOf(url) {
@@ -31,7 +32,7 @@ export function retryDelayMs(retryAfter, attempt, baseMs = 500) {
   const seconds = Number(retryAfter);
   if (retryAfter !== null && retryAfter !== '' && Number.isFinite(seconds) && seconds >= 0)
     return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
-  return baseMs * 2 ** attempt + Math.floor(Math.random() * baseMs);
+  return baseMs * 2 ** attempt + (baseMs > 0 ? randomInt(baseMs) : 0);
 }
 
 /**
