@@ -19,7 +19,9 @@ services:
       - pgdata:/var/lib/postgresql
       - ./infra/local/postgres/init-db.sh:/docker-entrypoint-initdb.d/10-init-db.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" && psql -U \"$${POSTGRES_USER}\" -d mtw_signer_dev -tAc 'select 1' >/dev/null"]
+      # Por TCP (-h 127.0.0.1): mientras corren los scripts de init el servidor temporal escucha sólo en el socket, y
+      # el host (migraciones) recién puede conectarse cuando arranca el servidor final.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\" && psql -U \"$${POSTGRES_USER}\" -d mtw_signer_dev -tAc 'select 1' >/dev/null"]
       interval: 5s
       timeout: 5s
       retries: 30
