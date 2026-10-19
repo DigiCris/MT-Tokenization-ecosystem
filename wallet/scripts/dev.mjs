@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `pnpm dev` (P21.T02): todo el entorno local con un comando, sólo con node:child_process. En orden: preflight →
+// `pnpm dev` (P21.T02): todo el entorno local con un comando, sólo con node:child_process. En orden: preflight rápido →
 // docker compose (PostgreSQL, Valkey, Anvil sobre el fork, Mailpit) → migraciones del backend → deploy-local
 // (idempotente) → snapshot de policy local firmado → shards del signer (dev-1 y platform) → seed-local (idempotente) →
 // procesos con logs con prefijo: shards, API (8080/8081), worker (watcher, indexer y reconciliación), gas tank,
@@ -22,7 +22,10 @@ function step(label, command, args, options = {}) {
   if (result.status !== 0 && !(options.tolerate && options.tolerate(`${result.stdout ?? ''}${result.stderr ?? ''}`))) {
     if (options.capture) process.stderr.write(`${result.stdout ?? ''}${result.stderr ?? ''}`);
     process.stderr.write(`dev: falló "${label}"\n`);
-    shutdown(1);
+    // Corta acá: los procesos ya levantados se apagan y no corre ningún paso más.
+    stopping = true;
+    for (const { child } of [...children].reverse()) child.kill('SIGTERM');
+    process.exit(1);
   }
 }
 
@@ -58,7 +61,10 @@ process.on('SIGTERM', () => shutdown(0));
 const env = (name, fallback = '') =>
   spawnSync('node', [join(ROOT, 'scripts/lib/env-value.mjs'), name], { encoding: 'utf8' }).stdout.trim() || fallback;
 
-step('preflight', 'bash', ['scripts/preflight']);
+// Preflight rápido: sistema, configuración y cadena (las validaciones contra Google, Mailgun, Gmail y Etherscan las hace
+// `pnpm preflight` completo, que se corre al preparar la máquina).
+const QUICK_CHECKS = ['PF-01', 'PF-02', 'PF-03', 'PF-04', 'PF-05', 'PF-06', 'PF-07', 'PF-08', 'PF-09', 'PF-10', 'PF-11', 'PF-12', 'PF-13', 'PF-14', 'PF-15', 'PF-16', 'PF-17', 'PF-18', 'PF-23', 'PF-24', 'PF-25', 'PF-26', 'PF-27', 'PF-28', 'PF-29'];
+step('preflight rápido', 'bash', ['scripts/preflight', '--only', QUICK_CHECKS.join(',')]);
 step('docker compose up', 'docker', ['compose', 'up', '-d', '--wait', '--wait-timeout', '600']);
 step('migraciones del backend', 'node', ['src/cli/db.ts', 'migrate'], { cwd: BACKEND });
 step('deploy-local (idempotente)', 'bash', ['scripts/deploy-local']);

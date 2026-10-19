@@ -1,0 +1,66 @@
+# Entorno local desde un clon limpio (P21.MAN y P21.TST): en un runner nuevo, `docker compose up -d && pnpm install &&
+# pnpm preflight && pnpm dev`, healthcheck de todos los servicios, seed-check por la API, y dos `dev:fresh` con el mismo
+# escenario (mismos contratos, Safe y saldos). Corre con un push que cambia wallet/manual-checks.json (localEnv) o a mano.
+name: wallet-local-env
+
+on:
+  push:
+    branches:
+      - "feat/walletWeb/**"
+    paths:
+      - "wallet/manual-checks.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  local-env:
+    name: local-env
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: wallet-ci-e2e
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm foundry
+          foundry-rpc-cache: "true"
+      - name: Clon limpio → pnpm dev (dos corridas)
+        env:
+          MTW_LOCAL_ENV_OUT: ${{ runner.temp }}/local-env
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+          BASE_RPC_URL_SECONDARY: ${{ secrets.BASE_RPC_URL_SECONDARY }}
+          EMAIL_PROVIDER_API_KEY: ${{ secrets.EMAIL_PROVIDER_API_KEY }}
+          EMAIL_PROVIDER_DOMAIN: ${{ secrets.EMAIL_PROVIDER_DOMAIN }}
+          EMAIL_PROVIDER_BASE_URL: ${{ secrets.EMAIL_PROVIDER_BASE_URL }}
+          GOOGLE_CLIENT_ID_WALLET: ${{ secrets.GOOGLE_CLIENT_ID_WALLET }}
+          GOOGLE_CLIENT_ID_RECOVERY: ${{ secrets.GOOGLE_CLIENT_ID_RECOVERY }}
+          WALLETCONNECT_PROJECT_ID: ${{ secrets.WALLETCONNECT_PROJECT_ID }}
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+          GOOGLE_DRIVE_TEST_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_TEST_CLIENT_ID }}
+          GOOGLE_DRIVE_TEST_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_TEST_CLIENT_SECRET }}
+          GOOGLE_DRIVE_TEST_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_TEST_REFRESH_TOKEN }}
+          EMAIL_TEST_ADDRESS: ${{ secrets.EMAIL_TEST_ADDRESS }}
+          EMAIL_TEST_GOOGLE_CLIENT_ID: ${{ secrets.EMAIL_TEST_GOOGLE_CLIENT_ID }}
+          EMAIL_TEST_GOOGLE_CLIENT_SECRET: ${{ secrets.EMAIL_TEST_GOOGLE_CLIENT_SECRET }}
+          EMAIL_TEST_GOOGLE_REFRESH_TOKEN: ${{ secrets.EMAIL_TEST_GOOGLE_REFRESH_TOKEN }}
+        run: bash wallet/ci/scripts/local-env.sh
+      - name: Reportes
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: local-env-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/local-env/*.json
+            ${{ runner.temp }}/local-env/*.txt
+          if-no-files-found: warn
+          retention-days: 14

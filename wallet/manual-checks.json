@@ -1,10 +1,7 @@
 {
-  "$comment": "Pedidos de checks manuales que ejecuta el agente (R-14). Un push que cambia este archivo corre los recorridos y simulacros listados (wallet-review-tours) y el simulacro del chequeo off-host si offhostSelftest es true (wallet-integrity-offhost). Ver docs/CI.md.",
-  "requestId": "p17-p18-p20-2026-10-19",
-  "reviewTours": [
-    { "app": "wallet", "tour": "review/onboarding", "browsers": "chromium,firefox" },
-    { "app": "wallet", "tour": "review/operations", "browsers": "chromium" },
-    { "app": "wallet", "tour": "drills/integrity-mismatch", "browsers": "chromium" }
-  ],
-  "offhostSelftest": true
+  "$comment": "Pedidos de checks manuales que ejecuta el agente (R-14). Un push que cambia este archivo corre los recorridos y simulacros de reviewTours (wallet-review-tours), el simulacro del chequeo off-host (wallet-integrity-offhost) y el entorno local desde un clon limpio (wallet-local-env). Ver docs/CI.md.",
+  "requestId": "p21-local-env-2026-10-19",
+  "reviewTours": [],
+  "offhostSelftest": false,
+  "localEnv": true
 }

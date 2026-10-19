@@ -69,6 +69,7 @@ jobs:
   review:
     name: review
     needs: plan
+    if: needs.plan.outputs.matrix != '[]'
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     strategy:
