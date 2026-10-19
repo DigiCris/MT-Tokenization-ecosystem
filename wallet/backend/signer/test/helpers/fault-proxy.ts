@@ -16,8 +16,8 @@ export type FaultMode =
   | { kind: 'http-error'; status: number }
   /** Informa un head `lag` bloques por detrás del real. */
   | { kind: 'head-lag'; lag: number }
-  /** Responde un error JSON-RPC del nodo (no un revert) en los métodos indicados. */
-  | { kind: 'rpc-error'; methods: string[]; code: number; message: string };
+  /** Responde un error JSON-RPC del nodo (no un revert) en los métodos indicados; con `times`, sólo esas veces. */
+  | { kind: 'rpc-error'; methods: string[]; code: number; message: string; times?: number };
 
 export interface FaultProxy {
   url: string;
@@ -51,7 +51,8 @@ export async function startFaultProxy(upstream: string): Promise<FaultProxy> {
           res.writeHead(current.status).end('injected failure');
           return;
         }
-        if (current.kind === 'rpc-error' && current.methods.includes(request.method)) {
+        if (current.kind === 'rpc-error' && current.methods.includes(request.method) && (current.times ?? 1) > 0) {
+          if (current.times !== undefined) current.times -= 1;
           const error = { code: current.code, message: current.message };
           res
             .writeHead(200, { 'content-type': 'application/json' })

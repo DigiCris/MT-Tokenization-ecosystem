@@ -180,6 +180,20 @@ describe('modo dual con fallas en un proveedor', () => {
     proxyB.setMode({ kind: 'pass' });
   });
 
+  it('error transitorio del nodo en la simulación o la estimación: se reintenta y la operación sigue', async () => {
+    // Un fork que todavía no trajo estado del RPC remoto falla una vez y a la siguiente responde.
+    const transient = { code: -32603, message: 'failed to get account: operation timed out' };
+    const client = rpc('dual', READ_TIMEOUT, 2);
+    proxyB.setMode({ kind: 'rpc-error', methods: ['eth_call'], times: 2, ...transient });
+    expect(await problem(() => client.simulate(transfer()))).toBe('ok');
+    proxyB.setMode({ kind: 'rpc-error', methods: ['eth_estimateGas'], times: 2, ...transient });
+    expect(await client.estimateGas(transfer())).toBe(21_000n);
+    // Más fallas que reintentos → RPC_UNAVAILABLE.
+    proxyB.setMode({ kind: 'rpc-error', methods: ['eth_call'], times: 3, ...transient });
+    expect(await problem(() => client.simulate(transfer()))).toBe('RPC_UNAVAILABLE');
+    proxyB.setMode({ kind: 'pass' });
+  });
+
   it('revert en los dos → CallRevertedError en eth_call, simulación y estimación', async () => {
     proxyB.setMode({ kind: 'pass' });
     const client = rpc();

@@ -186,34 +186,39 @@ export class SignerRpc {
   }
 
   /**
+   * Ejecuta en todos los proveedores en `latest` (simulación y estimación): un revert se propaga de inmediato como
+   * CallRevertedError; cualquier otra falla del nodo (timeout, error interno, falla al traer estado, límite de ritmo)
+   * se reintenta con backoff como las lecturas y, si persiste, es RPC_UNAVAILABLE.
+   */
+  async #inAll<T>(method: 'eth_call' | 'eth_estimateGas', req: CallRequest, parse: (raw: string) => T): Promise<T[]> {
+    for (let attempt = 0; ; attempt++) {
+      if (attempt > 0) await sleep(this.#options.backoffMs * 2 ** (attempt - 1));
+      try {
+        const raw = await Promise.all(
+          this.#urls.map((url) => this.#one<string>(url, method, [callObject(req), 'latest'])),
+        );
+        return raw.map(parse);
+      } catch (error) {
+        if (isRevertError(error)) throw new CallRevertedError(error.message);
+        if (attempt >= this.#options.retries) {
+          const what = method === 'eth_call' ? 'simulación' : 'estimación';
+          throw new RpcQuorumError('RPC_UNAVAILABLE', `${what} sin respuesta`);
+        }
+      }
+    }
+  }
+
+  /**
    * Simulación en `latest` en todos los proveedores: devuelve los datos de retorno; si alguno revierte → error.
    * (Los proveedores pueden diferir en el head: no se exige igualdad de bytes, sí que ninguno revierta.)
    */
   async simulate(req: CallRequest): Promise<Hex> {
-    const results = await Promise.all(
-      this.#urls.map(async (url) => {
-        try {
-          return await this.#one<Hex>(url, 'eth_call', [callObject(req), 'latest']);
-        } catch (error) {
-          if (isRevertError(error)) throw new CallRevertedError(error.message);
-          throw new RpcQuorumError('RPC_UNAVAILABLE', 'simulación sin respuesta');
-        }
-      }),
-    );
+    const results = await this.#inAll('eth_call', req, (raw) => raw as Hex);
     return results[0] as Hex;
   }
 
   async estimateGas(req: CallRequest): Promise<bigint> {
-    const estimates = await Promise.all(
-      this.#urls.map(async (url) => {
-        try {
-          return BigInt(await this.#one<string>(url, 'eth_estimateGas', [callObject(req), 'latest']));
-        } catch (error) {
-          if (isRevertError(error)) throw new CallRevertedError(error.message);
-          throw new RpcQuorumError('RPC_UNAVAILABLE', 'estimación sin respuesta');
-        }
-      }),
-    );
+    const estimates = await this.#inAll('eth_estimateGas', req, (raw) => BigInt(raw));
     return estimates.reduce((a, b) => (a > b ? a : b));
   }
 }
