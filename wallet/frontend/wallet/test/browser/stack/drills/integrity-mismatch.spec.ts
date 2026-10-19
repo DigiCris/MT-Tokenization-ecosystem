@@ -61,7 +61,7 @@ async function until<T>(
 
 /** Sin secretos: el estado público de la plataforma y las líneas de integridad del log del worker del stack. */
 async function cooperationDiagnostics(): Promise<string> {
-  const status = await fetch(`${stack().urls.apiWallet}/api/v1/platform/status`)
+  const status = await fetch(`${stack().urls.apiWallet}/platform/status`)
     .then((r) => r.text())
     .catch((error: unknown) => String(error));
   let worker: string;
@@ -93,7 +93,7 @@ const monitorStatus = async (app: 'WALLET' | 'RECOVERY'): Promise<AppStatus> => 
   return found;
 };
 const platformStatus = async (): Promise<string> => {
-  const body = (await (await fetch(`${stack().urls.apiWallet}/api/v1/platform/status`)).json()) as {
+  const body = (await (await fetch(`${stack().urls.apiWallet}/platform/status`)).json()) as {
     cooperation: string;
   };
   return body.cooperation;
