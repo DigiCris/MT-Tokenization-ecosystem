@@ -97,7 +97,7 @@ test('con la plataforma apagada: R firma la transferencia, U co-firma por archiv
   await expect(read).toBeVisible({ timeout: 60_000 });
   await expect(read.locator(`[data-address="${wallet.user.account.address}"]`)).toBeVisible();
   await unlockFromFile(page, sealed);
-  await expect(page.getByText(`Clave R:`)).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText('Dirección de tu clave R:')).toBeVisible({ timeout: 120_000 });
 
   const destination = privateKeyToAccount(generatePrivateKey()).address;
   await page.getByLabel('Acción').selectOption('TRANSFER');

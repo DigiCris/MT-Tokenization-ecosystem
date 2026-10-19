@@ -4,7 +4,7 @@
 import { useCallback, useState } from 'react';
 import type { StepUpScope } from '../api/recovery-api.ts';
 import { api } from '../app/services.ts';
-import { finishStepUp, startStepUp, stepUpFailure, type PendingStepUp } from '../auth/account.ts';
+import { codeExpiryText, finishStepUp, startStepUp, stepUpFailure, type PendingStepUp } from '../auth/account.ts';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { useSession, useSessionStore } from './context.tsx';
 import type { PlatformSession } from './store.ts';
@@ -58,7 +58,8 @@ export function StepUp({
     <section className="card stack" aria-labelledby="stepup-title">
       <h2 id="stepup-title">Verificá que sos vos</h2>
       <p>
-        Para {SCOPE_TEXT[scope]} te mandamos un código por email{needsSecond ? ' y te pedimos tu segundo factor' : ''}.
+        Para {SCOPE_TEXT[scope]} {pending ? 'te mandamos' : 'te vamos a mandar'} un código por email
+        {needsSecond ? ' y te pedimos tu segundo factor' : ''}.{pending ? ` ${codeExpiryText(pending.expiresAt)}` : ''}{' '}
         La verificación dura 15 minutos.
       </p>
       {!pending ? (

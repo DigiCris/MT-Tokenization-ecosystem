@@ -51,7 +51,7 @@ for (const { name, connector, flavor } of CONNECTORS) {
       await expect(page.locator(`[data-sovereign-safe="${wallet.safe}"]`)).toBeVisible({ timeout: 60_000 });
       await page.getByRole('button', { name: 'Mi clave R es una wallet externa' }).click();
       await page.locator(`[data-connector="${connector}"]`).click();
-      await expect(page.getByText('Clave R:')).toBeVisible({ timeout: 60_000 });
+      await expect(page.getByText('Dirección de tu clave R:')).toBeVisible({ timeout: 60_000 });
       await expect(page.locator(`[data-address="${recovery.address}"]`).first()).toBeVisible();
       await page.getByLabel('Acción').selectOption('NOOP');
       await page.getByRole('button', { name: 'Armar la operación' }).click();

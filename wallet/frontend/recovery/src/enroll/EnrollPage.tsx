@@ -1,7 +1,9 @@
 // `/enroll` (P19.T03, [F-LNK-01/02]): desde el link o el QR de la Wallet, con el pedido en el fragmento (se saca de la
 // URL al leerlo). Login con la misma cuenta → estado del enrollment → step-up ENROLLMENT para esa wallet → Enrollment
 // Key (P-256 no extraíble) → R interna (Password R + backups) o wallet externa → prueba de control de R (EIP-712) y,
-// en un reemplazo, la KeyAcceptance de R′ → envío firmado por la Enrollment Key → link y QR de regreso con R.
+// en un reemplazo, la KeyAcceptance de R′ → envío firmado por la Enrollment Key → link y QR de regreso con R. Lo que
+// viaja y se muestra es la dirección de R (la clave nunca sale de esta app): los textos lo dicen así, y piden copiarla en
+// la Wallet si está en otro dispositivo, porque la Wallet no la muestra hasta que coincide ([F-LNK-02]).
 import { useCallback, useEffect, useState } from 'react';
 import type { Address, Hex } from 'viem';
 import type { EnrollmentStatus, StorageFlags } from '../api/recovery-api.ts';
@@ -41,8 +43,8 @@ function readLink(): EnrollLink | null {
 
 const STATUS_TEXT: Record<EnrollmentStatus['status'], string> = {
   REQUESTED: 'Pendiente',
-  SUBMITTED: 'Ya se envió una clave R para este pedido.',
-  CONFIRMED: 'Este pedido ya terminó: la clave R quedó confirmada.',
+  SUBMITTED: 'Ya se envió la dirección de una clave R para este pedido.',
+  CONFIRMED: 'Este pedido ya terminó: la Wallet confirmó la dirección de tu clave R.',
   EXPIRED: 'El pedido venció (dura 15 minutos): generá uno nuevo desde la app Wallet.',
   REJECTED: 'El pedido fue rechazado: generá uno nuevo desde la app Wallet.',
   RETIRED: 'El pedido fue reemplazado por otro: usá el link más reciente de la app Wallet.',
@@ -172,8 +174,15 @@ export function EnrollPage() {
   if (recoveryLink && sent) {
     return (
       <section className="card stack" aria-labelledby="enroll-done-title">
-        <h1 id="enroll-done-title">Tu clave R quedó enviada</h1>
-        <p>Volvé a la app Wallet para confirmarla. Si estás en otro dispositivo, compará esta dirección completa:</p>
+        <h1 id="enroll-done-title">Dirección de tu clave R enviada</h1>
+        <p>
+          Tu clave R queda en esta app: a la plataforma sólo le llegó su dirección. Volvé a la app Wallet para
+          confirmarla.
+        </p>
+        <p>
+          Si la Wallet está en otro dispositivo, copiá ahí esta dirección completa, grupo por grupo (da igual mayúsculas
+          o minúsculas):
+        </p>
         <p data-recovery-key={sent.recoveryKey}>
           <AddressText address={sent.recoveryKey} copy />
         </p>
@@ -182,7 +191,7 @@ export function EnrollPage() {
             Volver a la Wallet
           </a>
         </p>
-        <QrCanvas text={recoveryLink} label="QR para volver a la Wallet con tu clave R" />
+        <QrCanvas text={recoveryLink} label="QR para volver a la Wallet con la dirección de tu clave R" />
       </section>
     );
   }
@@ -263,10 +272,13 @@ export function EnrollPage() {
       )}
       {choice !== null && (
         <section className="card stack" aria-labelledby="send-title">
-          <h2 id="send-title">Enviar tu clave R</h2>
+          <h2 id="send-title">Enviar la dirección de tu clave R</h2>
           <p>
-            Clave R:{' '}
+            Dirección de tu clave R:{' '}
             <AddressText address={choice.kind === 'internal' ? choice.unlocked.address : choice.session.address} />
+          </p>
+          <p className="muted">
+            Tu clave R no sale de esta app: se envía sólo su dirección, con una firma que prueba que la controlás.
           </p>
           {!platformOk && <Notice tone="warning">La verificación venció: hacela de nuevo para enviar.</Notice>}
           {submit.error && <Notice tone="error">{submit.error}</Notice>}

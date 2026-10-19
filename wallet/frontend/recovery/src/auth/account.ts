@@ -42,6 +42,8 @@ export interface PendingStepUp {
   key: SessionKey;
   scope: StepUpScope;
   walletId: string | null;
+  /** Vencimiento del código del email (ISO 8601). */
+  expiresAt: string;
 }
 
 /** Pide el código por email para una session key nueva (la privada nunca sale de WebCrypto). */
@@ -52,7 +54,18 @@ export async function startStepUp(api: AccountApi, scope: StepUpScope, walletId?
     sessionPublicKey: key.publicJwk,
     ...(walletId === undefined ? {} : { walletId }),
   });
-  return { challengeId: started.challengeId, key, scope, walletId: walletId ?? null };
+  return { challengeId: started.challengeId, key, scope, walletId: walletId ?? null, expiresAt: started.expiresAt };
+}
+
+/** «Vence a las HH:MM.»: la hora local en que vence el código del email (la que informa el backend, no un valor fijo). */
+export function codeExpiryText(expiresAt: string, timeZone?: string): string {
+  const time = new Date(expiresAt).toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    ...(timeZone === undefined ? {} : { timeZone }),
+  });
+  return `Vence a las ${time}.`;
 }
 
 /** Con el código (y el segundo factor): la PlatformSession emitida tiene que ser la pedida (scope y wallet). */

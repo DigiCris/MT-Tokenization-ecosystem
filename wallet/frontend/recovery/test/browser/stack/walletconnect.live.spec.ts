@@ -54,7 +54,9 @@ test('enrollment: la wallet de WalletConnect firma la prueba de control y queda 
   await pairThroughQr();
   await expect(page.locator(`[data-address="${account.address}"]`).first()).toBeVisible({ timeout: 120_000 });
   await page.getByRole('button', { name: 'Firmar y enviar' }).click();
-  await expect(page.getByRole('heading', { name: 'Tu clave R quedó enviada' })).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByRole('heading', { name: 'Dirección de tu clave R enviada' })).toBeVisible({
+    timeout: 120_000,
+  });
   expect(getAddress((await page.locator('[data-recovery-key]').getAttribute('data-recovery-key')) ?? '')).toBe(
     account.address,
   );

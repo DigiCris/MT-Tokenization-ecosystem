@@ -518,7 +518,7 @@ export function SovereignPage() {
         ) : (
           <>
             <p>
-              Clave R: <AddressText address={signer.address} />
+              Dirección de tu clave R: <AddressText address={signer.address} />
             </p>
             {state !== null && !recoveryIsOwner && (
               <Notice tone="error">Esta clave R no es owner de la Safe: no puede firmar sus operaciones.</Notice>

@@ -11,6 +11,7 @@ import {
   secondFactor,
   signIn,
   startStepUp,
+  codeExpiryText,
   StepUpError,
   stepUpFailure,
 } from './account.ts';
@@ -96,6 +97,14 @@ describe('step-up', () => {
     expect(await verifyP256(sent.sessionPublicKey, 'm', await signP256(pending.key.privateKey, 'm'))).toBe(true);
     const other = await startStepUp(api, 'ENROLLMENT', WALLET);
     expect(other.key.publicJwk).not.toEqual(pending.key.publicJwk);
+  });
+
+  it('el código vence cuando dice el backend: «Vence a las HH:MM.» con la hora local', async () => {
+    const { api } = fakeApi();
+    const pending = await startStepUp(api, 'ENROLLMENT', WALLET);
+    expect(pending.expiresAt).toBe('2026-10-18T00:10:00Z');
+    expect(codeExpiryText(pending.expiresAt, 'America/Argentina/Buenos_Aires')).toBe('Vence a las 21:10.');
+    expect(codeExpiryText(pending.expiresAt, 'UTC')).toBe('Vence a las 00:10.');
   });
 
   it('con el código: PlatformSession con la session key del pedido y el reloj alineado al servidor', async () => {

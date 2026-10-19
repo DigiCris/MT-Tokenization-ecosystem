@@ -73,7 +73,9 @@ test('R interna: Password R, backups en Drive y archivo, prueba de control y Saf
     await page.getByLabel('Guardé el archivo fuera de este dispositivo').check();
     await page.getByRole('button', { name: 'Continuar' }).click();
     await page.getByRole('button', { name: 'Firmar y enviar' }).click();
-    await expect(page.getByRole('heading', { name: 'Tu clave R quedó enviada' })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('heading', { name: 'Dirección de tu clave R enviada' })).toBeVisible({
+      timeout: 60_000,
+    });
     const sent = getAddress((await page.locator('[data-recovery-key]').getAttribute('data-recovery-key')) ?? '');
     expect(sent).toBe(envelope.keyAddress);
     const link = new URL((await page.locator('[data-return-link]').getAttribute('data-return-link')) ?? '');
@@ -99,10 +101,10 @@ test('R externa: la wallet EIP-6963 firma la prueba de control con eth_signTyped
   await completeStepUp(page, state.account.email);
   await page.getByRole('button', { name: 'Usar una wallet externa' }).click();
   await page.locator('[data-connector="test.mtw.wallet"]').click();
-  await expect(page.getByText(`Clave R:`)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('Dirección de tu clave R:')).toBeVisible({ timeout: 60_000 });
   await expect(page.locator(`[data-address="${external.address}"]`).first()).toBeVisible();
   await page.getByRole('button', { name: 'Firmar y enviar' }).click();
-  await expect(page.getByRole('heading', { name: 'Tu clave R quedó enviada' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('heading', { name: 'Dirección de tu clave R enviada' })).toBeVisible({ timeout: 60_000 });
   expect(getAddress((await page.locator('[data-recovery-key]').getAttribute('data-recovery-key')) ?? '')).toBe(
     external.address,
   );
