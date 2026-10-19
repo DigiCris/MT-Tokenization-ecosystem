@@ -63,6 +63,13 @@ export const PreparedOperationSchema = z
     typedData: z.record(z.string(), z.unknown()).describe('Typed data EIP-712 de la SafeTx (eth_signTypedData_v4)'),
     decoded: DecodedSchema,
     requiresTwoFactor: z.boolean(),
+    twoFactorThreshold: z
+      .string()
+      .regex(/^\d+$/)
+      .nullable()
+      .describe(
+        'Umbral de 2FA de la policy vigente (unidades de 6 decimales) cuando la operación lo exige; null si no lo exige',
+      ),
     expiresAt: z.iso.datetime(),
   })
   .meta({ id: 'PreparedOperation' });
@@ -73,6 +80,8 @@ export const OperationStatusSchema = z
     walletId: z.uuid(),
     status: z.enum(OPERATION_STATUSES),
     operationType: z.enum(OPERATION_TYPES),
+    // La intención guardada al preparar (monto, token, destino…): la actividad la muestra aunque no haya transfers.
+    decoded: DecodedSchema,
     groupId: z.uuid().nullable(),
     safeNonce: z.string(),
     safeTxHash: Hex32,

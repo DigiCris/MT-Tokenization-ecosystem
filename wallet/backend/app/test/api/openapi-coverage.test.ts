@@ -244,6 +244,18 @@ describe('spec OpenAPI por listener', () => {
     },
   );
 
+  it.each(['WALLET', 'RECOVERY'] as const)(
+    '%s: el estado de una operación trae su intención y el prepare el umbral de 2FA (P18.MAN)',
+    async (client) => {
+      const schemas = (await spec(client)).components?.schemas as
+        Record<string, { properties?: Record<string, unknown>; required?: string[] }> | undefined;
+      expect(schemas?.OperationStatus?.properties?.decoded).toBeDefined();
+      expect(schemas?.OperationStatus?.required).toContain('decoded');
+      expect(schemas?.PreparedOperation?.properties?.twoFactorThreshold).toBeDefined();
+      expect(schemas?.PreparedOperation?.required).toContain('twoFactorThreshold');
+    },
+  );
+
   it.each(['WALLET', 'RECOVERY'] as const)('%s: ninguna ruta registrada queda fuera de la spec', async (client) => {
     const doc = await spec(client);
     const documented = new Set(

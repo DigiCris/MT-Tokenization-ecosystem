@@ -341,7 +341,15 @@ export class OperationService {
       { auditLock: true },
     );
     this.#d.metrics?.operationTransitions.inc({ to: 'CREATED' });
-    return preparedView(snapshot.chainId, wallet, input, prepared, twoFactor, expiresAt);
+    return preparedView(
+      snapshot.chainId,
+      wallet,
+      input,
+      prepared,
+      twoFactor,
+      expiresAt,
+      twoFactor ? snapshot.limits.twoFactorThreshold : null,
+    );
   }
 
   /** Inserta la operación CREATED con su intención canónica y el evento OPERATION_PROPOSED. */
@@ -1028,6 +1036,7 @@ function preparedView(
   row: { id: string; intent: CanonicalIntent; hash: Hex },
   twoFactor: boolean,
   expiresAt: Date,
+  twoFactorThreshold: bigint | null = null,
 ): PreparedOperation {
   return {
     operationId: row.id,
@@ -1041,6 +1050,7 @@ function preparedView(
     typedData: safeTxTypedDataJson(chainId, wallet.safe, row.intent.safeTx),
     decoded: row.intent.decoded,
     requiresTwoFactor: twoFactor,
+    twoFactorThreshold: twoFactorThreshold?.toString() ?? null,
     expiresAt: expiresAt.toISOString(),
   };
 }
@@ -1050,11 +1060,15 @@ export function operationView(
   history: { status: OperationStatus; at: string }[],
 ): OperationView {
   const confirmedStates: readonly OperationStatus[] = ['CONFIRMED', 'FINALIZED'];
+  // `decoded` se guardó al preparar (intención canónica): monto, token y destino aunque la operación no llegue a la
+  // cadena (cancelada, vencida) y sin depender de los transfers indexados.
+  const intent = op.canonical_intent as CanonicalIntent | null;
   return {
     id: op.id,
     walletId: op.wallet_id,
     status: op.status,
     operationType: op.operation_type,
+    decoded: intent?.decoded ?? {},
     groupId: op.group_id,
     safeNonce: op.safe_nonce,
     safeTxHash: bufferToHex(op.safe_tx_hash),

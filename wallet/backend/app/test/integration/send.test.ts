@@ -99,6 +99,7 @@ describe('send', () => {
       expect(prepared).toMatchObject({
         operationType: 'SEND',
         requiresTwoFactor: false,
+        twoFactorThreshold: null,
         decoded: { token, amount: (25n * UNIT).toString(), destination },
         safeTx: { to: address, value: '0', operation: 0 },
       });
@@ -113,6 +114,8 @@ describe('send', () => {
     const amount = 1_500n * UNIT;
     const prepared = await prepareSend('USDC', amount);
     expect(prepared.requiresTwoFactor).toBe(true);
+    // El umbral de la policy vigente (ADR-025: 1.000) para que la app diga desde qué monto se pide el segundo factor.
+    expect(prepared.twoFactorThreshold).toBe((1_000n * UNIT).toString());
     const early = await submitSignature(wallet, prepared.operationId, await submissionBody(wallet, prepared));
     expect(early.statusCode).toBe(403);
     expect(early.json()).toMatchObject({ code: 'TWO_FACTOR_REQUIRED' });
@@ -134,7 +137,12 @@ describe('send', () => {
     expect((await twoFactor(prepared.operationId, { code: wrong })).statusCode).toBe(400);
     const verified = await twoFactor(prepared.operationId, { code });
     expect(verified.statusCode, verified.body).toBe(200);
-    expect(verified.json<OperationView>()).toMatchObject({ id: prepared.operationId, status: 'CREATED' });
+    // El estado de la operación trae su intención (monto, token y destino) para la actividad.
+    expect(verified.json<OperationView>()).toMatchObject({
+      id: prepared.operationId,
+      status: 'CREATED',
+      decoded: { token: 'USDC', amount: amount.toString(), destination },
+    });
     const row = await operationRow(env, prepared.operationId);
     expect(row.two_factor_challenge_id).toBe(challenge.challengeId);
     const claims = await env.issuer.verifyChallengeCompletion(row.challenge_attestation ?? '');

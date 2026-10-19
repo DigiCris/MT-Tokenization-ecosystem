@@ -149,6 +149,11 @@ export interface PreparedOperation {
   typedData: ReturnType<typeof safeTxTypedDataJson>;
   decoded: DecodedView;
   requiresTwoFactor: boolean;
+  /**
+   * Umbral de 2FA del snapshot de policy vigente (unidades de 6 decimales) cuando la operación lo exige; null si no.
+   * Sólo para que la app diga desde qué monto se pide el segundo factor (lo decide la policy, no el frontend).
+   */
+  twoFactorThreshold: string | null;
   expiresAt: string;
 }
 
@@ -157,6 +162,8 @@ export interface OperationView {
   walletId: string;
   status: OperationStatus;
   operationType: OperationKind;
+  /** Lo que hace la operación, de su intención canónica (sólo para mostrar: monto, token, destino…). */
+  decoded: DecodedView;
   /** Grupo de swap (approve + swap) al que pertenece, si corresponde. */
   groupId: string | null;
   safeNonce: string;
