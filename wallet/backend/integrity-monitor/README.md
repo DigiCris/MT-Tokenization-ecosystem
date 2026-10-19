@@ -21,12 +21,12 @@ Ed25519 con claves propias fijadas en `MONITOR_OPERATOR_KEYS`, vencen a la hora)
 
 ## API interna (red `backend`, sin puertos publicados)
 
-| Ruta | Uso |
-|---|---|
-| `GET /v1/attestations` | atestaciones vigentes por app (el worker del backend las adjunta a cada co-firma) |
-| `GET /v1/status` | estado por app para los operadores (problemas encontrados, pausa, aprobaciones) |
-| `POST /v1/resume-approvals` | aprobación de reanudación firmada por un operador (`pnpm resume:approve`) |
-| `GET /health`, `GET /metrics` | health y métricas Prometheus (`mtw_integrity_status`, `mtw_integrity_paused`, …) |
+| Ruta                          | Uso                                                                               |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `GET /v1/attestations`        | atestaciones vigentes por app (el worker del backend las adjunta a cada co-firma) |
+| `GET /v1/status`              | estado por app para los operadores (problemas encontrados, pausa, aprobaciones)   |
+| `POST /v1/resume-approvals`   | aprobación de reanudación firmada por un operador (`pnpm resume:approve`)         |
+| `GET /health`, `GET /metrics` | health y métricas Prometheus (`mtw_integrity_status`, `mtw_integrity_paused`, …)  |
 
 ## Comandos
 
