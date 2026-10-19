@@ -46,7 +46,7 @@ test.beforeAll(async () => {
 });
 
 async function openAndVerify(page: Page): Promise<void> {
-  await expect(page.getByText('Sobre de la clave')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText('Sobre cifrado de la clave R')).toBeVisible({ timeout: 60_000 });
   await page.getByLabel('Password R').fill(sealed.passwordWords.join(' '));
   await page.getByRole('button', { name: 'Abrir el sobre' }).click();
   await page.getByLabel('Dirección de tu Safe (para verificar R en Base)').fill(wallet.safe);
@@ -73,7 +73,9 @@ test('desde el archivo cifrado: Password R, verificación en Base y sobre record
   await page.getByRole('link', { name: 'Rotaciones pendientes' }).click();
   await login(page, wallet.account.email);
   await expect(
-    page.getByRole('button', { name: `Usar el sobre recordado de la clave ${recovery.address.slice(0, 10)}…` }),
+    page.getByRole('button', {
+      name: `Usar el sobre recordado de la clave R con la dirección ${recovery.address.slice(0, 10)}…`,
+    }),
   ).toBeVisible();
 });
 

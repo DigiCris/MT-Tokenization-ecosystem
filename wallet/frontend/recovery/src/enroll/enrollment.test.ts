@@ -1,5 +1,6 @@
-// P19.T03: el fragmento del link de la Wallet, el objeto del enrollment firmado por la Enrollment Key (verificable con
-// su JWK, como lo verifica el backend), las firmas estrictas de wallets externas y el link de regreso [F-LNK-02].
+// P19.T03: el fragmento del enlace de la Wallet (con el secreto k del pedido, ADR-033), el objeto del enrollment
+// firmado por la Enrollment Key (verificable con su JWK, como lo verifica el backend), las firmas estrictas de wallets
+// externas y el enlace de regreso [F-LNK-02] con el mismo k.
 import { keccak256, recoverAddress, toBytes, type Hex } from 'viem';
 import { describe, expect, it } from 'vitest';
 import p256Vectors from '../../test/vectors/wire/p256.json' with { type: 'json' };
@@ -10,6 +11,7 @@ import {
   connectorIdFor,
   EnrollmentError,
   enrollmentObject,
+  enrollReturnPath,
   parseEnrollFragment,
   returnLink,
   signEnrollmentObject,
@@ -21,27 +23,56 @@ const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
 const R_KEY = toBytes(keccak256(toBytes('mtw-recovery-key')));
 const NONCE = '0xf52df41222748caa810259ddf3579c24ea2b5990ea5a188af2419aebe24629fa' as Hex;
 
-describe('link de la Wallet', () => {
-  it('lee eid y nonce del fragmento; rechaza lo que no es un pedido', () => {
-    expect(parseEnrollFragment(`#eid=9A8B7C6D-5E4F-4A3B-9C2D-1E0F9A8B7C6D&n=${NONCE}`)).toEqual({
-      enrollmentId: '9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d',
+describe('enlace de la Wallet', () => {
+  const EID = '9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d';
+  const K = 'q1Zs-0bM4_Lr8xWp2cYtNg';
+
+  it('lee eid, nonce y el secreto k del fragmento; rechaza lo que no es un pedido', () => {
+    expect(parseEnrollFragment(`#eid=9A8B7C6D-5E4F-4A3B-9C2D-1E0F9A8B7C6D&n=${NONCE}&k=${K}`)).toEqual({
+      enrollmentId: EID,
       nonce: NONCE,
+      secret: K,
     });
-    for (const bad of ['', '#eid=x&n=0x00', `#n=${NONCE}`, '#eid=9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d&n=0x12']) {
+    // Sin k el pedido sigue valiendo (la Wallet confirma la dirección a mano).
+    expect(parseEnrollFragment(`#eid=${EID}&n=${NONCE}`)).toEqual({ enrollmentId: EID, nonce: NONCE, secret: null });
+    for (const bad of [
+      '',
+      '#eid=x&n=0x00',
+      `#n=${NONCE}`,
+      `#eid=${EID}&n=0x12`,
+      // Un k que no es el de la Wallet (otro largo o caracteres fuera de base64url): el enlace no es válido.
+      `#eid=${EID}&n=${NONCE}&k=corto`,
+      `#eid=${EID}&n=${NONCE}&k=${K}A`,
+      `#eid=${EID}&n=${NONCE}&k=${K.slice(0, 21)}+`,
+    ]) {
       expect(parseEnrollFragment(bad)).toBeNull();
     }
   });
 
-  it('el link de regreso lleva el pedido y R (EIP-55) en el fragmento', () => {
-    const link = new URL(
-      returnLink('https://wallet.example', '9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d', addressOfKey(R_KEY)),
-    );
+  it('volver a esta pantalla después de Drive conserva el pedido con su k', () => {
+    const path = enrollReturnPath({ enrollmentId: EID, nonce: NONCE, secret: K });
+    expect(path.startsWith('/enroll#')).toBe(true);
+    expect(parseEnrollFragment(path.slice('/enroll'.length))).toEqual({ enrollmentId: EID, nonce: NONCE, secret: K });
+    expect(enrollReturnPath({ enrollmentId: EID, nonce: NONCE, secret: null })).not.toContain('k=');
+  });
+
+  it('el enlace de regreso lleva el pedido, R (EIP-55) y el mismo k en el fragmento', () => {
+    const link = new URL(returnLink('https://wallet.example', { enrollmentId: EID, secret: K }, addressOfKey(R_KEY)));
     expect(link.pathname).toBe('/onboarding/confirm-recovery');
     expect(link.search).toBe('');
     expect(Object.fromEntries(new URLSearchParams(link.hash.slice(1)))).toEqual({
-      eid: '9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d',
+      eid: EID,
       r: '0x7184D30100a188c9F869ccB6883392534ecD6C9d',
+      k: K,
     });
+    // Sin k en el enlace de ida, el de regreso tampoco lo trae (la Wallet confirma a mano).
+    const withoutSecret = new URL(
+      returnLink('https://wallet.example', { enrollmentId: EID, secret: null }, addressOfKey(R_KEY)),
+    );
+    expect(new URLSearchParams(withoutSecret.hash.slice(1)).has('k')).toBe(false);
+    expect(() => returnLink('https://wallet.example', { enrollmentId: EID, secret: K }, '0x1234')).toThrow(
+      EnrollmentError,
+    );
   });
 });
 

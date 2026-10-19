@@ -88,7 +88,7 @@ function Emergency({ ctx }: { ctx: RecoveryContext }) {
             build: (n) => removeDestinationCall(contracts.whitelist.address, destination, n),
           }),
         );
-        setReview({ title: 'Quitar el destino de tu whitelist', item });
+        setReview({ title: 'Revisá la baja del destino de tu whitelist', item });
       },
       [platform, walletId, safe, contracts.whitelist.address],
     ),
@@ -113,7 +113,7 @@ function Emergency({ ctx }: { ctx: RecoveryContext }) {
             build: (n) => noopCall(safe, targetNonce, n),
           });
         });
-        setReview({ title: 'Anular la operación pendiente con una NoOp', item });
+        setReview({ title: 'Revisá la anulación de la operación pendiente', item });
       },
       [platform, walletId, safe],
     ),
@@ -132,7 +132,7 @@ function Emergency({ ctx }: { ctx: RecoveryContext }) {
             build: (n) => revokeApprovalCall(pinned.chain.tokens[symbol].address, contracts.swapExecutor.address, n),
           }),
         );
-        setReview({ title: `Revocar el permiso del SwapExecutor sobre ${symbol}`, item });
+        setReview({ title: `Revisá la revocación del permiso del contrato de swap sobre ${symbol}`, item });
       },
       [platform, walletId, safe, contracts.swapExecutor.address],
     ),

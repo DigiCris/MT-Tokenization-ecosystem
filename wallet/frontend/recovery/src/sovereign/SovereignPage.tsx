@@ -96,10 +96,16 @@ function ActionFields({ type, state }: { type: ActionInput['type']; state: Sover
       <>
         {state.roles && (
           <p>
-            S actual: <AddressText address={state.roles.executor} />
+            Dirección de la clave S actual: <AddressText address={state.roles.executor} />
           </p>
         )}
-        <Field label="Nueva clave S′" name="newExecutor" autoComplete="off" spellCheck={false} required />
+        <Field
+          label="Dirección de la clave S′ nueva"
+          name="newExecutor"
+          autoComplete="off"
+          spellCheck={false}
+          required
+        />
         <p className="muted">
           Son dos operaciones en orden: reemplazar el owner en la Safe y actualizar los roles del Guard.
         </p>

@@ -69,7 +69,7 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
           build: (n) => proposeCall(timelock, 'U', checked.roles.userKey, draft.newKey, n),
         });
       });
-      setReview({ title: 'Proponer el reemplazo de tu clave de usuario (U)', item });
+      setReview({ title: 'Revisá la propuesta de reemplazo de tu clave de usuario (U)', item });
     }, [draft, platform, walletId, safe, timelock, checked.roles.userKey]),
   );
 
@@ -92,7 +92,7 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
           build: (n) => executeCall(safe, pending, owners, n),
         });
       });
-      setReview({ title: 'Ejecutar el reemplazo de tu clave de usuario (U)', item });
+      setReview({ title: 'Revisá la ejecución del reemplazo de tu clave de usuario (U)', item });
     }, [pending, live, walletId, platform, safe]),
   );
 
@@ -123,12 +123,13 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
       {error && <Notice tone="error">{error}</Notice>}
       {rotations === null && !error && <p className="muted">Leyendo tus rotaciones…</p>}
       <p>
-        U actual (leída del Guard): <AddressText address={checked.roles.userKey} />
+        Dirección de tu clave U actual (leída del Guard): <AddressText address={checked.roles.userKey} />
       </p>
       {pending ? (
         <div className="stack" data-pending-u={pending.id}>
           <p>
-            Propuesta en el timelock: U → <AddressText address={pending.newValue} />
+            Propuesta en el timelock: reemplazar U por la clave con la dirección{' '}
+            <AddressText address={pending.newValue} />
           </p>
           <p>
             {mature
@@ -145,7 +146,7 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
       ) : draft ? (
         <div className="stack" data-draft-u={draft.id}>
           <p>
-            La app Wallet registró esta clave U′ para reemplazar la tuya. Compará la dirección completa con la que
+            La app Wallet registró una clave U′ para reemplazar la tuya. Compará su dirección completa con la que
             muestra la Wallet:
           </p>
           <p>

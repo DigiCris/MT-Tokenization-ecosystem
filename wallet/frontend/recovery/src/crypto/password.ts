@@ -35,12 +35,23 @@ export function newPasswordR(wordlist: Wordlist, random: RandomBytes = randomByt
   return words;
 }
 
-/** Posiciones (0–4, distintas y ordenadas) que el usuario tiene que reingresar para confirmar que las anotó. */
-export function confirmationPositions(random: RandomBytes = randomBytes): number[] {
+/** `count` posiciones distintas entre `total` palabras (desde 0), uniformes y ordenadas. */
+export function randomPositions(total: number, count: number, random: RandomBytes = randomBytes): number[] {
+  if (!Number.isSafeInteger(total) || !Number.isSafeInteger(count) || count < 1 || count > total) {
+    throw new RangeError('posiciones fuera de rango');
+  }
   const picked = new Set<number>();
-  while (picked.size < CONFIRMATION_WORDS) picked.add(uniformIndex(PASSWORD_WORDS, random));
+  while (picked.size < count) picked.add(uniformIndex(total, random));
   return [...picked].sort((a, b) => a - b);
 }
+
+/** Posiciones (0–4, distintas y ordenadas) que el usuario tiene que reingresar para confirmar que las anotó. */
+export function confirmationPositions(random: RandomBytes = randomBytes): number[] {
+  return randomPositions(PASSWORD_WORDS, CONFIRMATION_WORDS, random);
+}
+
+/** Palabras del backup de 17 que se reingresan para darlo por anotado ([F-KEY-06].4), como en la Wallet. */
+export const BACKUP_CONFIRMATION_WORDS = 3;
 
 export function confirmsPassword(
   words: readonly string[],

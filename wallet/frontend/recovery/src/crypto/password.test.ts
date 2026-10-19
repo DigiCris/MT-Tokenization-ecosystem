@@ -1,12 +1,14 @@
 // P19.T02 [F-KEY-02]: Password R de 5 palabras uniformes (16 bits cada una), confirmación de 2 al azar y la forma
-// normalizada que entra a Argon2id.
+// normalizada que entra a Argon2id; y las 3 palabras al azar que confirman el backup de 17 ([F-KEY-06].4).
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  BACKUP_CONFIRMATION_WORDS,
   confirmationPositions,
   confirmsPassword,
   newPasswordR,
   normalizePasswordR,
   PasswordError,
+  randomPositions,
 } from './password.ts';
 import wordlistText from '../vendor/mtw-wordlist-v1.txt?raw';
 import { parseWordlist, type Wordlist } from './wordlist.ts';
@@ -61,6 +63,27 @@ describe('Password R', () => {
       Uint8Array.from([0, 0, 0, 6]),
     ];
     expect(confirmationPositions(() => draws.shift() ?? new Uint8Array(4))).toEqual([1, 3]);
+  });
+
+  it('backup de 17 palabras: 3 posiciones distintas entre 0 y 16 que cubren todas; fuera de rango falla', () => {
+    expect(BACKUP_CONFIRMATION_WORDS).toBe(3);
+    const seen = new Set<number>();
+    for (let i = 0; i < 400; i++) {
+      const positions = randomPositions(17, BACKUP_CONFIRMATION_WORDS);
+      expect(positions).toHaveLength(3);
+      expect(new Set(positions).size).toBe(3);
+      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+      expect(positions.every((p) => p >= 0 && p < 17)).toBe(true);
+      positions.forEach((p) => seen.add(p));
+    }
+    expect(seen.size).toBe(17);
+    for (const [total, count] of [
+      [17, 0],
+      [17, 18],
+      [1.5, 1],
+    ] as const) {
+      expect(() => randomPositions(total, count)).toThrow(RangeError);
+    }
   });
 
   it('acepta la confirmación sin distinguir mayúsculas ni espacios, y sólo con las palabras pedidas', () => {

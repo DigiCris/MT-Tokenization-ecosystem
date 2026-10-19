@@ -57,7 +57,10 @@ export async function startStepUp(api: AccountApi, scope: StepUpScope, walletId?
   return { challengeId: started.challengeId, key, scope, walletId: walletId ?? null, expiresAt: started.expiresAt };
 }
 
-/** «Vence a las HH:MM.»: la hora local en que vence el código del email (la que informa el backend, no un valor fijo). */
+/**
+ * «El código vence a las HH:MM.»: la hora local en que vence el código del email (la que informa el backend, no un valor
+ * fijo). Es el plazo del código, no el de la verificación (que dura 15 minutos desde que se completa).
+ */
 export function codeExpiryText(expiresAt: string, timeZone?: string): string {
   const time = new Date(expiresAt).toLocaleTimeString('es-AR', {
     hour: '2-digit',
@@ -65,7 +68,7 @@ export function codeExpiryText(expiresAt: string, timeZone?: string): string {
     hourCycle: 'h23',
     ...(timeZone === undefined ? {} : { timeZone }),
   });
-  return `Vence a las ${time}.`;
+  return `El código vence a las ${time}.`;
 }
 
 /** Con el código (y el segundo factor): la PlatformSession emitida tiene que ser la pedida (scope y wallet). */

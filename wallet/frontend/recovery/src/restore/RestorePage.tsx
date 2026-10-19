@@ -38,8 +38,8 @@ import { AddressText } from '../ui/AddressText.tsx';
 import { downloadText, readTextFile } from '../ui/download.ts';
 import { describeError } from '../ui/errors.ts';
 import { Field, formValue, Notice, TextAreaField, useAsyncAction } from '../ui/forms.tsx';
-import { QrFrames } from '../ui/QrCanvas.tsx';
 import { QrScanner } from '../ui/QrScanner.tsx';
+import { EnvelopeQr } from '../backup/EnvelopeQr.tsx';
 import { recoveryFromWords, resealRecovery, verifyRestoredRecovery, type WordsRecovery } from './restore.ts';
 
 type Source = 'drive' | 'file' | 'qr' | 'words';
@@ -71,7 +71,7 @@ function Restored({ unlocked, fromWords }: { unlocked: UnlockedRecovery; fromWor
     <section className="card stack" aria-labelledby="restored-title" data-restored={unlocked.address}>
       <h2 id="restored-title">Tu clave R quedó restaurada</h2>
       <Notice tone="success">
-        La clave <AddressText address={unlocked.address} /> es la clave de recuperación vigente de tu Safe en Base y
+        Es la clave de recuperación vigente de tu Safe en Base (dirección <AddressText address={unlocked.address} />) y
         quedó desbloqueada en esta pestaña.
       </Notice>
       {fromWords && (
@@ -120,7 +120,7 @@ function Restored({ unlocked, fromWords }: { unlocked: UnlockedRecovery; fromWor
             </button>
           ))}
       </div>
-      {frames && <QrFrames frames={frames} label="QR del sobre cifrado de R" />}
+      {frames && <EnvelopeQr frames={frames} printId="restored-qr-print" />}
       {(remember.error ?? upload.error ?? showQr.error) && (
         <Notice tone="error">{remember.error ?? upload.error ?? showQr.error}</Notice>
       )}
@@ -447,7 +447,7 @@ export function RestorePage() {
         <section className="card stack" aria-labelledby="restore-open-title">
           <h2 id="restore-open-title">Abrí el sobre</h2>
           <p>
-            Sobre de la clave <AddressText address={envelope.keyAddress} />
+            Sobre cifrado de la clave R con la dirección <AddressText address={envelope.keyAddress} />
           </p>
           <form
             className="stack"
@@ -481,7 +481,7 @@ export function RestorePage() {
         <section className="card stack" aria-labelledby="restore-reseal-title">
           <h2 id="restore-reseal-title">Clave R desde las palabras</h2>
           <p>
-            Clave <AddressText address={fromWords.address} />
+            Dirección de la clave R: <AddressText address={fromWords.address} />
           </p>
           {session.status !== 'account' ? (
             <>

@@ -81,7 +81,7 @@ test.afterAll(async () => {
 test('R cancela con su firma EIP-712 por el relay del backend', async () => {
   await propose('MAINTENANCE', /mantenimiento preventivo/);
   await page.locator('li[data-kind="S"]').getByRole('button', { name: 'Cancelar con mi firma' }).click();
-  await expect(page.getByText('Cancelación enviada: se confirma con el evento on-chain.')).toBeVisible();
+  await expect(page.getByText('Cancelación enviada: se confirma con el evento en Base.')).toBeVisible();
   await cancelled();
 });
 

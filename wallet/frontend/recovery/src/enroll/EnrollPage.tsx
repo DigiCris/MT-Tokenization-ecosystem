@@ -1,9 +1,10 @@
-// `/enroll` (P19.T03, [F-LNK-01/02]): desde el link o el QR de la Wallet, con el pedido en el fragmento (se saca de la
-// URL al leerlo). Login con la misma cuenta → estado del enrollment → step-up ENROLLMENT para esa wallet → Enrollment
-// Key (P-256 no extraíble) → R interna (Password R + backups) o wallet externa → prueba de control de R (EIP-712) y,
-// en un reemplazo, la KeyAcceptance de R′ → envío firmado por la Enrollment Key → link y QR de regreso con R. Lo que
-// viaja y se muestra es la dirección de R (la clave nunca sale de esta app): los textos lo dicen así, y piden copiarla en
-// la Wallet si está en otro dispositivo, porque la Wallet no la muestra hasta que coincide ([F-LNK-02]).
+// `/enroll` (P19.T03, [F-LNK-01/02]): desde el enlace o el QR de la Wallet, con el pedido en el fragmento (se saca de
+// la URL al leerlo). Login con la misma cuenta → estado del enrollment → step-up ENROLLMENT para esa wallet →
+// Enrollment Key (P-256 no extraíble) → R interna (Password R + backups) o wallet externa → prueba de control de R
+// (EIP-712) y, en un reemplazo, la KeyAcceptance de R′ → envío firmado por la Enrollment Key → enlace y QR de regreso
+// con R y el secreto `k` del pedido (ADR-033: sólo viaja en los fragmentos, nunca al backend). Lo que viaja y se
+// muestra es la dirección de R (la clave nunca sale de esta app): los textos lo dicen así, y piden copiarla en la Wallet
+// si está en otro dispositivo, porque la Wallet no la muestra hasta que coincide ([F-LNK-02]).
 import { useCallback, useEffect, useState } from 'react';
 import type { Address, Hex } from 'viem';
 import type { EnrollmentStatus, StorageFlags } from '../api/recovery-api.ts';
@@ -47,8 +48,17 @@ const STATUS_TEXT: Record<EnrollmentStatus['status'], string> = {
   CONFIRMED: 'Este pedido ya terminó: la Wallet confirmó la dirección de tu clave R.',
   EXPIRED: 'El pedido venció (dura 15 minutos): generá uno nuevo desde la app Wallet.',
   REJECTED: 'El pedido fue rechazado: generá uno nuevo desde la app Wallet.',
-  RETIRED: 'El pedido fue reemplazado por otro: usá el link más reciente de la app Wallet.',
+  RETIRED: 'El pedido fue reemplazado por otro: usá el enlace más reciente de la app Wallet.',
 };
+
+/** Un pedido rechazado: reemplazado por uno más nuevo o cancelado por la Wallet porque no pudo confirmar R. */
+function rejectedText(reason: EnrollmentStatus['rejectionReason']): string {
+  if (reason === 'SUPERSEDED') {
+    return 'La app Wallet generó un pedido más nuevo: usá el enlace o el QR más reciente de la app Wallet.';
+  }
+  if (reason === null || reason === undefined) return STATUS_TEXT.REJECTED;
+  return 'La app Wallet canceló este pedido porque no pudo confirmar la dirección de tu clave R. Generá uno nuevo desde la app Wallet: Recovery va a crear otra clave R, y los backups de la anterior ya no sirven.';
+}
 
 type KeyChoice =
   | { kind: 'internal'; unlocked: UnlockedRecovery; flags: StorageFlags }
@@ -150,8 +160,8 @@ export function EnrollPage() {
   if (link === null && enrollment === null) {
     return (
       <Notice tone="error">
-        Este link no trae un pedido de la Wallet. Abrí el link o escaneá el QR que muestra la app Wallet al activar
-        Recovery.
+        Este enlace no trae un pedido de la app Wallet. Abrí el enlace o escaneá el QR que muestra la app Wallet al
+        activar Recovery.
       </Notice>
     );
   }
@@ -170,7 +180,7 @@ export function EnrollPage() {
   if (loadError) return <Notice tone="error">{loadError}</Notice>;
   if (enrollment === null || link === null) return <p className="muted">Leyendo el pedido…</p>;
 
-  const recoveryLink = sent ? returnLink(appConfig.walletOrigin, link.enrollmentId, sent.recoveryKey) : null;
+  const recoveryLink = sent ? returnLink(appConfig.walletOrigin, link, sent.recoveryKey) : null;
   if (recoveryLink && sent) {
     return (
       <section className="card stack" aria-labelledby="enroll-done-title">
@@ -180,8 +190,9 @@ export function EnrollPage() {
           confirmarla.
         </p>
         <p>
-          Si la Wallet está en otro dispositivo, copiá ahí esta dirección completa, grupo por grupo (da igual mayúsculas
-          o minúsculas):
+          Si la Wallet está en este dispositivo, abrí «Volver a la Wallet»: la dirección se confirma sola en la pestaña
+          donde generaste el pedido. Si está en otro dispositivo, copiá ahí esta dirección completa, grupo por grupo (da
+          igual mayúsculas o minúsculas):
         </p>
         <p data-recovery-key={sent.recoveryKey}>
           <AddressText address={sent.recoveryKey} copy />
@@ -192,6 +203,10 @@ export function EnrollPage() {
           </a>
         </p>
         <QrCanvas text={recoveryLink} label="QR para volver a la Wallet con la dirección de tu clave R" />
+        <p className="muted">
+          El enlace y el QR sirven sólo para el pedido que abriste desde la app Wallet. No los mandes por chat ni por
+          email, y no abras enlaces de regreso que te lleguen por esos medios.
+        </p>
       </section>
     );
   }
@@ -201,7 +216,7 @@ export function EnrollPage() {
       <section className="card stack" aria-labelledby="enroll-status-title">
         <h1 id="enroll-status-title">Activar Recovery</h1>
         <Notice tone={enrollment.status === 'CONFIRMED' ? 'success' : 'warning'}>
-          {STATUS_TEXT[enrollment.status]}
+          {enrollment.status === 'REJECTED' ? rejectedText(enrollment.rejectionReason) : STATUS_TEXT[enrollment.status]}
         </Notice>
       </section>
     );

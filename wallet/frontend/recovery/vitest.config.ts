@@ -15,9 +15,10 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
       // Lo que sólo existe en el navegador se prueba en el navegador real (test/browser, Playwright, contra el stack
       // real desde P19): las pantallas y componentes (*.tsx), la entrada, los módulos virtuales del build
-      // (src/config/index.ts), los servicios de la app (src/app/**), IndexedDB, la descarga de archivos y la creación del
-      // worker con Trusted Types; el worker corre en su propio hilo (su lógica es src/workers/argon2-protocol.ts, probada
-      // acá). El chunk lazy de wallet externa (wagmi y conectores) se carga y se prueba en Chromium (test/browser).
+      // (src/config/index.ts), los servicios de la app (src/app/**), IndexedDB, la descarga e impresión de archivos y la
+      // creación del worker con Trusted Types; el worker corre en su propio hilo (su lógica es
+      // src/workers/argon2-protocol.ts, probada acá). El chunk lazy de wallet externa (wagmi y conectores) se carga y se
+      // prueba en Chromium (test/browser).
       exclude: [
         'src/**/*.test.{ts,tsx}',
         'src/**/*.d.ts',
@@ -25,6 +26,7 @@ export default defineConfig({
         'src/app/**',
         'src/storage/envelope-cache.ts',
         'src/ui/download.ts',
+        'src/ui/print.ts',
         'src/config/index.ts',
         'src/workers/*.worker.ts',
         'src/workers/argon2-client.ts',

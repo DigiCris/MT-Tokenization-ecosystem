@@ -43,6 +43,12 @@ export interface EnrollmentStatus {
   rType: 'INTERNAL' | 'EXTERNAL' | null;
   submittedAt: string | null;
   confirmedAt: string | null;
+  /**
+   * Sólo con REJECTED: SUPERSEDED (la Wallet pidió otro) o por qué lo canceló la Wallet ([F-LNK-02]). Un backend
+   * anterior no lo manda.
+   */
+  rejectionReason?:
+    'SUPERSEDED' | 'MANUAL_COMPARISON_FAILED' | 'RETURN_LINK_KEY_MISMATCH' | 'RETURN_LINK_UNVERIFIED' | null;
 }
 
 export interface EnrollmentObject {

@@ -105,7 +105,7 @@ export function UnlockRecovery({
                 setEnvelope(e);
               }}
             >
-              Usar el sobre recordado de la clave <code>{e.keyAddress.slice(0, 10)}…</code>
+              Usar el sobre recordado de la clave R con la dirección <code>{e.keyAddress.slice(0, 10)}…</code>
             </button>
           ))}
           <label className="field">
@@ -154,7 +154,7 @@ export function UnlockRecovery({
           }}
         >
           <p>
-            Sobre de la clave <AddressText address={envelope.keyAddress} />
+            Sobre cifrado de la clave R con la dirección <AddressText address={envelope.keyAddress} />
           </p>
           <Field
             label="Password R"

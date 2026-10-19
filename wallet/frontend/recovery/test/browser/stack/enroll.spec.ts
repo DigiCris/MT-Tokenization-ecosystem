@@ -1,9 +1,11 @@
-// P19.T03 contra los servicios reales y el fork: Recovery recibe el pedido de la Wallet por el link (fragmento), la
-// misma cuenta inicia sesión, verifica su identidad por email (PlatformSession ENROLLMENT) y registra la Enrollment
-// Key. R interna: Password R de 5 palabras anotada y confirmada, sobre `R.enc` cifrado en el navegador, backup en el
-// Drive de Recovery (API real) y en archivo, prueba de control EIP-712 y envío; R externa: una wallet EIP-6963 de prueba
-// firma la prueba de control con eth_signTypedData_v4 (nunca eth_sign/personal_sign). En los dos casos la Wallet (por
-// API) incorpora esa R, la Safe se despliega con R como recoveryKey del Guard y el link de regreso lleva la dirección.
+// P19.T03 contra los servicios reales y el fork: Recovery recibe el pedido de la Wallet por el enlace (fragmento, con el
+// secreto k del pedido, ADR-033), la misma cuenta inicia sesión, verifica su identidad por email (PlatformSession
+// ENROLLMENT) y registra la Enrollment Key. R interna: Password R de 5 palabras anotada y confirmada, sobre `R.enc`
+// cifrado en el navegador, backup en el Drive de Recovery (API real) y en archivo, prueba de control EIP-712 y envío;
+// R externa: una wallet EIP-6963 de prueba firma la prueba de control con eth_signTypedData_v4 (nunca
+// eth_sign/personal_sign). En los dos casos la Wallet (por API) incorpora esa R, la Safe se despliega con R como
+// recoveryKey del Guard y el enlace de regreso lleva la dirección y el mismo k (que nunca llega al backend).
+import { randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { getAddress, type Address } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
@@ -17,9 +19,12 @@ import { contract, walletOrigin } from './helpers/stack.ts';
 import { installTestWallet } from './helpers/test-wallet.ts';
 import { completeStepUp, login, writeDownPasswordR } from './helpers/ui.ts';
 
-function enrollUrl(state: Onboarding): string {
-  return `/enroll#${new URLSearchParams({ eid: state.enrollment.enrollmentId, n: state.enrollment.nonce }).toString()}`;
+/** El enlace de ida que arma la Wallet: el pedido y su secreto k (16 bytes en base64url) en el fragmento. */
+function enrollUrl(state: Onboarding, secret: string): string {
+  return `/enroll#${new URLSearchParams({ eid: state.enrollment.enrollmentId, n: state.enrollment.nonce, k: secret }).toString()}`;
 }
+
+const newSecret = () => randomBytes(16).toString('base64url');
 
 async function onchainRecoveryKey(safe: Address): Promise<Address> {
   const roles = await chain().readContract({
@@ -38,8 +43,14 @@ test('R interna: Password R, backups en Drive y archivo, prueba de control y Saf
 }) => {
   test.setTimeout(600_000);
   const state = await onboardUntilEnrollment('enroll-internal');
+  const secret = newSecret();
+  // Ningún pedido de la app (API, Drive) lleva k: sólo viaja en los fragmentos de los enlaces, que el navegador no manda.
+  const sentToApi: string[] = [];
+  page.on('request', (request) => {
+    if (!request.isNavigationRequest()) sentToApi.push(`${request.url()} ${request.postData() ?? ''}`);
+  });
   await answerGoogleConsent(page);
-  await page.goto(enrollUrl(state));
+  await page.goto(enrollUrl(state, secret));
   await expect(page.getByRole('heading', { name: 'Activar Recovery' })).toBeVisible();
   await login(page, state.account.email);
   // El link sigue vigente después de iniciar sesión y Drive se conecta antes de tener nada en memoria.
@@ -70,7 +81,7 @@ test('R interna: Password R, backups en Drive y archivo, prueba de control y Saf
     expect(new TextDecoder().decode(await drive.download(stored?.id ?? ''))).toBe(serializeRecoveryEnvelope(envelope));
     // Drive no cuenta como backup independiente de la plataforma: hace falta el archivo (o QR o palabras).
     await expect(page.getByText('Falta al menos un backup: archivo, QR o las 17 palabras.')).toBeVisible();
-    await page.getByLabel('Guardé el archivo fuera de este dispositivo').check();
+    await page.getByLabel(/^Guardé el archivo fuera de este dispositivo \(sin la Password R al lado\)\.$/).check();
     await page.getByRole('button', { name: 'Continuar' }).click();
     await page.getByRole('button', { name: 'Firmar y enviar' }).click();
     await expect(page.getByRole('heading', { name: 'Dirección de tu clave R enviada' })).toBeVisible({
@@ -80,7 +91,12 @@ test('R interna: Password R, backups en Drive y archivo, prueba de control y Saf
     expect(sent).toBe(envelope.keyAddress);
     const link = new URL((await page.locator('[data-return-link]').getAttribute('data-return-link')) ?? '');
     expect(link.origin).toBe(walletOrigin());
-    expect(decodeURIComponent(link.hash)).toContain(sent);
+    expect(Object.fromEntries(new URLSearchParams(link.hash.slice(1)))).toEqual({
+      eid: state.enrollment.enrollmentId,
+      r: sent,
+      k: secret,
+    });
+    expect(sentToApi.filter((entry) => entry.includes(secret))).toEqual([]);
     expect(passwordWords).toHaveLength(5);
 
     const active = await finishOnboarding(state, null);
@@ -96,7 +112,8 @@ test('R externa: la wallet EIP-6963 firma la prueba de control con eth_signTyped
   const log: string[] = [];
   await installTestWallet(page, external, { log });
   const state = await onboardUntilEnrollment('enroll-external');
-  await page.goto(enrollUrl(state));
+  const secret = newSecret();
+  await page.goto(enrollUrl(state, secret));
   await login(page, state.account.email);
   await completeStepUp(page, state.account.email);
   await page.getByRole('button', { name: 'Usar una wallet externa' }).click();
@@ -108,6 +125,8 @@ test('R externa: la wallet EIP-6963 firma la prueba de control con eth_signTyped
   expect(getAddress((await page.locator('[data-recovery-key]').getAttribute('data-recovery-key')) ?? '')).toBe(
     external.address,
   );
+  const link = new URL((await page.locator('[data-return-link]').getAttribute('data-return-link')) ?? '');
+  expect(new URLSearchParams(link.hash.slice(1)).get('k')).toBe(secret);
   expect(log).toContain('eth_signTypedData_v4');
   expect(log.filter((m) => m === 'eth_sign' || m === 'personal_sign')).toEqual([]);
 

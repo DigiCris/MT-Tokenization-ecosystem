@@ -441,11 +441,38 @@ legend {
   color: var(--mtw-color-recovery);
 }
 
-.qr {
+.qr,
+.qr-frame canvas {
   max-width: 100%;
   height: auto;
   image-rendering: pixelated;
   background: #ffffff;
+}
+
+.qr-frame {
+  margin: 0;
+}
+
+/* Impresión de una sección sola (las 17 palabras o el QR del sobre, [F-KEY-06].4): ui/print.ts marca el elemento. */
+@media print {
+  .printing-section * {
+    visibility: hidden;
+  }
+
+  .printing-section .print-target,
+  .printing-section .print-target * {
+    visibility: visible;
+  }
+
+  .printing-section .print-target {
+    position: absolute;
+    inset: 0 auto auto 0;
+  }
+
+  .printing-section .print-target button,
+  .printing-section .print-target label {
+    display: none;
+  }
 }
 
 .scanner__video {

@@ -60,7 +60,7 @@ export function StepUp({
       <p>
         Para {SCOPE_TEXT[scope]} {pending ? 'te mandamos' : 'te vamos a mandar'} un código por email
         {needsSecond ? ' y te pedimos tu segundo factor' : ''}.{pending ? ` ${codeExpiryText(pending.expiresAt)}` : ''}{' '}
-        La verificación dura 15 minutos.
+        Una vez verificado, tenés 15 minutos para terminar.
       </p>
       {!pending ? (
         <>

@@ -1,6 +1,7 @@
-// Password R nueva ([F-KEY-02]): la app genera 5 palabras, el usuario las anota y confirma 2 al azar. La usan la creación
-// de R (P19.T03) y el re-cifrado de R restaurada desde las 17 palabras (P19.T08).
-import { useCallback, useMemo, useState } from 'react';
+// Password R nueva ([F-KEY-02]): la app genera 5 palabras, el usuario las anota y confirma 2 al azar (posiciones nuevas
+// cada vez que pasa a confirmar; si se equivoca, puede volver a verlas). La usan la creación de R (P19.T03) y el
+// re-cifrado de R restaurada desde las 17 palabras (P19.T08).
+import { useCallback, useState } from 'react';
 import { confirmationPositions, confirmsPassword, newPasswordR } from '../crypto/password.ts';
 import { loadWordlist } from '../crypto/wordlist.ts';
 import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
@@ -22,7 +23,7 @@ export function NewPasswordR({
   const [words, setWords] = useState<string[] | null>(null);
   const [step, setStep] = useState<'write' | 'confirm'>('write');
   const [noted, setNoted] = useState(false);
-  const positions = useMemo(() => confirmationPositions(), []);
+  const [positions, setPositions] = useState<number[]>([]);
   const [typed, setTyped] = useState<Record<number, string>>({});
   const [confirmError, setConfirmError] = useState<string | null>(null);
 
@@ -47,7 +48,11 @@ export function NewPasswordR({
     return (
       <section className="stack" aria-labelledby="password-r-title">
         <h3 id="password-r-title">Tu Password R</h3>
-        <p>Anotá estas 5 palabras en orden. Sin ellas no vas a poder abrir el sobre cifrado de R.</p>
+        <Notice tone="warning">
+          Anotá estas 5 palabras en papel, en este orden. Están en inglés: copialas letra por letra, sin traducir ni
+          corregir. Son la Password R: sin ellas no vas a poder abrir el sobre cifrado de R (el archivo y el QR). MT
+          Wallet no las guarda ni puede recuperarlas, y no son la contraseña de tu cuenta ni tu Password U.
+        </Notice>
         <Words words={words} label="Password R" />
         <label className="check">
           <input
@@ -64,6 +69,9 @@ export function NewPasswordR({
           className="button"
           disabled={!noted}
           onClick={() => {
+            setPositions(confirmationPositions());
+            setTyped({});
+            setConfirmError(null);
             setStep('confirm');
           }}
         >
@@ -88,12 +96,14 @@ export function NewPasswordR({
           onConfirmed(words);
         }}
       >
+        <p>Para comprobar que la anotaste bien, escribí estas dos palabras.</p>
         {positions.map((i) => (
           <Field
             key={i}
             label={`Palabra ${String(i + 1)}`}
             name={`word-${String(i)}`}
             autoComplete="off"
+            autoCapitalize="none"
             spellCheck={false}
             required
             value={typed[i] ?? ''}
@@ -104,9 +114,22 @@ export function NewPasswordR({
           />
         ))}
         {(confirmError ?? error) && <Notice tone="error">{confirmError ?? error}</Notice>}
-        <button type="submit" className="button" disabled={pending}>
-          {pending ? 'Cifrando tu clave R…' : confirmLabel}
-        </button>
+        <div className="actions">
+          <button type="submit" className="button" disabled={pending}>
+            {pending ? 'Cifrando tu clave R…' : confirmLabel}
+          </button>
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={pending}
+            onClick={() => {
+              setNoted(false);
+              setStep('write');
+            }}
+          >
+            Volver a ver las palabras
+          </button>
+        </div>
       </form>
     </section>
   );

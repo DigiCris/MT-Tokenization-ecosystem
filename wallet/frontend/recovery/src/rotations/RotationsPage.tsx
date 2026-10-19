@@ -126,14 +126,14 @@ function Rotations({ ctx }: { ctx: RecoveryContext }) {
           const hash: Hex = await signer.sendTransaction({ to: timelock, data });
           setNotes((n) => ({
             ...n,
-            [proposal.id]: `Cancelación transmitida (${hash.slice(0, 10)}…): se confirma con el evento on-chain.`,
+            [proposal.id]: `Cancelación transmitida (${hash.slice(0, 10)}…): se confirma con el evento en Base.`,
           }));
           return;
         }
         const rotation = await rotationFor(proposal);
         if (!rotation) throw new Error('La plataforma no conoce esta propuesta: exportá la firma o transmitila vos.');
         await api.relayRotationCancellation(rotation.id, signature);
-        setNotes((n) => ({ ...n, [proposal.id]: 'Cancelación enviada: se confirma con el evento on-chain.' }));
+        setNotes((n) => ({ ...n, [proposal.id]: 'Cancelación enviada: se confirma con el evento en Base.' }));
       },
       [signer, timelock, safe, rotationFor],
     ),
@@ -156,7 +156,7 @@ function Rotations({ ctx }: { ctx: RecoveryContext }) {
             build: (n) => executeCall(safe, proposal, owners, n),
           });
         });
-        setReview({ title: `Ejecutar la rotación: ${KIND_TEXT[proposal.kind] ?? proposal.kind}`, item });
+        setReview({ title: `Revisá la ejecución de la rotación: ${KIND_TEXT[proposal.kind] ?? proposal.kind}`, item });
       },
       [rotationFor, platform, safe],
     ),
@@ -177,7 +177,7 @@ function Rotations({ ctx }: { ctx: RecoveryContext }) {
           build: (n) => proposeCall(timelock, 'S', checked.roles.executor, request.newKey, n),
         });
       });
-      setReview({ title: 'Proponer la rotación de la clave de la plataforma (S)', item });
+      setReview({ title: 'Revisá la propuesta de rotación de la clave de la plataforma (S)', item });
     }, [request, attested, platform, walletId, safe, timelock, checked.roles.executor]),
   );
 
@@ -208,7 +208,7 @@ function Rotations({ ctx }: { ctx: RecoveryContext }) {
           <h2 id="s-request-title">La plataforma pidió rotar su clave (S)</h2>
           <p>Motivo: {REASON_TEXT[request.requestReason ?? ''] ?? request.requestReason}</p>
           <p>
-            Clave nueva: <AddressText address={request.newKey} />
+            Dirección de la clave nueva: <AddressText address={request.newKey} />
           </p>
           {attested?.id === request.id && attested.error === null && (
             <Notice tone="success">La clave nueva está atestada por el signer de esta versión.</Notice>
@@ -237,8 +237,8 @@ function Rotations({ ctx }: { ctx: RecoveryContext }) {
             return (
               <li key={p.id} className="stack" data-proposal={p.id} data-kind={p.kind}>
                 <p>
-                  <strong>{KIND_TEXT[p.kind] ?? p.kind}</strong>: <AddressText address={p.oldValue} /> →{' '}
-                  <AddressText address={p.newValue} />
+                  <strong>{KIND_TEXT[p.kind] ?? p.kind}</strong>: de la dirección <AddressText address={p.oldValue} /> a
+                  la dirección <AddressText address={p.newValue} />
                 </p>
                 <p>
                   {mature

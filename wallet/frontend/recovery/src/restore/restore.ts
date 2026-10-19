@@ -26,7 +26,9 @@ export async function verifyRestoredRecovery(
 ): Promise<void> {
   const [roles, owners] = await Promise.all([readRoles(reader, guard, safe), safeOwners(reader, safe)]);
   if (!isAddressEqual(roles.recoveryKey, recoveryKey)) {
-    throw new RestoreError('Esta clave no es la clave de recuperación vigente de tu Safe (el rol R on-chain es otra).');
+    throw new RestoreError(
+      'Esta clave no es la clave de recuperación vigente de tu Safe (en Base, el rol R tiene otra dirección).',
+    );
   }
   if (!owners.some((owner) => isAddressEqual(owner, recoveryKey))) {
     throw new RestoreError('Esta clave no es owner de tu Safe.');

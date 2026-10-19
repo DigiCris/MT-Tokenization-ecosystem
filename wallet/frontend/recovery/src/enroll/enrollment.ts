@@ -1,7 +1,9 @@
-// Enrollment de R desde el link de la Wallet (P19.T03, [F-LNK-01/02], P12): el fragmento `#eid=<uuid>&n=<nonce>`
+// Enrollment de R desde el enlace de la Wallet (P19.T03, [F-LNK-01/02], P12): el fragmento `#eid=<uuid>&n=<nonce>&k=<k>`
 // (nunca llega a un servidor), el objeto del enrollment firmado por la Enrollment Key (P-256, sobre JCS), la prueba de
-// control de R (EIP-712, recupera exactamente R), la KeyAcceptance de R′ en un reemplazo y el link de regreso a la
-// Wallet con R para que la confirme.
+// control de R (EIP-712, recupera exactamente R), la KeyAcceptance de R′ en un reemplazo y el enlace de regreso a la
+// Wallet con R para que la confirme. `k` es el secreto del pedido que generó la Wallet (ADR-033): Recovery no lo usa ni
+// lo manda a su backend, sólo lo devuelve en el fragmento del enlace de regreso, y con él la Wallet sabe que ese enlace
+// lo armó esta app a partir de su pedido (un backend comprometido conoce el pedido y su R′, pero nunca `k`).
 import { getAddress, isAddress, type Address, type Hex } from 'viem';
 import type { EnrollmentObject, EnrollmentSubmission, StorageFlags } from '../api/recovery-api.ts';
 import { canonicalize } from '../api/jcs.ts';
@@ -10,6 +12,8 @@ import { hexToBytes, bytesToHex } from '../crypto/encoding.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NONCE = /^0x[0-9a-f]{64}$/;
+/** Secreto del pedido: 16 bytes (128 bits) en base64url sin relleno, como lo genera la Wallet. */
+const SECRET = /^[A-Za-z0-9_-]{22}$/;
 const SECP256K1_N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
 
 export class EnrollmentError extends Error {
@@ -19,20 +23,29 @@ export class EnrollmentError extends Error {
 export interface EnrollLink {
   enrollmentId: string;
   nonce: Hex;
+  /** `k` del enlace de ida (null si la Wallet no lo mandó: entonces el regreso sólo se confirma a mano). */
+  secret: string | null;
 }
 
-/** `#eid=<uuid>&n=<0x + 64 hex>` del link de la Wallet; null si el fragmento no es un pedido válido. */
+/**
+ * `#eid=<uuid>&n=<0x + 64 hex>&k=<22 base64url>` del enlace de la Wallet; null si el fragmento no es un pedido válido
+ * (también si trae un `k` mal formado). Sin `k` el pedido sigue valiendo: la Wallet lo confirma a mano.
+ */
 export function parseEnrollFragment(fragment: string): EnrollLink | null {
   const params = new URLSearchParams(fragment.replace(/^#/, ''));
   const enrollmentId = params.get('eid')?.toLowerCase() ?? '';
   const nonce = params.get('n')?.toLowerCase() ?? '';
+  const secret = params.get('k');
   if (!UUID.test(enrollmentId) || !NONCE.test(nonce)) return null;
-  return { enrollmentId, nonce: nonce as Hex };
+  if (secret !== null && !SECRET.test(secret)) return null;
+  return { enrollmentId, nonce: nonce as Hex, secret };
 }
 
 /** La ruta de esta pantalla con el pedido en el fragmento (para volver a ella después de conectar Drive). */
 export function enrollReturnPath(link: EnrollLink): string {
-  return `/enroll#${new URLSearchParams({ eid: link.enrollmentId, n: link.nonce }).toString()}`;
+  const params = new URLSearchParams({ eid: link.enrollmentId, n: link.nonce });
+  if (link.secret !== null) params.set('k', link.secret);
+  return `/enroll#${params.toString()}`;
 }
 
 function isoSeconds(date: Date): string {
@@ -123,11 +136,21 @@ export function submission(input: {
   };
 }
 
-/** [F-LNK-02]: link de regreso a la Wallet con R en el fragmento, para confirmarla en la pestaña que espera. */
-export function returnLink(walletOrigin: string, enrollmentId: string, recoveryKey: Address): string {
+/**
+ * [F-LNK-02]: enlace de regreso a la Wallet con R en el fragmento, para confirmarla en la pestaña que espera:
+ * `…/onboarding/confirm-recovery#eid=<id>&r=<R>&k=<k>`, con el mismo `k` del enlace de ida (sin `k`, la Wallet no lo
+ * acepta como enlace de esta app y la dirección se confirma a mano).
+ */
+export function returnLink(
+  walletOrigin: string,
+  link: Pick<EnrollLink, 'enrollmentId' | 'secret'>,
+  recoveryKey: Address,
+): string {
   if (!isAddress(recoveryKey)) throw new EnrollmentError('R inválida');
   const url = new URL('/onboarding/confirm-recovery', walletOrigin);
-  url.hash = new URLSearchParams({ eid: enrollmentId, r: getAddress(recoveryKey) }).toString();
+  const params = new URLSearchParams({ eid: link.enrollmentId, r: getAddress(recoveryKey) });
+  if (link.secret !== null) params.set('k', link.secret);
+  url.hash = params.toString();
   return url.toString();
 }
 

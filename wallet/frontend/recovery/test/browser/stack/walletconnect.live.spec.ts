@@ -81,7 +81,7 @@ test('rotación pedida por la plataforma: R propone y cancela con su firma por W
   await expect(page.locator('li[data-kind="S"]')).toBeVisible({ timeout: 240_000 });
   await backendKnowsProposal(wallet, 'S');
   await page.locator('li[data-kind="S"]').getByRole('button', { name: 'Cancelar con mi firma' }).click();
-  await expect(page.getByText('Cancelación enviada: se confirma con el evento on-chain.')).toBeVisible({
+  await expect(page.getByText('Cancelación enviada: se confirma con el evento en Base.')).toBeVisible({
     timeout: 120_000,
   });
   await expect.poll(() => activeProposal(wallet.safe, 'S'), { timeout: 120_000 }).toMatch(/^0x0{64}$/);

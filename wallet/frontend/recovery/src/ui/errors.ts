@@ -22,7 +22,7 @@ const API_TEXT: Record<string, string> = {
   KEY_NOT_ALLOWED: 'Esa clave no se puede usar como clave de recuperación (ya está en uso o no es una cuenta común).',
   SIGNATURE_INVALID: 'La firma no es válida para esta operación.',
   POLICY_REJECTED: 'Las reglas de la plataforma no permiten esta operación.',
-  GUARD_WOULD_REVERT: 'El Guard on-chain rechazaría esta operación.',
+  GUARD_WOULD_REVERT: 'El Guard de tu Safe rechazaría esta operación.',
   OPERATION_NOT_PENDING: 'La operación ya no está pendiente.',
   OPERATION_BUSY: 'La operación se está procesando: probá de nuevo en unos segundos.',
   NOT_FOUND: 'No se encontró lo pedido.',
