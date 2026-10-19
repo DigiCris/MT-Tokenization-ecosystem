@@ -4,3 +4,5 @@ saveExact: true
 strictPeerDependencies: true
 minimumReleaseAge: 10080
 strictDepBuilds: true
+# Ningún script de instalación de terceros (allowlist explícita y vacía).
+allowBuilds: {}
