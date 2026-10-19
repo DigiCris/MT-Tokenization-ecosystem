@@ -136,10 +136,35 @@ describe('fuerza bruta por cuenta', () => {
 
   it('un email inexistente tiene el mismo contador y la misma espera (sin enumeración)', async () => {
     const email = randomEmail('fantasma');
-    for (let i = 0; i < THROTTLE.freeFailures; i++) expect((await login(email, randomPassword())).statusCode).toBe(401);
-    const blocked = await login(email, randomPassword());
-    expect(blocked.statusCode).toBe(429);
-    expect(retryAfter(blocked)).toBe(1);
+    let lastFailureStart = performance.now();
+    for (let i = 0; i < THROTTLE.freeFailures; i++) {
+      lastFailureStart = performance.now();
+      expect((await login(email, randomPassword())).statusCode).toBe(401);
+    }
+    // La misma espera que una cuenta existente (1 s desde el 5.º fallo, después 2 s, …). Como en el test de la cuenta,
+    // con la máquina cargada el intento pudo procesarse con la espera ya vencida: sólo vale si desde que empezó el fallo
+    // anterior pasó al menos la penalidad, y ese intento es el fallo siguiente.
+    for (let failure = THROTTLE.freeFailures + 1; ; failure++) {
+      const penalty = 2 ** (failure - 1 - THROTTLE.freeFailures);
+      const attemptStart = performance.now();
+      const blocked = await login(email, randomPassword());
+      const blockedAt = performance.now();
+      if (blocked.statusCode === 401) {
+        expect(
+          (blockedAt - lastFailureStart) / 1000,
+          `fallo ${String(failure)} durante la espera`,
+        ).toBeGreaterThanOrEqual(penalty);
+        expect(failure, 'la espera nunca se pudo observar').toBeLessThan(THROTTLE.softLockFailures);
+        lastFailureStart = attemptStart;
+        continue;
+      }
+      expect(blocked.statusCode).toBe(429);
+      expect(retryAfter(blocked)).toBeLessThanOrEqual(penalty);
+      expect(retryAfter(blocked)).toBeGreaterThanOrEqual(
+        Math.max(1, Math.ceil(penalty - (blockedAt - lastFailureStart) / 1000)),
+      );
+      break;
+    }
   });
 });
 
