@@ -2289,13 +2289,13 @@ Checks del preflight:
 
 #### CHECKPOINT P16
 
-- [ ] build pasa: `pnpm --dir frontend/wallet build && pnpm --dir frontend/recovery build` (reproducibles).
-- [ ] tests pasan: `pnpm --dir frontend/wallet test && pnpm --dir frontend/recovery test`.
-- [ ] security tests pasan: `pnpm --dir frontend/wallet test:browser -- security && pnpm --dir frontend/recovery test:browser -- security && bash ci/scripts/ci-security.sh`.
+- [x] build pasa: `pnpm --dir frontend/wallet build && pnpm --dir frontend/recovery build` (reproducibles).
+- [x] tests pasan: `pnpm --dir frontend/wallet test && pnpm --dir frontend/recovery test`.
+- [x] security tests pasan: `pnpm --dir frontend/wallet test:browser -- security && pnpm --dir frontend/recovery test:browser -- security && bash ci/scripts/ci-security.sh`.
 - [ ] integración anterior sigue funcionando: `pnpm ci:local`.
-- [ ] documentación actualizada: `node scripts/check-docs.mjs`.
-- [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
-- [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
+- [x] documentación actualizada: `node scripts/check-docs.mjs`.
+- [x] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
+- [x] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
 **Condición para pasar a P17/P19:** CSP/TT sin violaciones y builds reproducibles.
 
@@ -2351,13 +2351,13 @@ Checks del preflight:
 
 #### CHECKPOINT P17
 
-- [ ] build pasa: `pnpm --dir frontend/wallet build`.
-- [ ] tests pasan: `pnpm --dir frontend/wallet test && pnpm --dir frontend/wallet test:browser`.
-- [ ] security tests pasan: `pnpm --dir frontend/wallet test:browser -- security`.
+- [x] build pasa: `pnpm --dir frontend/wallet build`.
+- [x] tests pasan: `pnpm --dir frontend/wallet test && pnpm --dir frontend/wallet test:browser`.
+- [x] security tests pasan: `pnpm --dir frontend/wallet test:browser -- security`.
 - [ ] integración anterior sigue funcionando: `pnpm ci:local`.
-- [ ] documentación actualizada: `node scripts/check-docs.mjs` (ADR-012, ADR-013).
-- [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
-- [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
+- [x] documentación actualizada: `node scripts/check-docs.mjs` (ADR-012, ADR-013).
+- [x] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
+- [x] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
 **Condición para pasar a P18:** flujo de cuenta + U + desbloqueo verde contra backend local.
 
@@ -2421,13 +2421,13 @@ Checks del preflight:
 
 #### CHECKPOINT P18
 
-- [ ] build pasa: `pnpm --dir frontend/wallet build`.
-- [ ] tests pasan: `pnpm --dir frontend/wallet test && pnpm --dir frontend/wallet test:browser`.
-- [ ] security tests pasan: `pnpm --dir frontend/wallet test:browser -- security`.
+- [x] build pasa: `pnpm --dir frontend/wallet build`.
+- [x] tests pasan: `pnpm --dir frontend/wallet test && pnpm --dir frontend/wallet test:browser`.
+- [x] security tests pasan: `pnpm --dir frontend/wallet test:browser -- security`.
 - [ ] integración anterior sigue funcionando: `pnpm ci:local`.
-- [ ] documentación actualizada: `node scripts/check-docs.mjs`.
-- [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
-- [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
+- [x] documentación actualizada: `node scripts/check-docs.mjs`.
+- [x] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
+- [x] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
 **Condición para pasar a P20:** Wallet completa en local (P19 puede haberse completado en paralelo).
 
@@ -2485,13 +2485,13 @@ Checks del preflight:
 
 #### CHECKPOINT P19
 
-- [ ] build pasa: `pnpm --dir frontend/recovery build`.
-- [ ] tests pasan: `pnpm --dir frontend/recovery test && pnpm --dir frontend/recovery test:browser`.
-- [ ] security tests pasan: `pnpm --dir frontend/recovery test:browser -- security && pnpm --dir frontend/recovery vitest run test/bundle-graph.test.ts`.
+- [x] build pasa: `pnpm --dir frontend/recovery build`.
+- [x] tests pasan: `pnpm --dir frontend/recovery test && pnpm --dir frontend/recovery test:browser`.
+- [x] security tests pasan: `pnpm --dir frontend/recovery test:browser -- security && pnpm --dir frontend/recovery vitest run test/bundle-graph.test.ts`.
 - [ ] integración anterior sigue funcionando: `pnpm ci:local`.
-- [ ] documentación actualizada: `node scripts/check-docs.mjs`.
-- [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
-- [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
+- [x] documentación actualizada: `node scripts/check-docs.mjs`.
+- [x] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
+- [x] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
 **Condición para pasar a P20:** enrollment, recovery de U, cancelación y modo soberano verdes en local.
 
@@ -2539,13 +2539,13 @@ Checks del preflight:
 
 #### CHECKPOINT P20
 
-- [ ] build pasa: `pnpm --dir backend/integrity-monitor build`.
-- [ ] tests pasan: `pnpm --dir backend/integrity-monitor test && pnpm --dir backend/signer vitest run test/policy/integrity.test.ts`.
-- [ ] security tests pasan: `bash ci/scripts/ci-security.sh`.
+- [x] build pasa: `pnpm --dir backend/integrity-monitor build`.
+- [x] tests pasan: `pnpm --dir backend/integrity-monitor test && pnpm --dir backend/signer vitest run test/policy/integrity.test.ts`.
+- [x] security tests pasan: `bash ci/scripts/ci-security.sh`.
 - [ ] integración anterior sigue funcionando: `pnpm ci:local`.
-- [ ] documentación actualizada: `node scripts/check-docs.mjs` (runbook de integridad).
-- [ ] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
-- [ ] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
+- [x] documentación actualizada: `node scripts/check-docs.mjs` (runbook de integridad).
+- [x] no secrets committed: `gitleaks git --redact` sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío.
+- [x] git status revisado: `git status --short` vacío tras el commit; `git push origin feat/walletWeb/cmarchese`; hash anotado en §13.
 
 **Condición para pasar a P21:** pausa por integridad demostrada en local.
 
@@ -3338,6 +3338,7 @@ Agregar una fila por sesión de trabajo, por cada CHECKPOINT y ante cualquier bl
 | 2026-10-19 | CI de P16–P18 (GitHub) | Completado | `8c0324d`, `fa18279`, `ce9631d`, `3d62c49`, `febc707`, `cab9810`, `d01de20`, `ad9e356`, `3f34018`, `3d5c859`, `8d9ef95`, `9cb09a9` | Los workflows quedaron en verde después de corregir fallas intermitentes del fork compartido en CI (ninguna era del producto, salvo `febc707` y `8d9ef95`): presupuesto de CU/s del RPC del fork repartido entre jobs (`docs/CI.md#presupuesto-del-rpc-del-fork`) y log redactado de Anvil por archivo como artefacto; receipts consultados directo (viem dejaba de pedirlos); timeouts de los tests de fork a 3 min; `unrouteAll({behavior:'wait'})` en los specs que interceptan; copia de los ABIs de los frontends verificada contra `contracts/out-abi`. Correcciones del producto: (1) el gas tank recarga a una S trabada por falta de gas (`febc707`); (2) el signer reintenta las fallas transitorias del nodo en simulación y estimación (`3d5c859`), con un presupuesto total de 45 s por operación y un `SELECT 1` antes de cada lectura dentro de la transacción de co-firma, para que un RPC lento termine en `RPC_UNAVAILABLE` y nunca corte la transacción por `idle_in_transaction_session_timeout` (`8d9ef95`). Un intento de compartir un único Anvil upstream entre los tests del backend se descartó: forkear de un Anvil local cuelga el tag `safe` y no evitó las fallas de fetch del upstream. |
 | 2026-10-18 | P19 — Frontend Recovery | Completado | `f5c49a5`, `3febbe2`, `f15cd44`, `0bf9100` | Recovery completa sobre la base de P16, sin compartir runtime con Wallet: cuenta y step-up (email OTP + TOTP) con PlatformSession `ENROLLMENT`/`RECOVERY` y session key propia; enrollment desde el link/QR con R interna (Password R de 5 palabras, sobre `R.enc` con AAD, backups en el Drive de Recovery, archivo, QR y 17 palabras) o wallet externa (chunk lazy), prueba de control EIP-712 con `eth_signTypedData_v4` y link de regreso [F-LNK-02]; recuperación de U (U′ completa a la vista, R+S proponen, cuenta regresiva on-chain y ejecución a las 48 h); rotaciones (pendientes on-chain; cancelar por relay del backend, con `cancelWithSignature` pagado por la wallet externa o exportando la firma para cualquier relayer; ejecutar maduras); modo soberano con la plataforma apagada (acciones tipificadas [W-05], nonce on-chain, firma de R, co-firma de U por archivo o QR, combinación ordenada y transmisión con una wallet externa o calldata para cualquier relayer); restauración de R (Drive en un dispositivo nuevo, archivo, QR o 17 palabras, verificada contra el rol R on-chain; Password R nueva y re-cifrado al restaurar por palabras); `/emergency` (quitar destinos, NoOp que ocupa el nonce de una operación firmada, revocar el permiso residual del SwapExecutor) y `/migration` (Safe destino verificada on-chain antes de firmar `MIGRATION_TRANSFER`). Herramienta de salida soberana `tools/sovereign-exit/` (P19.T09): un único HTML con JS y CSS inline y CSP por hashes, build reproducible y `SHA256SUMS` firmado con Ed25519; descifra `U.enc`/`R.enc` o restaura desde 17 palabras, arma la SafeTx soberana, firma con U y R, combina y emite la calldata o la transmite con la cuenta que elija el usuario. Tests: Vitest de Recovery 42 archivos / 256 tests (cobertura 95,44 % sentencias, 89,14 % ramas, 95,45 % funciones, 97,64 % líneas; umbral de 90 % de líneas por módulo de lógica); grafo del bundle 4/4; Drive real 3/3; Playwright 16 sin backend (headers, Trusted Types, requests) + 28 contra el stack aislado y el fork (enrollment interno y externo, recuperación de U con warp de 48 h, rotaciones ×4, emergencia ×4, migración, restauración ×5 incluida Drive real, modo soberano ×2 con el backend detenido de verdad, conectores ×6, WalletConnect real ×2 y terceros en todas las pantallas); herramienta: 36 tests (cobertura de líneas 91,93 %) y E2E en el fork con backend y frontends apagados (transferencia soberana U por sobre + R por 17 palabras). Conectores probados (P19.T07, `docs/CONNECTORS.md`): EIP-6963 genérico y MetaMask (`io.metamask`), `injected`, Coinbase Wallet sólo EOA con la extensión y WalletConnect por el relay real de Reown con QR propio; ninguno genera violaciones de CSP/TT ni requests a terceros fuera de los permitidos. P19.MAN (R-14): `test:browser -- walletconnect.live` en verde el 2026-10-18 — una wallet headless (`@reown/walletkit` 1.6.0) conectada por el relay real firmó la prueba de control (R de la Safe) y la cancelación de una rotación pedida por la plataforma en el fork. Cambios respecto del planner: (1) el conector `metaMask` (MetaMask Connect, `@metamask/connect-evm`) queda excluido: habla con la extensión por un transporte propio, lee del RPC público de Base y manda analítica, fuera de la CSP; MetaMask sigue soportada por EIP-6963 y WalletConnect (documentado en `CONNECTORS.md`, como pide P19.T07); (2) Coinbase Wallet por su SDK sólo con la extensión (sin ella abre un popup que la COOP `same-origin` corta); (3) WalletConnect sin el iframe de Verify (`frame-src 'none'` y COEP) y sin telemetría: en `connect-src` sólo el relay; (4) el Drive de prueba de Recovery usa las mismas credenciales `GOOGLE_DRIVE_TEST_*` que Wallet (cliente del proyecto de Google Cloud de Wallet): no hacen falta `GOOGLE_DRIVE_TEST_RECOVERY_*`; (5) `scripts/stack/stack.mjs` suma `backend-stop`/`backend-start` para probar el modo soberano con la API, el worker y el gas tank detenidos; (6) el test estático de requests admite la API de Recovery del entorno (el inicio consulta la sesión), nunca otro host; (7) grupo de `codeSplitting` de rolldown para que la entrada no cargue código de WalletConnect; (8) el commit de P19 no repite el nombre `feat(recovery): add independent recovery frontend`, que ya usó el scaffold de P16 (`e28c606`). |
 | 2026-10-19 | P20 — Integridad de releases y pausa de cooperación de S | Completado (P20.MAN en la fila de checks manuales) | `0e2ad23`, `672f786`, `9cb09a9` | P20.T01: claves Ed25519 de release distintas por app y por entorno; públicas fijadas en `config/release-keys/` (producción y `staging/`), privadas sólo como `WALLET_RELEASE_SIGNING_KEY`/`RECOVERY_RELEASE_SIGNING_KEY` de los environments `wallet-staging`/`wallet-production` (tags `wallet-v*`) y, para los ensayos locales, en `~/.config/mtw/secrets/<entorno>/` (0600); `node scripts/check-release-keys.mjs` en el gate de seguridad. P20.T02: `backend/integrity-monitor` (contenedor propio, clave de atestación propia, sin credenciales de otros componentes): cada 60 s por app verifica firma del manifest con la clave fijada, JCS, cada archivo por SHA-256 y tamaño sin seguir redirecciones, `/` = `index.html` del manifest, SRI y recursos del documento con parse5 (sin scripts inline, `on*`, `<base>` ni embebidos), headers por ruta contra `security-headers.json` del release y 403 a service workers; emite `IntegrityAttestation` [W-03] (5 min); varias públicas por app para el solapamiento de una rotación. P20.T02.a: `wallet-integrity-offhost` (cada 15 min desde `main`, `check-once` con alerta por email/Mailgun y webhook); simulacro en el runner (`vite preview` de Recovery con un archivo alterado → MISMATCH y alerta enviada) en verde el 2026-10-19. P20.T03: el signer coopera sólo con atestaciones vigentes (≤ 5 min) de las dos apps; MISMATCH pausa en el acto y un OK anterior reenviado no la levanta; UNREACHABLE con 15 min de gracia desde el último OK; sin atestación → pausa (`COOPERATION_PAUSED`, reintentable); el backend adjunta las atestaciones verificadas a cada co-firma, registra `integrity_status`, audita `INTEGRITY_MISMATCH` y `COOPERATION_PAUSED/RESUMED` una sola vez aun con varios workers y expone `GET /platform/status`, que muestra el aviso de pausa en Wallet. P20.T04: reanudación sólo con el release otra vez OK y dos aprobaciones Ed25519 de operadores distintos para ese release exacto (vencen a la hora; pausa persistida en disco). Tests: monitor 34 (cobertura de líneas 95,4 %), compuerta del signer 32 (con el vector compartido) e integración de la pausa contra el fork, backend 7 (cliente, registro con Postgres real y ruta), spec del aviso en Wallet; runbook `docs/runbooks/integrity-mismatch.md`. Cambio respecto del planner: el backend obtiene las atestaciones del monitor y las adjunta a cada pedido de co-firma (el signer no tiene red hacia el monitor); con un atacante en el backend la pausa se demora a lo sumo la vigencia de un OK (5 min). |
+| 2026-10-19 | CHECKPOINT P16 a P20 | Completado salvo `ci:local` (en curso) | `5113103` | Marcados con evidencia: build, tests y security tests en verde en GitHub (wallet-frontend-wallet, wallet-frontend-recovery, wallet-backend, wallet-signer, wallet-sovereign-exit, wallet-contracts, wallet-security, wallet-repro-build sobre `01492fb`/`58e90af`), `node scripts/check-docs.mjs` → DOCS OK, `gitleaks git --redact` con la configuración del repo sin hallazgos y `git ls-files wallet | grep -E '(^|/)\.env$|\.secrets/'` vacío, commits pusheados con su hash en las filas de cada fase. Pendiente: la casilla «integración anterior sigue funcionando: `pnpm ci:local`» de P16–P20, con una corrida limpia sobre el HEAD lanzada el 2026-10-19 (las últimas corridas locales sobre `953af15` y `ce9631d` fallaron por las intermitencias del fork que corrigen `3d5c859`/`8d9ef95`). |
 | 2026-10-19 | P21 — Entorno local integrado y seed determinístico | En curso (P21.MAN y P21.TST en `wallet-local-env`) | `77f972a`, `f95df20` | `pnpm install` → `scripts/install-all.mjs` (cada proyecto con su lockfile congelado + Soldeer verificado); `pnpm dev` (`scripts/dev.mjs`: preflight rápido, compose, migraciones, deploy-local, policy local firmada, shards, seed, procesos con prefijo y apagado ordenado); `pnpm dev:healthcheck`; `pnpm dev:fresh` (fork al bloque fijado, bases recreadas, deploy) probado en local el 2026-10-19 (`VerifyDeployment` con 123 verificaciones); seed completo off-chain sobre la Safe determinística (salt del producto para un walletId derivado de `LOCAL_SEED`, destino whitelisteado por U+S y activado con warp de 24 h, S importada en el shard de desarrollo con su atestación, wallet ACTIVE después de la verificación normal, OPAQUE de U, sobres `U.enc`/`R.enc` con el crypto de cada app) y `pnpm seed:check`; runbook `docs/runbooks/local-environment.md`. En la máquina de desarrollo `pnpm dev` no se pudo completar: el preflight falló sólo por red (Etherscan inaccesible) y los puertos 8090/8091 los tienen los shards de desarrollo previos (no se tocan); la validación desde un clon limpio corre en GitHub (`wallet-local-env`). Ojo: `pnpm dev:fresh` recreó las bases `mtw_signer_dev`/`mtw_signer_platform_dev` y los keystores locales de esos shards previos (son de desarrollo, sobre el fork). |
 
 ### 13.1 Fuera del planner: despliegue final y servicios
