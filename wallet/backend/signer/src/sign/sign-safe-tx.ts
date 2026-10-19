@@ -13,7 +13,7 @@
 //  8. firma S de la SafeTx → simulación de execTransaction → firma S de la tx EIP-1559 → registro → respuesta.
 //
 // Cualquier falla devuelve un error tipificado y la firma S nunca sale del signer.
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { z } from 'zod';
 import { bytesToHex, type Hex, isHex } from '../crypto/bytes.ts';
 import { checksumAddress, isAddress, sameAddress, type Address } from '../crypto/keccak.ts';
@@ -322,7 +322,12 @@ export class SignSafeTxService {
         { signer: state.roles.executor, signature: sSignature.bytes },
       ]);
       const data = execTransactionData(req.safeTx, signatures);
-      const execution = await this.#execution(req, state.roles.executor, data, snapshot);
+      // La transacción sigue abierta mientras se lee la cadena: un SELECT entre llamadas mantiene cada espera por debajo
+      // del idle_in_transaction_session_timeout (cada llamada está acotada por el presupuesto del RPC, chain/rpc.ts).
+      const keepAlive = async () => {
+        await sql`SELECT 1`.execute(trx);
+      };
+      const execution = await this.#execution(req, state.roles.executor, data, snapshot, keepAlive);
       const params = {
         chainId: snapshot.chainId,
         nonce: req.execution.accountNonce,
@@ -401,6 +406,7 @@ export class SignSafeTxService {
     executor: Address,
     data: Hex,
     snapshot: PolicySnapshot,
+    keepAlive: () => Promise<void>,
   ): Promise<{ gasLimit: bigint }> {
     const { rpc } = this.#deps.reader;
     try {
@@ -411,9 +417,11 @@ export class SignSafeTxService {
       const call = { from: executor, to: req.safe, data };
       let estimate: bigint;
       try {
+        await keepAlive();
         const result = await rpc.simulate(call);
         if (BigInt(result.length > 2 ? result : '0x0') !== 1n)
           throw new SignerError('SIMULATION_REVERTED', 'success = false');
+        await keepAlive();
         estimate = await rpc.estimateGas(call);
       } catch (error) {
         if (error instanceof CallRevertedError) throw new SignerError('SIMULATION_REVERTED');

@@ -162,6 +162,25 @@ describe('modo dual con fallas en un proveedor', () => {
     proxyB.setMode({ kind: 'pass' });
   });
 
+  it('presupuesto de reintentos: un proveedor colgado no hace esperar más que el presupuesto', async () => {
+    proxyB.setMode({ kind: 'timeout' });
+    const client = new SignerRpc({
+      primaryUrl: proxyA.url,
+      secondaryUrl: proxyB.url,
+      mode: 'dual',
+      timeoutMs: 300,
+      retries: 10,
+      backoffMs: 10,
+      retryBudgetMs: 1_000,
+    });
+    for (const operation of [() => client.chainId(), () => client.simulate(transfer()), () => client.snapshotBlock()]) {
+      const started = Date.now();
+      expect(await problem(operation)).toBe('RPC_UNAVAILABLE');
+      expect(Date.now() - started).toBeLessThan(1_300);
+    }
+    proxyB.setMode({ kind: 'pass' });
+  });
+
   it('error interno del nodo (no revert) → RPC_UNAVAILABLE, nunca CallRevertedError', async () => {
     // Lo que devuelve un fork cuando no logra traer estado del RPC remoto: un error del nodo, no un revert.
     proxyB.setMode({

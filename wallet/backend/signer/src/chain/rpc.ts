@@ -20,7 +20,15 @@ export interface SignerRpcOptions {
   timeoutMs: number;
   retries: number;
   backoffMs: number;
+  /**
+   * Tiempo total de una operación con sus reintentos: no se reintenta si el intento siguiente (backoff + timeout) se
+   * pasaría. Por defecto 45 s, por debajo del `idle_in_transaction_session_timeout` (60 s) de la transacción en la que
+   * la co-firma lee la cadena (state/db.ts): un RPC lento termina en RPC_UNAVAILABLE, nunca en una conexión cortada.
+   */
+  retryBudgetMs?: number;
 }
+
+export const DEFAULT_RETRY_BUDGET_MS = 45_000;
 
 export type RpcProblem = 'RPC_UNAVAILABLE' | 'RPC_DISAGREEMENT';
 
@@ -106,25 +114,35 @@ export class SignerRpc {
     return jsonRpc<T>(url, method, params, this.#options.timeoutMs);
   }
 
+  /** ¿Entra otro intento (con su backoff y su timeout) en el presupuesto de la operación que empezó en `started`? */
+  #canRetry(attempt: number, started: number): boolean {
+    if (attempt >= this.#options.retries) return false;
+    const next = this.#options.backoffMs * 2 ** attempt + this.#options.timeoutMs;
+    return Date.now() - started + next <= (this.#options.retryBudgetMs ?? DEFAULT_RETRY_BUDGET_MS);
+  }
+
   /** Ejecuta en todos los proveedores y exige el mismo resultado normalizado (con reintentos). */
   async #agree<T>(method: string, params: unknown[], normalize: Normalize<T>): Promise<T> {
     let lastProblem: RpcProblem = 'RPC_UNAVAILABLE';
-    for (let attempt = 0; attempt <= this.#options.retries; attempt++) {
+    const started = Date.now();
+    for (let attempt = 0; ; attempt++) {
       if (attempt > 0) await sleep(this.#options.backoffMs * 2 ** (attempt - 1));
-      let results: T[];
-      let keys: string[];
+      let results: T[] | undefined;
+      let keys: string[] = [];
       try {
         results = await Promise.all(this.#urls.map((url) => this.#one<T>(url, method, params)));
         keys = results.map(normalize);
       } catch (error) {
         if (method === 'eth_call' && isRevertError(error)) throw error;
         lastProblem = 'RPC_UNAVAILABLE';
-        continue;
+        results = undefined;
       }
-      if (keys.every((key) => key === keys[0])) return results[0] as T;
-      lastProblem = 'RPC_DISAGREEMENT';
+      if (results !== undefined) {
+        if (keys.every((key) => key === keys[0])) return results[0] as T;
+        lastProblem = 'RPC_DISAGREEMENT';
+      }
+      if (!this.#canRetry(attempt, started)) throw new RpcQuorumError(lastProblem, `${method}: ${lastProblem}`);
     }
-    throw new RpcQuorumError(lastProblem, `${method}: ${lastProblem}`);
   }
 
   async chainId(): Promise<number> {
@@ -144,11 +162,12 @@ export class SignerRpc {
   }
 
   async #withRetries<T>(fn: () => Promise<T>): Promise<T> {
+    const started = Date.now();
     for (let attempt = 0; ; attempt++) {
       try {
         return await fn();
       } catch {
-        if (attempt >= this.#options.retries)
+        if (!this.#canRetry(attempt, started))
           throw new RpcQuorumError('RPC_UNAVAILABLE', 'el RPC del signer no responde');
         await sleep(this.#options.backoffMs * 2 ** attempt);
       }
@@ -188,9 +207,10 @@ export class SignerRpc {
   /**
    * Ejecuta en todos los proveedores en `latest` (simulación y estimación): un revert se propaga de inmediato como
    * CallRevertedError; cualquier otra falla del nodo (timeout, error interno, falla al traer estado, límite de ritmo)
-   * se reintenta con backoff como las lecturas y, si persiste, es RPC_UNAVAILABLE.
+   * se reintenta con backoff como las lecturas, dentro del presupuesto de la operación, y si persiste es RPC_UNAVAILABLE.
    */
   async #inAll<T>(method: 'eth_call' | 'eth_estimateGas', req: CallRequest, parse: (raw: string) => T): Promise<T[]> {
+    const started = Date.now();
     for (let attempt = 0; ; attempt++) {
       if (attempt > 0) await sleep(this.#options.backoffMs * 2 ** (attempt - 1));
       try {
@@ -200,7 +220,7 @@ export class SignerRpc {
         return raw.map(parse);
       } catch (error) {
         if (isRevertError(error)) throw new CallRevertedError(error.message);
-        if (attempt >= this.#options.retries) {
+        if (!this.#canRetry(attempt, started)) {
           const what = method === 'eth_call' ? 'simulación' : 'estimación';
           throw new RpcQuorumError('RPC_UNAVAILABLE', `${what} sin respuesta`);
         }
