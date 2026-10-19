@@ -92,6 +92,7 @@ test('mismatch de Recovery: pausa en ≤ 2 ciclos, operación retenida, doble ap
 
   // 1. Recovery compilada contra este stack y servida; manifests de las dos apps firmados con claves efímeras.
   ok('pnpm', ['install', '--frozen-lockfile'], RECOVERY);
+  ok('node', ['scripts/sync-design-tokens.mjs'], RECOVERY);
   ok('pnpm', ['exec', 'vite', 'build', '--logLevel', 'warn'], RECOVERY, {
     ...process.env,
     MTW_ENV: 'ci',

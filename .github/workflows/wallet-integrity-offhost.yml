@@ -40,12 +40,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: ¿Pedido en wallet/manual-checks.json?
+        id: request
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != push ] || [ "$(jq -r '.offhostSelftest' wallet/manual-checks.json)" = true ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Toolchain fijada
+        if: steps.request.outputs.run == 'true'
         uses: ./wallet/ci/actions/setup-toolchain
         with:
           tools: node pnpm foundry
           foundry-rpc-cache: "true"
       - name: Chequeo off-host
+        if: steps.request.outputs.run == 'true'
         env:
           MTW_INTEGRITY_SELFTEST: ${{ (inputs.selftest || github.event_name == 'push') && '1' || '' }}
           INTEGRITY_OFFHOST_TARGETS: ${{ vars.INTEGRITY_OFFHOST_TARGETS }}
