@@ -5,6 +5,12 @@
 name: wallet-review-tours
 
 on:
+  # Un push que cambia la lista de pedidos corre los checks listados (y registra el workflow para despacharlo a mano).
+  push:
+    branches:
+      - "feat/walletWeb/**"
+    paths:
+      - "wallet/manual-checks.json"
   workflow_dispatch:
     inputs:
       app:
@@ -30,15 +36,46 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.app }}-${{ inputs.tour }}-${{ inputs.browsers }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ inputs.tour }}-${{ inputs.browsers }}
   cancel-in-progress: false
 
 jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Checks a correr
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          APP: ${{ inputs.app }}
+          TOUR: ${{ inputs.tour }}
+          BROWSERS: ${{ inputs.browsers }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            matrix="$(jq -cn --arg app "$APP" --arg tour "$TOUR" --arg browsers "$BROWSERS" '[{app: $app, tour: $tour, browsers: $browsers}]')"
+          else
+            matrix="$(jq -c '.reviewTours' wallet/manual-checks.json)"
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   review:
     name: review
+    needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 75
-    environment: wallet-ci-frontend-${{ inputs.app }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    environment: wallet-ci-frontend-${{ matrix.app }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,9 +88,9 @@ jobs:
           foundry-rpc-cache: "true"
       - name: Recorrido
         env:
-          APP: ${{ inputs.app }}
-          TOUR: ${{ inputs.tour }}
-          MTW_BROWSERS: ${{ inputs.browsers }}
+          APP: ${{ matrix.app }}
+          TOUR: ${{ matrix.tour }}
+          MTW_BROWSERS: ${{ matrix.browsers }}
           MTW_REVIEW_DIR: ${{ runner.temp }}/review
           BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
           GOOGLE_DRIVE_TEST_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_TEST_CLIENT_ID }}
@@ -65,7 +102,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: review-${{ inputs.app }}-${{ github.run_id }}
+          name: review-${{ matrix.app }}-${{ strategy.job-index }}-${{ github.run_id }}
           path: ${{ runner.temp }}/review
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14

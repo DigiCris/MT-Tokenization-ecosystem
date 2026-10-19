@@ -6,6 +6,12 @@
 name: wallet-integrity-offhost
 
 on:
+  # Un push que cambia la lista de pedidos de checks manuales con offhostSelftest corre el simulacro.
+  push:
+    branches:
+      - "feat/walletWeb/**"
+    paths:
+      - "wallet/manual-checks.json"
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
@@ -37,11 +43,11 @@ jobs:
       - name: Toolchain fijada
         uses: ./wallet/ci/actions/setup-toolchain
         with:
-          tools: ${{ inputs.selftest && 'node pnpm foundry' || 'node pnpm' }}
-          foundry-rpc-cache: ${{ inputs.selftest && 'true' || 'false' }}
+          tools: node pnpm foundry
+          foundry-rpc-cache: "true"
       - name: Chequeo off-host
         env:
-          MTW_INTEGRITY_SELFTEST: ${{ inputs.selftest && '1' || '' }}
+          MTW_INTEGRITY_SELFTEST: ${{ (inputs.selftest || github.event_name == 'push') && '1' || '' }}
           INTEGRITY_OFFHOST_TARGETS: ${{ vars.INTEGRITY_OFFHOST_TARGETS }}
           BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
           EMAIL_PROVIDER_API_KEY: ${{ secrets.EMAIL_PROVIDER_API_KEY }}
