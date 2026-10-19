@@ -10,7 +10,7 @@
 //     useBrowserServer) o `{}` si no; el contenedor queda corriendo en segundo plano.
 //   node scripts/lib/browser-server.mjs stop --state <archivo>
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createConnection, createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -90,8 +90,9 @@ export async function startBrowserServer(projectRoot) {
     name,
     '--network',
     'host',
-    '--ipc',
-    'host',
+    // IPC del host (lo recomendado para Chromium); en Docker sobre WSL2 no existe /dev/mqueue y `--ipc host` no arranca:
+    // ahí, memoria compartida amplia (la alternativa documentada por Playwright).
+    ...(existsSync('/dev/mqueue') ? ['--ipc', 'host'] : ['--shm-size', '2g']),
     '-v',
     `${resolve(projectRoot)}:/project:ro`,
     '-w',
