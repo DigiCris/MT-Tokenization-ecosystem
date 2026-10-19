@@ -43,14 +43,39 @@ function ok(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv
   if (result.status !== 0) throw new Error(`${command} ${args.join(' ')}: ${result.stderr.slice(-800)}`);
 }
 
-async function until<T>(what: string, fn: () => Promise<T | undefined>, timeoutMs: number): Promise<T> {
+async function until<T>(
+  what: string,
+  fn: () => Promise<T | undefined>,
+  timeoutMs: number,
+  diagnose?: () => Promise<string>,
+): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const value = await fn().catch(() => undefined);
     if (value !== undefined) return value;
-    if (Date.now() > deadline) throw new Error(`no se cumplió a tiempo: ${what}`);
+    if (Date.now() > deadline)
+      throw new Error(`no se cumplió a tiempo: ${what}${diagnose === undefined ? '' : `\n${await diagnose()}`}`);
     await sleep(1_000);
   }
+}
+
+/** Sin secretos: el estado público de la plataforma y las líneas de integridad del log del worker del stack. */
+async function cooperationDiagnostics(): Promise<string> {
+  const status = await fetch(`${stack().urls.apiWallet}/api/v1/platform/status`)
+    .then((r) => r.text())
+    .catch((error: unknown) => String(error));
+  let worker: string;
+  try {
+    worker = readFileSync(join(stack().dir, 'logs', 'worker.log'), 'utf8')
+      .split('\n')
+      .filter((line) => /integri|cooperaci/i.test(line))
+      .slice(-15)
+      .join('\n')
+      .replace(/[a-z][\w+.-]*:\/\/[^\s"@]*@[^\s"]*/gi, '<url con credenciales>');
+  } catch (error) {
+    worker = String(error);
+  }
+  return `platform/status: ${status}\nworker (integridad):\n${worker}`;
 }
 
 interface AppStatus {
@@ -168,7 +193,12 @@ test('mismatch de Recovery: pausa en ≤ 2 ciclos, operación retenida, doble ap
       await sleep(1_000);
     }
   }
-  await until('cooperación ACTIVE', async () => ((await platformStatus()) === 'ACTIVE' ? true : undefined), 90_000);
+  await until(
+    'cooperación ACTIVE',
+    async () => ((await platformStatus()) === 'ACTIVE' ? true : undefined),
+    90_000,
+    cooperationDiagnostics,
+  );
 
   // 3. Con la cooperación activa: Safe operativa, alta en la whitelist (co-firma de S) y un envío.
   const wallet = await activeWallet('integrity-drill');
@@ -221,7 +251,12 @@ test('mismatch de Recovery: pausa en ≤ 2 ciclos, operación retenida, doble ap
     120_000,
   );
   expect(retained.txHash).toBeNull();
-  await until('cooperación PAUSED', async () => ((await platformStatus()) === 'PAUSED' ? true : undefined), 90_000);
+  await until(
+    'cooperación PAUSED',
+    async () => ((await platformStatus()) === 'PAUSED' ? true : undefined),
+    90_000,
+    cooperationDiagnostics,
+  );
   await page.goto('/login');
   await expect(page.getByRole('alert').filter({ hasText: 'La plataforma pausó la co-firma' })).toBeVisible({
     timeout: 90_000,
@@ -274,6 +309,7 @@ test('mismatch de Recovery: pausa en ≤ 2 ciclos, operación retenida, doble ap
     'cooperación ACTIVE otra vez',
     async () => ((await platformStatus()) === 'ACTIVE' ? true : undefined),
     90_000,
+    cooperationDiagnostics,
   );
   if (evidence !== null) {
     const report = {
