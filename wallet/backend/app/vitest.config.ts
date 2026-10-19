@@ -18,7 +18,10 @@ const SECURITY_TESTS = [
 const LIVE_TESTS = ['test/**/*.live.test.ts'];
 
 const shared = {
-  testTimeout: 60_000,
+  // Los tests sobre el fork esperan transacciones reales y Anvil trae el estado del RPC remoto bajo demanda: en CI, con
+  // el presupuesto de RPC compartido entre jobs, un test de varias transacciones puede pasar del minuto sin estar
+  // colgado (cada espera tiene su propio límite y su condición real).
+  testTimeout: 180_000,
   hookTimeout: 180_000,
   pool: 'forks' as const,
 };
