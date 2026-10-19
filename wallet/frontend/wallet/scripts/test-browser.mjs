@@ -93,7 +93,7 @@ if (stackSpecs > 0) {
   // integrity monitor que levanta el propio spec en MTW_DRILL_MONITOR_PORT.
   const drillArgs =
     process.env.MTW_DRILL === 'integrity'
-      ? ['--integrity-monitor', `http://127.0.0.1:${process.env.MTW_DRILL_MONITOR_PORT ?? '4190'}`]
+      ? ['--integrity-monitor', `http://127.0.0.1:${process.env.MTW_DRILL_MONITOR_PORT ?? '4192'}`]
       : [];
   const started = run(
     'node',

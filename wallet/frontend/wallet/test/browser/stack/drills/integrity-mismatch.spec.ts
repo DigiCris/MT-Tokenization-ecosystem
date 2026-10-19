@@ -24,7 +24,8 @@ import { stack } from '../helpers/stack.ts';
 const APP_ROOT = resolve(import.meta.dirname, '../../../..');
 const RECOVERY = resolve(APP_ROOT, '../recovery');
 const MONITOR = resolve(APP_ROOT, '../../backend/integrity-monitor');
-const MONITOR_URL = `http://127.0.0.1:${process.env.MTW_DRILL_MONITOR_PORT ?? '4190'}`;
+// 4192 y no 4190: el 4190 está en la lista de "bad ports" de Fetch y el fetch de Node (undici) lo rechaza.
+const MONITOR_URL = `http://127.0.0.1:${process.env.MTW_DRILL_MONITOR_PORT ?? '4192'}`;
 const RECOVERY_PORT = 5174;
 const children: ChildProcess[] = [];
 
