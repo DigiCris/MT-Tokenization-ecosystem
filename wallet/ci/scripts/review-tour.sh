@@ -16,6 +16,9 @@ dir="$WALLET_ROOT/frontend/$APP"
 case "$TOUR" in
   drills/integrity-*) export MTW_DRILL=integrity ;;
 esac
+# Insumos del entorno `ci` (contratos de la red ci y clave pública de atestación): los lee la config de build que carga
+# también el `vite preview` de la config del stack, igual que en el CI de la app.
+frontend_ci_inputs
 section "frontend/$APP: pnpm install --frozen-lockfile"
 (cd "$dir" && pnpm install --frozen-lockfile)
 section "navegadores de Playwright con dependencias: $MTW_BROWSERS"
