@@ -1,7 +1,7 @@
 // P02: gate de cobertura (parseo de lcov y umbrales) y mapeo de rutas cambiadas a áreas del gate.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RATE_LIMITED, summarize, THRESHOLDS } from '../scripts/coverage-gate.mjs';
@@ -72,4 +72,21 @@ test('slither-baseline: suprimidos = todos − visibles, ubicación estable y di
   const changed = compareBaseline([{ ...current[0], id: 'zz' }, current[1]], current);
   assert.deepEqual(changed.added.map((f) => f.id), ['zz']);
   assert.deepEqual(changed.removed.map((f) => f.id), ['b2']);
+});
+
+test('P21.SEC: seed-local se niega fuera de APP_ENV=local y si el RPC no es Anvil', async () => {
+  const seed = (env) =>
+    new Promise((resolve) => {
+      const child = spawn('bash', [join(CI, '..', 'scripts/seed-local')], { env: { ...process.env, ...env } });
+      let stderr = '';
+      child.stderr.on('data', (chunk) => (stderr += chunk));
+      child.on('exit', (code) => resolve({ code, stderr }));
+    });
+  // Puerto 9 (discard): nada responde como Anvil.
+  const staging = await seed({ APP_ENV: 'staging', LOCAL_RPC_URL: 'http://127.0.0.1:9' });
+  assert.equal(staging.code, 1);
+  assert.match(staging.stderr, /sólo corre con APP_ENV=local/);
+  const notAnvil = await seed({ APP_ENV: 'local', LOCAL_RPC_URL: 'http://127.0.0.1:9' });
+  assert.equal(notAnvil.code, 1);
+  assert.match(notAnvil.stderr, /el RPC no es Anvil/);
 });

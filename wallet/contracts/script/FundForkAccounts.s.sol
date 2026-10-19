@@ -23,6 +23,8 @@ contract FundForkAccounts is Script {
             _fund(LocalKeys.addr("deployer"), DEPLOYER_FUNDING);
             _fund(LocalKeys.addr("governance-owner-1"), CREATOR_FUNDING);
             _fund(LocalKeys.addr("seed-relayer"), CREATOR_FUNDING);
+            // La S del seed transmite la SafeTx del alta en la whitelist (el Guard sólo acepta al ejecutor).
+            _fund(LocalKeys.addr("seed-executor-key"), CREATOR_FUNDING);
         } else {
             _fund(vm.envAddress("DEPLOYER_ADDRESS"), DEPLOYER_FUNDING);
         }

@@ -12,15 +12,17 @@ set -euo pipefail
 WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=env.sh
 source "$WALLET_ROOT/scripts/env.sh"
+# P21.SEC: antes de cualquier otra cosa, sólo APP_ENV=local y sólo contra Anvil.
+app_env="${APP_ENV:-$(node "$WALLET_ROOT/scripts/lib/env-value.mjs" APP_ENV 2>/dev/null || echo local)}"
+[ "${app_env:-local}" = local ] || { echo "seed-local: sólo corre con APP_ENV=local (es $app_env)" >&2; exit 1; }
+guard_rpc="${LOCAL_RPC_URL:-$(node "$WALLET_ROOT/scripts/lib/env-value.mjs" LOCAL_RPC_URL 2>/dev/null || echo http://127.0.0.1:8545)}"
+client="$(cast rpc web3_clientVersion --rpc-url "$guard_rpc" 2>/dev/null || true)"
+case "$client" in *anvil*|*Anvil*) ;; *) echo "seed-local: el RPC no es Anvil: el seed no corre" >&2; exit 1 ;; esac
 # shellcheck source=lib/deploy-env.sh
 source "$WALLET_ROOT/scripts/lib/deploy-env.sh"
 export DEPLOYER_KEY_SOURCE=local-seed
 deploy_env local
 
-app_env="${APP_ENV:-$(node "$WALLET_ROOT/scripts/lib/env-value.mjs" APP_ENV 2>/dev/null || echo local)}"
-[ "${app_env:-local}" = local ] || { echo "seed-local: sólo corre con APP_ENV=local (es $app_env)" >&2; exit 1; }
-client="$(cast rpc web3_clientVersion --rpc-url "$DEPLOY_RPC" 2>/dev/null || true)"
-case "$client" in *anvil*|*Anvil*) ;; *) echo "seed-local: el RPC no es Anvil: el seed no corre" >&2; exit 1 ;; esac
 
 SEED_DIR="$WALLET_ROOT/.secrets/seed"
 material="$(node "$WALLET_ROOT/scripts/lib/seed-material.mjs" --keys)"

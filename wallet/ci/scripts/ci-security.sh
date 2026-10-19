@@ -60,3 +60,5 @@ else
 fi
 echo
 echo "SECURITY SCANS OK"
+section "P21.SEC: el seed local se niega fuera de APP_ENV=local y fuera de Anvil"
+(cd "$WALLET_ROOT" && node --test --test-name-pattern="P21.SEC" ci/tests/scripts.test.mjs)
