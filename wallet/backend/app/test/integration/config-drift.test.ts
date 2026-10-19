@@ -113,7 +113,8 @@ describe('deriva de configuración de la Safe', () => {
     const email = await waitForMessage(wallet.onboarded.user.account.email, (m) =>
       m.subject.includes('La configuración de tu Safe cambió fuera de la plataforma'),
     );
-    expect(email.text).toContain('Cambios detectados: GUARD');
+    // El cambio en texto (el email no muestra el código GUARD).
+    expect(email.text).toContain('Cambios detectados: se cambió o se quitó el Guard de seguridad');
 
     // El signer, con su propio RPC y su propia DB, tampoco co-firma el mismo pedido con firmas válidas.
     const row = await operationRow(env, queued.operationId);

@@ -100,7 +100,7 @@ describe('step-up', () => {
     const { response, key } = await startStepUp(recoveryBrowser, 'RECOVERY');
     expect(response.statusCode).toBe(202);
     const message = await stepUpEmail(account.email);
-    expect(message.text).toMatch(/^Safe: 0x[0-9A-Fa-f]{4}( [0-9A-Fa-f]{4}){9}$/m);
+    expect(message.text).toMatch(/^Safe: 0x( [0-9A-Fa-f]{4}){10}$/m);
     const finished = await recoveryBrowser.post('/api/v1/platform-sessions/step-up/finish', {
       challengeId: response.json<{ challengeId: string }>().challengeId,
       code: codeFrom(message),

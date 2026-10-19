@@ -71,7 +71,8 @@ export const TEMPLATE_FIXTURES: { [K in TemplateName]: TemplateParams[K] } = {
     code: '27182818',
     safe: SAFE,
     token: 'USDC',
-    amount: '12.500,00',
+    // Unidades mínimas, como las guarda la operación: la plantilla las muestra en es-AR (12.500,00 USDC).
+    amountUnits: '12500000000',
     destination: DESTINATION,
     nonce: '42',
     expiresAt: EXPIRES,
@@ -80,7 +81,7 @@ export const TEMPLATE_FIXTURES: { [K in TemplateName]: TemplateParams[K] } = {
   'high-value-executed': {
     safe: SAFE,
     token: 'USDT',
-    amount: '12.500,00',
+    amountUnits: '12500250000',
     destination: DESTINATION,
     txHash: '0x9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0',
     occurredAt: AT,

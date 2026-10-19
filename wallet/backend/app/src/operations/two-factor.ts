@@ -9,7 +9,7 @@
 //   operación, firma la atestación `ChallengeCompletion` (emisor de sesiones; la verifica el signer) y la guarda en la
 //   operación junto con el challenge. La firma de U se acepta recién con el 2FA completo (challengeFacts).
 import { sql, type Kysely } from 'kysely';
-import { formatUnits, getAddress, isAddressEqual, type Address } from 'viem';
+import { getAddress, isAddressEqual, type Address } from 'viem';
 import { z } from 'zod';
 import { ApiError } from '../api/errors.ts';
 import type { AuditWriter } from '../audit/audit-writer.ts';
@@ -18,7 +18,8 @@ import { verifySecondFactor } from '../auth/second-factor.ts';
 import type { Secret } from '../config/secret.ts';
 import type { Database } from '../db/schema.ts';
 import { withTransaction } from '../db/transaction.ts';
-import type { EmailOutbox } from '../email/email-outbox.ts';
+import type { EmailOutbox, EmailRequest } from '../email/email-outbox.ts';
+import type { RequestOrigin } from '../email/templates.ts';
 import { bufferToAddress, bufferToHex } from '../lib/bytes.ts';
 import type { Metrics } from '../observability/metrics.ts';
 import type { PlatformSessionIssuer } from '../platform-session/token.ts';
@@ -64,8 +65,41 @@ interface PendingTransfer {
   nonce: string;
   token: Address;
   tokenSymbol: 'USDC' | 'USDT';
+  /** Unidades mínimas del token. */
   amount: string;
   destination: Address;
+}
+
+/**
+ * El email del código de alto valor (plantilla `high-value-challenge`) con los datos exactos de la operación: el monto va
+ * en unidades mínimas y la plantilla lo muestra en es-AR, igual que la app que pide compararlo con el email.
+ */
+export function highValueChallengeEmail(input: {
+  to: string;
+  locale: string;
+  timeZone: string;
+  operation: Pick<PendingTransfer, 'safe' | 'tokenSymbol' | 'amount' | 'destination' | 'nonce'>;
+  challenge: { secret: string; expiresAt: Date };
+  origin: RequestOrigin;
+}): EmailRequest<'high-value-challenge'> {
+  const { operation: op } = input;
+  return {
+    to: input.to,
+    template: 'high-value-challenge',
+    params: {
+      code: input.challenge.secret,
+      safe: op.safe,
+      token: op.tokenSymbol,
+      amountUnits: op.amount,
+      destination: op.destination,
+      nonce: op.nonce,
+      expiresAt: input.challenge.expiresAt.toISOString(),
+      origin: input.origin,
+    },
+    locale: input.locale,
+    timeZone: input.timeZone,
+    product: 'Wallet',
+  };
 }
 
 export class TwoFactorService {
@@ -155,23 +189,17 @@ export class TwoFactorService {
           },
         });
         if (method === 'EMAIL') {
-          await this.#d.emails.enqueue(trx, {
-            to: user.email,
-            template: 'high-value-challenge',
-            params: {
-              code: challenge.secret,
-              safe: op.safe,
-              token: op.tokenSymbol,
-              amount: formatUnits(BigInt(op.amount), 6),
-              destination: op.destination,
-              nonce: op.nonce,
-              expiresAt: challenge.expiresAt.toISOString(),
+          await this.#d.emails.enqueue(
+            trx,
+            highValueChallengeEmail({
+              to: user.email,
+              locale: user.locale,
+              timeZone: user.time_zone,
+              operation: op,
+              challenge,
               origin: { ipPrefix: actor.meta.ipPrefix, userAgent: origin.userAgent },
-            },
-            locale: user.locale,
-            timeZone: user.time_zone,
-            product: 'Wallet',
-          });
+            }),
+          );
         }
         await this.#d.audit.append(trx, {
           actorType: 'USER',

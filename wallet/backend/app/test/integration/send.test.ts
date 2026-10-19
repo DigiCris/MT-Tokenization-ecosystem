@@ -128,7 +128,8 @@ describe('send', () => {
     const challenge = started.json<{ method: string; challengeId: string; expiresAt: string }>();
     expect(challenge.method).toBe('EMAIL');
     const email = await nextEmail(user.account.email, 'Confirmá una operación de alto valor');
-    expect(email.text).toContain('Acción: Envío de 1500 USDC');
+    // El monto y el destino con el formato de la app, que pide compararlos con el email (P18.MAN).
+    expect(email.text).toContain('Acción: Envío de 1.500,00 USDC');
     expect(email.text).toContain(`Destino: ${groupedAddress(destination)}`);
     expect(email.text).toContain(`Nonce de la Safe: ${prepared.safeTx.nonce}`);
     expect(email.text).toContain('Red: Base fork local — chainId 8453');
@@ -167,7 +168,7 @@ describe('send', () => {
     await settle(env, prepared.operationId, 'CONFIRMED');
     expect(await env.highValue().runOnce()).toBe(1);
     const executed = await nextEmail(user.account.email, 'Operación de alto valor ejecutada');
-    expect(executed.text).toContain('Se enviaron 1500 USDC.');
+    expect(executed.text).toContain('Se enviaron 1.500,00 USDC.');
     expect(executed.text).toContain(`Destino: ${groupedAddress(destination)}`);
     // Una sola vez por operación.
     expect(await env.highValue().runOnce()).toBe(0);

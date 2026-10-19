@@ -1,9 +1,10 @@
 // Plantillas de email [B-MAIL-02/03]. Las sensibles muestran la acción, la dirección completa (EIP-55, grupos de 4),
 // la red, la Safe, la expiración (hora local del usuario y UTC), la IP/dispositivo de origen y qué hacer si no fue el
 // usuario. Ninguna incluye links que ejecuten acciones: los códigos se ingresan en la app (el único link es el de
-// reset de password de [B-AUTH-07], que abre el formulario con el token en el fragmento).
+// reset de password de [B-AUTH-07], que abre el formulario con el token en el fragmento). Direcciones y montos van con el
+// formato de las apps (email/format.ts): la app pide compararlos con el email.
 import type { AppEnv } from '../config/env.ts';
-import { dualTime, escapeHtml, groupedAddress } from './format.ts';
+import { dualTime, escapeHtml, groupedAddress, tokenAmount } from './format.ts';
 
 export interface RequestOrigin {
   ipPrefix: string | null;
@@ -71,7 +72,8 @@ export interface TemplateParams {
     code: string;
     safe: string;
     token: 'USDC' | 'USDT';
-    amount: string;
+    /** Monto en unidades mínimas del token (`1000000000` = 1.000 USDC): la plantilla lo muestra en es-AR. */
+    amountUnits: string;
     destination: string;
     nonce: string;
     expiresAt: string;
@@ -80,7 +82,8 @@ export interface TemplateParams {
   'high-value-executed': {
     safe: string;
     token: 'USDC' | 'USDT';
-    amount: string;
+    /** Monto en unidades mínimas del token: la plantilla lo muestra en es-AR. */
+    amountUnits: string;
     destination: string;
     txHash: string;
     occurredAt: string;
@@ -134,6 +137,25 @@ interface Content {
   details: [string, string][];
   ifNotYou: string;
 }
+
+/** Decimales de los tokens del camino asistido en Base (los mismos que fija la app). */
+const TOKEN_DECIMALS: Record<'USDC' | 'USDT', number> = { USDC: 6, USDT: 6 };
+
+/** El monto de una operación como lo muestra la app: `1.000,00 USDC`. */
+const amountOf = (p: { amountUnits: string; token: 'USDC' | 'USDT' }) =>
+  tokenAmount(p.amountUnits, p.token, TOKEN_DECIMALS[p.token]);
+
+/** Los cambios de configuración de la Safe (ConfigDriftItem) en texto: el email no muestra códigos. */
+const CONFIG_DRIFT_TEXT: Readonly<Record<string, string>> = {
+  NOT_REGISTERED: 'la Safe ya no figura registrada en el Guard de seguridad',
+  SINGLETON: 'cambió el contrato base de la Safe',
+  GUARD: 'se cambió o se quitó el Guard de seguridad',
+  MODULE_GUARD: 'se cambió o se quitó el guard de módulos',
+  FALLBACK_HANDLER: 'se configuró un fallback handler',
+  MODULES: 'se habilitaron módulos',
+  THRESHOLD: 'cambió la cantidad de firmas necesarias',
+  OWNERS: 'cambiaron las claves de la Safe',
+};
 
 const EXECUTOR_ROTATION_REASON_TEXT: Record<TemplateParams['executor-rotation-requested']['reason'], string> = {
   SHARD_MIGRATION: 'migración de la clave a otro servidor de firma de la plataforma',
@@ -437,7 +459,7 @@ const RENDERERS: Renderers = {
       'Ingresá este código en la app para autorizar esta operación. El código sólo sirve para esta operación exacta.',
     code: p.code,
     details: [
-      ['Acción', `Envío de ${p.amount} ${p.token}`],
+      ['Acción', `Envío de ${amountOf(p)}`],
       ['Destino', groupedAddress(p.destination)],
       ['Red', ctx.networkLabel],
       ['Safe', groupedAddress(p.safe)],
@@ -450,9 +472,9 @@ const RENDERERS: Renderers = {
   'high-value-executed': (p, ctx) => ({
     subject: 'Operación de alto valor ejecutada',
     heading: 'Se ejecutó un envío de alto valor',
-    intro: `Se enviaron ${p.amount} ${p.token}.`,
+    intro: `Se enviaron ${amountOf(p)}.`,
     details: [
-      ['Acción', `Envío de ${p.amount} ${p.token}`],
+      ['Acción', `Envío de ${amountOf(p)}`],
       ['Destino', groupedAddress(p.destination)],
       ['Red', ctx.networkLabel],
       ['Safe', groupedAddress(p.safe)],
@@ -479,7 +501,7 @@ const RENDERERS: Renderers = {
       'La configuración on-chain de tu Safe ya no es la de una wallet asistida (por ejemplo, se retiró el Guard de seguridad firmando con tus claves U y R). Sin el Guard no hay control on-chain de las operaciones, así que la plataforma dejó de co-firmar; tus fondos siguen bajo tu control con tus claves U y R.',
     details: [
       ['Acción', 'Cambio de configuración de la Safe'],
-      ['Cambios detectados', p.items.join(', ')],
+      ['Cambios detectados', p.items.map((item) => CONFIG_DRIFT_TEXT[item] ?? `código interno ${item}`).join('; ')],
       ['Red', ctx.networkLabel],
       ['Safe', groupedAddress(p.safe)],
       ...timeRows(ctx, 'Detectado', p.occurredAt),

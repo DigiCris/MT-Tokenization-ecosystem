@@ -1,8 +1,9 @@
 // P09.T07 [B-MAIL-02/03]: snapshots de las 20 plantillas y verificación explícita de lo que exige cada email sensible:
 // acción, dirección completa (EIP-55 en grupos de 4), red, Safe, expiración (hora local del usuario y UTC), origen y
-// qué hacer si no fue el usuario; sin links que ejecuten acciones y con el HTML escapado.
+// qué hacer si no fue el usuario; sin links que ejecuten acciones y con el HTML escapado. P18.MAN: direcciones y montos
+// con el formato de las apps (`0x ` y 10 grupos de 4; montos es-AR con su token), que es lo que la app pide comparar.
 import { describe, expect, it } from 'vitest';
-import { dualTime, escapeHtml, groupedAddress, networkLabel } from '../../src/email/format.ts';
+import { dualTime, escapeHtml, groupedAddress, networkLabel, tokenAmount } from '../../src/email/format.ts';
 import { renderTemplate, TEMPLATE_NAMES, type TemplateContext, type TemplateName } from '../../src/email/templates.ts';
 import { DESTINATION, NEW_KEY, OLD_KEY, SAFE, TEMPLATE_FIXTURES } from '../helpers/email-fixtures.ts';
 
@@ -64,10 +65,25 @@ const WITH_ORIGIN: TemplateName[] = [
 ];
 
 describe('formato', () => {
-  it('dirección completa con checksum EIP-55 en grupos de 4', () => {
-    expect(groupedAddress(DESTINATION)).toBe('0xd8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045');
-    expect(groupedAddress(SAFE)).toBe('0x8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913');
+  it('dirección completa con checksum EIP-55 como en las apps: "0x " y los 10 grupos de 4', () => {
+    expect(groupedAddress(DESTINATION)).toBe('0x d8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045');
+    expect(groupedAddress(SAFE)).toBe('0x 8335 89fC D6eD b6E0 8f4c 7C32 D4f7 1b54 bdA0 2913');
+    expect(groupedAddress(DESTINATION).split(' ')).toHaveLength(11);
     expect(() => groupedAddress('0x1234')).toThrow();
+  });
+
+  it('montos en es-AR con su token, como en las apps: miles con punto y al menos 2 decimales, sin perder precisión', () => {
+    expect(tokenAmount('1000000000', 'USDC', 6)).toBe('1.000,00 USDC');
+    expect(tokenAmount(1_500_000_000n, 'USDC', 6)).toBe('1.500,00 USDC');
+    expect(tokenAmount('12345678901', 'USDT', 6)).toBe('12.345,678901 USDT');
+    expect(tokenAmount('1500000', 'USDC', 6)).toBe('1,50 USDC');
+    expect(tokenAmount('1', 'USDC', 6)).toBe('0,000001 USDC');
+    expect(tokenAmount('0', 'USDC', 6)).toBe('0,00 USDC');
+    // Sólo unidades mínimas: un monto ya formateado (o con decimales) es un error de quien arma el email.
+    for (const wrong of ['12.500,00', '1000.5', '1,5', '-1', '']) {
+      expect(() => tokenAmount(wrong, 'USDC', 6), wrong).toThrow();
+    }
+    expect(() => tokenAmount(-1n, 'USDC', 6)).toThrow();
   });
 
   it('hora local del usuario y UTC', () => {
@@ -158,6 +174,24 @@ describe('contenido obligatorio', () => {
       const line = /^Si no fuiste vos: (.+)$/m.exec(render(name).text)?.[1] ?? '';
       for (const sentence of line.split(/(?<=\.) /).slice(1)) expect(sentence, name).toMatch(/^[A-ZÁÉÍÓÚÑ]/);
     }
+  });
+
+  it('alto valor: el monto en es-AR con su token y el destino agrupado como en la app', () => {
+    const challenge = render('high-value-challenge');
+    expect(challenge.text).toContain('Acción: Envío de 12.500,00 USDC');
+    expect(challenge.text).toContain('Destino: 0x d8dA 6BF2 6964 aF9D 7eEd 9e03 E534 15D3 7aA9 6045');
+    expect(challenge.html).toContain('Envío de 12.500,00 USDC');
+    const executed = render('high-value-executed');
+    expect(executed.text).toContain('Se enviaron 12.500,25 USDT.');
+    expect(executed.text).toContain('Acción: Envío de 12.500,25 USDT');
+  });
+
+  it('los cambios de configuración de la Safe van en texto, sin códigos internos', () => {
+    const { text } = render('safe-config-modified');
+    expect(text).toContain(
+      'Cambios detectados: se cambió o se quitó el Guard de seguridad; se cambió o se quitó el guard de módulos',
+    );
+    expect(text).not.toMatch(/\bMODULE_GUARD\b/);
   });
 
   it('los códigos van en el cuerpo con el formato que se ingresa en la app', () => {

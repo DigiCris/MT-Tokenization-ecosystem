@@ -2,10 +2,11 @@
 // y quedó confirmado on-chain genera una notificación in-app y el email `high-value-executed`, una sola vez por
 // operación (clave de deduplicación) aunque lo detecten varios workers.
 import { sql, type Kysely } from 'kysely';
-import { formatUnits, getAddress } from 'viem';
+import { formatUnits, getAddress, type Address } from 'viem';
 import type { Database } from '../db/schema.ts';
 import { withTransaction } from '../db/transaction.ts';
 import type { EmailOutbox } from '../email/email-outbox.ts';
+import type { TemplateParams } from '../email/templates.ts';
 import { bufferToAddress, bufferToHex } from '../lib/bytes.ts';
 import type { Metrics } from '../observability/metrics.ts';
 import { notify } from '../notifications/notify.ts';
@@ -18,6 +19,33 @@ export interface HighValueNotifierDeps {
 }
 
 export const highValueDedupeKey = (operationId: string) => `HIGH_VALUE_EXECUTED:${operationId}`;
+
+/**
+ * Lo que avisa un envío de alto valor ejecutado: el payload de la notificación in-app (el monto en unidades del token,
+ * `1500`, como lo lee la app) y los parámetros del email (el monto en unidades mínimas: la plantilla lo muestra en es-AR,
+ * `1.500,00 USDC`, con el formato de la app).
+ */
+export function highValueExecutedNotice(input: {
+  safe: Address;
+  token: 'USDC' | 'USDT';
+  /** Unidades mínimas del token. */
+  amount: string;
+  destination: string;
+  txHash: string;
+  occurredAt: string;
+}): { payload: Record<string, string>; email: TemplateParams['high-value-executed'] } {
+  const common = {
+    safe: input.safe,
+    token: input.token,
+    destination: getAddress(input.destination),
+    txHash: input.txHash,
+    occurredAt: input.occurredAt,
+  };
+  return {
+    payload: { ...common, amount: formatUnits(BigInt(input.amount), 6) },
+    email: { ...common, amountUnits: input.amount },
+  };
+}
 
 export class HighValueNotifier {
   readonly #d: HighValueNotifierDeps;
@@ -62,14 +90,14 @@ export class HighValueNotifier {
     for (const row of rows) {
       const decoded = (row.canonical_intent as CanonicalIntent).decoded;
       if (decoded.token === undefined || decoded.amount === undefined || decoded.destination === undefined) continue;
-      const params = {
+      const notice = highValueExecutedNotice({
         safe: bufferToAddress(row.safe_address),
         token: decoded.token,
-        amount: formatUnits(BigInt(decoded.amount), 6),
-        destination: getAddress(decoded.destination),
+        amount: decoded.amount,
+        destination: decoded.destination,
         txHash: row.tx_hash === null ? '' : bufferToHex(row.tx_hash),
         occurredAt: (row.confirmed_at ?? new Date()).toISOString(),
-      };
+      });
       const created = await withTransaction(this.#d.db, async (trx) => {
         const inserted = await notify(
           trx,
@@ -77,7 +105,7 @@ export class HighValueNotifier {
             userId: row.user_id,
             walletId: row.wallet_id,
             type: 'HIGH_VALUE_EXECUTED',
-            payload: { operationId: row.id, ...params },
+            payload: { operationId: row.id, ...notice.payload },
             dedupeKey: highValueDedupeKey(row.id),
           },
           this.#d.metrics,
@@ -86,7 +114,7 @@ export class HighValueNotifier {
           await this.#d.emails?.enqueue(trx, {
             to: row.email,
             template: 'high-value-executed',
-            params,
+            params: notice.email,
             locale: row.locale,
             timeZone: row.time_zone,
             product: 'Wallet',
