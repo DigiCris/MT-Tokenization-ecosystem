@@ -57,6 +57,7 @@ interface AppStatus {
   status: string;
   paused: boolean;
   lastCheckStatus: string | null;
+  lastCheckProblems?: string[];
   releaseId: string | null;
 }
 const monitorStatus = async (app: 'WALLET' | 'RECOVERY'): Promise<AppStatus> => {
@@ -152,11 +153,13 @@ test('mismatch de Recovery: pausa en ≤ 2 ciclos, operación retenida, doble ap
     }),
   );
   for (const app of ['WALLET', 'RECOVERY'] as const) {
-    await until(
-      `${app} OK en el monitor`,
-      async () => ((await monitorStatus(app)).status === 'OK' ? true : undefined),
-      120_000,
-    );
+    let last: AppStatus | undefined;
+    const deadline = Date.now() + 120_000;
+    while (last?.status !== 'OK') {
+      last = await monitorStatus(app).catch(() => undefined);
+      if (Date.now() > deadline) throw new Error(`${app} no quedó OK en el monitor: ${JSON.stringify(last)}`);
+      await sleep(1_000);
+    }
   }
   await until('cooperación ACTIVE', async () => ((await platformStatus()) === 'ACTIVE' ? true : undefined), 90_000);
 

@@ -67,7 +67,7 @@ test('operación completa en el fork con capturas de cada review', async ({ page
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Revisar el envío' })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Swap' }).click();
+  await openFromHome(page, 'Swap');
   await page.getByLabel('Monto').fill('20');
   await page.getByRole('button', { name: 'Cotizar' }).click();
   await expect(page.locator('[data-quote]')).toBeVisible({ timeout: 60_000 });
