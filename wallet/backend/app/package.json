@@ -28,6 +28,7 @@
     "db:restore": "node src/cli/db.ts restore",
     "audit:verify": "node src/cli/audit-verify.ts",
     "opaque:setup": "node src/cli/opaque-setup.ts",
+    "seed:local": "node src/cli/seed-local.ts",
     "dev:session": "node src/cli/dev-session.ts",
     "signer:reassign": "node src/cli/signer-reassign.ts",
     "operators": "node src/operators/cli.ts",

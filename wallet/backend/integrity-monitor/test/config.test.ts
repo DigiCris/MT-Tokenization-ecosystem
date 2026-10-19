@@ -33,7 +33,7 @@ describe('loadConfig', () => {
       intervalSeconds: 60,
       attestationTtlSeconds: 300,
       host: '127.0.0.1',
-      port: 8090,
+      port: 8092,
       targets: [
         { app: 'WALLET', url: 'http://localhost:4173' },
         { app: 'RECOVERY', url: 'http://localhost:4174' },

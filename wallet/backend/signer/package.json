@@ -33,7 +33,8 @@
     "shard:destroy-retired": "node scripts/destroy-retired.ts",
     "credential:rotate": "node scripts/rotate-unlock-credential.ts",
     "credential:escrow": "node scripts/credential-escrow.ts",
-    "attestation:public-key": "node scripts/attestation-public-key.ts"
+    "attestation:public-key": "node scripts/attestation-public-key.ts",
+    "seed:executor": "node scripts/seed-executor.ts"
   },
   "dependencies": {
     "@noble/curves": "2.4.0",

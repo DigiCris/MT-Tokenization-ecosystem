@@ -9,6 +9,10 @@
   "scripts": {
     "preflight": "bash scripts/preflight",
     "secrets:local": "bash scripts/secrets-local",
+    "postinstall": "node scripts/install-all.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:fresh": "bash scripts/dev-fresh",
+    "dev:healthcheck": "node scripts/dev-healthcheck.mjs",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "fork:start": "bash scripts/start-fork",
@@ -17,6 +21,7 @@
     "deploy:core": "bash scripts/deploy-core",
     "deploy-local": "bash scripts/deploy-local",
     "seed-local": "bash scripts/seed-local",
+    "seed:check": "node scripts/seed-check.mjs",
     "inspect:wallet": "bash scripts/inspect-wallet",
     "test:preflight": "node --test scripts/preflight.d/__tests__/",
     "ci:local": "bash ci/scripts/ci-all.sh",

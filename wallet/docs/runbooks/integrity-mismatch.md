@@ -34,7 +34,7 @@ P20.MAN con el stack completo (registrado en §13 del planner).
 
 1. **No reanudar** hasta entender la causa. La pausa es pegajosa: aunque el archivo vuelva a su estado, el monitor
    sigue atestando `MISMATCH` hasta la doble aprobación del paso 4, también después de un reinicio (estado persistido).
-2. Ver qué difiere: `curl -s http://integrity-monitor:8090/v1/status` (red interna) → `pauseProblems` lista cada
+2. Ver qué difiere: `curl -s http://integrity-monitor:8092/v1/status` (red interna) → `pauseProblems` lista cada
    archivo, header o elemento distinto del release firmado.
 3. Asumir JS malicioso en **ese** origin: avisar a los usuarios que no desbloqueen la clave de esa app (Wallet: U y
    Password U; Recovery: R y Password R) hasta nuevo aviso. Si el compromiso alcanza al host del backend, seguir
@@ -75,7 +75,7 @@ atestación):
 ```bash
 pnpm --dir backend/integrity-monitor resume:approve --operator <id> --key-file <clave del operador> \
   --app WALLET --release <releaseId> --manifest-sha256 0x<hex> \
-  --platform <platformId> --environment production --monitor http://integrity-monitor:8090
+  --platform <platformId> --environment production --monitor http://integrity-monitor:8092
 ```
 
 El monitor rechaza (409) aprobaciones de otro release, vencidas (más de 1 h), de operadores desconocidos o con firma

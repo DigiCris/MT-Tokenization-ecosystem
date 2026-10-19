@@ -8,6 +8,8 @@
 // Además, si el shard local no existe lo inicializa (la credencial ya la generó `pnpm secrets:local`).
 import { isAbsolute, relative, resolve } from 'node:path';
 import { jsonRpc } from '../chain/json-rpc.ts';
+import { sameAddress, type Address } from '../crypto/keccak.ts';
+import { privateKeyToAddress } from '../crypto/secp256k1.ts';
 import { SelfHostedSoftwareSignerProvider, type SoftwareProviderOptions } from './SelfHostedSoftwareSignerProvider.ts';
 
 export const BASE_CHAIN_ID = 8453;
@@ -67,6 +69,21 @@ export async function assertDevelopmentEnvironment(options: DevelopmentGuardOpti
 }
 
 export class DevelopmentSignerProvider extends SelfHostedSoftwareSignerProvider {
+  /**
+   * Sólo desarrollo local (P21.T04, `scripts/seed-executor.ts`): importa la S determinística del seed (derivada de
+   * LOCAL_SEED, la misma que usa contracts/script/SeedLocal.s.sol) como clave EXECUTOR de la wallet del seed. Los
+   * flujos de producto siguen creando S con el CSPRNG (createKey). Idempotente.
+   */
+  async importSeedKey(
+    walletId: string,
+    key: Uint8Array,
+  ): Promise<{ keyRef: string; address: Address; created: boolean }> {
+    const address = privateKeyToAddress(key);
+    const existing = (await this.registry.forWallet(walletId)).find((k) => sameAddress(k.address, address));
+    if (existing !== undefined) return { keyRef: existing.keyRef, address, created: false };
+    return { ...(await this.storeKey(walletId, 'EXECUTOR', key)), created: true };
+  }
+
   static async openDevelopment(
     options: SoftwareProviderOptions,
     guard: DevelopmentGuardOptions,

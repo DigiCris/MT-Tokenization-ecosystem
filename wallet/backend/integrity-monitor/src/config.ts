@@ -13,7 +13,7 @@
 //   MONITOR_OPERATOR_KEYS            {"<operatorId>": "<SPKI DER base64>", …} (JSON) o _FILE: aprobaciones de reanudación
 //   MONITOR_STATE_FILE               archivo de estado persistente (pausa y aprobaciones)
 //   MONITOR_INTERVAL_SECONDS (60), MONITOR_ATTESTATION_TTL_SECONDS (300), MONITOR_FETCH_TIMEOUT_MS (10000)
-//   MONITOR_HOST (127.0.0.1), MONITOR_PORT (8090)
+//   MONITOR_HOST (127.0.0.1), MONITOR_PORT (8092; el 8090 es del shard del signer)
 import { createPrivateKey, createPublicKey, type KeyObject } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { AttestationEnvironment } from './attestation.ts';
@@ -173,6 +173,6 @@ export function loadConfig(env: Env = process.env): MonitorConfig {
     attestationTtlSeconds: int(env, 'MONITOR_ATTESTATION_TTL_SECONDS', 300, 60, 3_600),
     fetchTimeoutMs: int(env, 'MONITOR_FETCH_TIMEOUT_MS', 10_000, 500, 120_000),
     host: env.MONITOR_HOST || '127.0.0.1',
-    port: int(env, 'MONITOR_PORT', 8090, 1, 65_535),
+    port: int(env, 'MONITOR_PORT', 8092, 1, 65_535),
   };
 }

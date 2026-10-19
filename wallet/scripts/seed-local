@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Seed determinístico del fork local (contracts/script/SeedLocal.s.sol, [C-SCR-03], P07.T07): Safe de prueba con U, R y
-# S derivadas de LOCAL_SEED, creada por la WalletFactory del deploy local y fondeada con USDC y USDT reales del fork.
-# Idempotente. Escribe el resultado en contracts/deployments/local.json (.seed) y muestra los saldos on-chain.
-# Uso: pnpm seed-local   (después de pnpm deploy-local)
+# Seed determinístico del entorno local (P07.T07 on-chain + P21.T04 off-chain). Se niega fuera de APP_ENV=local y fuera
+# de Anvil (P21.SEC). Idempotente: dos corridas sobre el mismo fork dan las mismas direcciones y saldos.
+#  1. Material de LOCAL_SEED (scripts/lib/seed-material.mjs): walletId determinístico y credenciales de prueba.
+#  2. contracts/script/SeedLocal.s.sol: Safe del seed con el saltNonce del producto, USDC/USDT reales del fork y el
+#     destino de prueba agregado a la whitelist (U+S) y activado con un warp de 24 h.
+#  3. Signer de desarrollo: la S del seed importada en el shard local con su SignerKeyAttestation.
+#  4. Sobres de prueba U.enc.json y R.enc.json en .secrets/seed/ (con el módulo crypto de cada app).
+#  5. Backend: usuario verificado, wallet ACTIVE tras la verificación normal, claves, OPAQUE y destino activo.
+# Al final imprime las credenciales de prueba (sólo local). Uso: pnpm seed-local   (después de pnpm deploy-local)
 set -euo pipefail
 WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=env.sh
@@ -12,13 +17,52 @@ source "$WALLET_ROOT/scripts/lib/deploy-env.sh"
 export DEPLOYER_KEY_SOURCE=local-seed
 deploy_env local
 
+app_env="${APP_ENV:-$(node "$WALLET_ROOT/scripts/lib/env-value.mjs" APP_ENV 2>/dev/null || echo local)}"
+[ "${app_env:-local}" = local ] || { echo "seed-local: sólo corre con APP_ENV=local (es $app_env)" >&2; exit 1; }
+client="$(cast rpc web3_clientVersion --rpc-url "$DEPLOY_RPC" 2>/dev/null || true)"
+case "$client" in *anvil*|*Anvil*) ;; *) echo "seed-local: el RPC no es Anvil: el seed no corre" >&2; exit 1 ;; esac
+
+SEED_DIR="$WALLET_ROOT/.secrets/seed"
+material="$(node "$WALLET_ROOT/scripts/lib/seed-material.mjs" --keys)"
+read_material() { node -e 'console.log(JSON.parse(process.argv[1])[process.argv[2]])' "$material" "$1"; }
+SEED_WALLET_ID="$(read_material walletId)"
+PLATFORM_ID="$(node -e 'console.log(require(process.argv[1]).platformId)' "$SEED_DIR/credentials.json")"
+export SEED_WALLET_ID PLATFORM_ID
+
 cd "$WALLET_ROOT/contracts"
 forge script script/FundForkAccounts.s.sol --rpc-url "$DEPLOY_RPC"
 forge script script/SeedLocal.s.sol --rpc-url "$DEPLOY_RPC" --broadcast --slow
 read_json() { node -e 'const v=process.argv[2].split(".").reduce((o,k)=>o[k],require(process.argv[1]));console.log(v)' "$WALLET_ROOT/contracts/deployments/local.json" "$1"; }
 chain_json() { node -e 'const v=process.argv[2].split(".").reduce((o,k)=>o[k],require(process.argv[1]));console.log(v)' "$WALLET_ROOT/config/chains/base-mainnet.json" "$1"; }
 safe="$(read_json seed.safe)"
+
+pnpm --dir "$WALLET_ROOT/backend/signer" -s seed:executor --wallet "$SEED_WALLET_ID" > "$SEED_DIR/executor.json"
+
+# Sobres: se conservan si ya son de esta wallet (su KDF es el del registro OPAQUE de la primera corrida).
+seal() { # <app> <rol> <clave> <password>
+  local out="$SEED_DIR/$2.enc.json"
+  if [ -f "$out" ] && node -e 'const e=require(process.argv[1]); process.exit(e.walletId===process.argv[2]?0:1)' "$out" "$SEED_WALLET_ID"; then return 0; fi
+  SEED_KEY_HEX="$3" SEED_PASSWORD="$4" SEED_OUT="$out" node "$WALLET_ROOT/frontend/$1/scripts/seed-envelope.ts" >/dev/null
+}
+credential() { node -e 'console.log(require(process.argv[1])[process.argv[2]])' "$SEED_DIR/credentials.json" "$1"; }
+seal wallet U "$(read_material userKey)" "$(credential passwordU)"
+seal recovery R "$(read_material recoveryKey)" "$(credential passwordR)"
+unset material
+
+pnpm --dir "$WALLET_ROOT/backend/app" -s seed:local --credentials "$SEED_DIR/credentials.json" \
+  --u-envelope "$SEED_DIR/U.enc.json" --executor "$SEED_DIR/executor.json"
+
 usdc="$(cast call "$(chain_json contracts.usdc.address)" 'balanceOf(address)(uint256)' "$safe" --rpc-url "$DEPLOY_RPC" | awk '{print $1}')"
 usdt="$(cast call "$(chain_json contracts.usdt.address)" 'balanceOf(address)(uint256)' "$safe" --rpc-url "$DEPLOY_RPC" | awk '{print $1}')"
-echo "seed-local: Safe $safe con $usdc USDC (6 decimales) y $usdt USDT (6 decimales)"
 [ "$usdc" -ge "$(read_json seed.balances.usdc)" ] && [ "$usdt" -ge "$(read_json seed.balances.usdt)" ]
+cat <<SUMMARY
+seed-local listo (sólo entorno local; nunca usar estas credenciales fuera de este fork):
+  Safe            $safe  ($usdc USDC, $usdt USDT, 6 decimales)
+  walletId        $SEED_WALLET_ID
+  destino activo  $(read_json seed.destination)
+  email           $(credential email)
+  contraseña      $(credential accountPassword)
+  Password U      $(credential passwordU)
+  Password R      $(credential passwordR)
+  sobres          $SEED_DIR/U.enc.json y $SEED_DIR/R.enc.json
+SUMMARY

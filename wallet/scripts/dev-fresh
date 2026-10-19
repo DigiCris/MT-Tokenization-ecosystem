@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# `pnpm dev:fresh` (P21.T03): escenario determinístico desde cero — fork al bloque fijado (anvil_reset), bases del backend
+# y del signer vacías y migradas, deploy-local y seed-local. Dos corridas dan las mismas direcciones de contratos y de la
+# Safe de prueba y los mismos saldos (seed-check --report). Los procesos de `pnpm dev` se levantan aparte.
+set -euo pipefail
+WALLET_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=env.sh
+source "$WALLET_ROOT/scripts/env.sh"
+cd "$WALLET_ROOT"
+[ "$(node scripts/lib/env-value.mjs APP_ENV 2>/dev/null || echo local)" = local ] || { echo "dev:fresh sólo en local" >&2; exit 1; }
+docker compose up -d --wait --wait-timeout 600
+bash scripts/reset-fork
+# Bases de datos vacías (sólo local): las del backend y de los shards del signer se recrean con los dueños y permisos de
+# infra/local/postgres/init-db.sh; las migraciones aplican la política de acceso por tabla.
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres' <<'SQL' >/dev/null
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+  WHERE datname IN ('mtw_wallet', 'mtw_signer_dev', 'mtw_signer_platform_dev') AND pid <> pg_backend_pid();
+DROP DATABASE IF EXISTS mtw_wallet;
+DROP DATABASE IF EXISTS mtw_signer_dev;
+DROP DATABASE IF EXISTS mtw_signer_platform_dev;
+CREATE DATABASE mtw_wallet OWNER mtw_migrator;
+REVOKE ALL ON DATABASE mtw_wallet FROM PUBLIC;
+GRANT CONNECT, TEMPORARY ON DATABASE mtw_wallet TO mtw_app;
+GRANT CONNECT ON DATABASE mtw_wallet TO mtw_readonly;
+CREATE DATABASE mtw_signer_dev OWNER mtw_signer;
+REVOKE ALL ON DATABASE mtw_signer_dev FROM PUBLIC;
+CREATE DATABASE mtw_signer_platform_dev OWNER mtw_signer;
+REVOKE ALL ON DATABASE mtw_signer_platform_dev FROM PUBLIC;
+SQL
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d mtw_wallet' <<'SQL' >/dev/null
+ALTER SCHEMA public OWNER TO mtw_migrator;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO mtw_app, mtw_readonly;
+SQL
+rm -rf "$WALLET_ROOT/.secrets/seed" "$WALLET_ROOT/.secrets/signer/dev-1" "$WALLET_ROOT/.secrets/signer/platform" "$WALLET_ROOT/.secrets/integrity-monitor-state.json"
+(cd backend/app && node src/cli/db.ts migrate)
+bash scripts/deploy-local
+echo "dev:fresh: fork, bases y deploy listos; pnpm dev levanta los servicios y corre seed-local (idempotente)"

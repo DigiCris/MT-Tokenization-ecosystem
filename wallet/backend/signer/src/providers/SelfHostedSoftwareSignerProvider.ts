@@ -151,7 +151,11 @@ export class SelfHostedSoftwareSignerProvider implements SignerProvider {
     if ((purpose === 'GAS_TANK') !== (walletId === null)) {
       throw new SignerProviderError('KEY_NOT_USABLE', 'sólo la cuenta gas tank se crea sin wallet');
     }
-    const key = generatePrivateKey();
+    return this.storeKey(walletId, purpose, generatePrivateKey());
+  }
+
+  /** Cifra y guarda la clave (keystore V3) y la registra; borra la copia en claro al terminar. */
+  protected async storeKey(walletId: string | null, purpose: KeyPurpose, key: Uint8Array): Promise<CreatedKey> {
     let address: Address;
     let password: Uint8Array | undefined;
     try {
