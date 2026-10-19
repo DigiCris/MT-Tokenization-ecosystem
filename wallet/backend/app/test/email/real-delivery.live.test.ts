@@ -44,7 +44,9 @@ beforeAll(async () => {
   env = await startAccountEnv({ redisDb: REDIS_DBS.realDeliveryLive, provider, logger: logs.logger });
 });
 afterAll(async () => {
-  await env.close();
+  // Si el beforeAll falló antes de crear el entorno (p. ej. sin acceso a la casilla), no hay nada que cerrar y la causa
+  // real queda como único error.
+  await (env as AccountEnv | undefined)?.close();
 });
 
 async function latestReference(template: TemplateName, since: Date): Promise<string | undefined> {
