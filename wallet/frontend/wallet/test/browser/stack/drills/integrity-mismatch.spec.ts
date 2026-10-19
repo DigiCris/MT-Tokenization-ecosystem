@@ -59,23 +59,29 @@ async function until<T>(
   }
 }
 
-/** Sin secretos: el estado público de la plataforma y las líneas de integridad del log del worker del stack. */
+/** Sin secretos: las líneas de integridad de los logs del worker y de los dos shards del signer del stack. */
+function integrityLogLines(): string {
+  const lines: string[] = [];
+  for (const name of ['worker', 'signer-dev-1', 'signer-platform']) {
+    try {
+      const matching = readFileSync(join(stack().dir, 'logs', `${name}.log`), 'utf8')
+        .split('\n')
+        .filter((line) => /integri|cooperaci|atestaci/i.test(line))
+        .slice(-10);
+      lines.push(`${name} (integridad):`, ...matching);
+    } catch (error) {
+      lines.push(`${name}: ${String(error)}`);
+    }
+  }
+  return lines.join('\n').replace(/[a-z][\w+.-]*:\/\/[^\s"@]*@[^\s"]*/gi, '<url con credenciales>');
+}
+
+/** El estado público de la plataforma y los logs de integridad. */
 async function cooperationDiagnostics(): Promise<string> {
   const status = await fetch(`${stack().urls.apiWallet}/platform/status`)
     .then((r) => r.text())
     .catch((error: unknown) => String(error));
-  let worker: string;
-  try {
-    worker = readFileSync(join(stack().dir, 'logs', 'worker.log'), 'utf8')
-      .split('\n')
-      .filter((line) => /integri|cooperaci/i.test(line))
-      .slice(-15)
-      .join('\n')
-      .replace(/[a-z][\w+.-]*:\/\/[^\s"@]*@[^\s"]*/gi, '<url con credenciales>');
-  } catch (error) {
-    worker = String(error);
-  }
-  return `platform/status: ${status}\nworker (integridad):\n${worker}`;
+  return `platform/status: ${status}\n${integrityLogLines()}`;
 }
 
 interface AppStatus {
@@ -249,6 +255,7 @@ test('mismatch de Recovery: pausa en ≤ 2 ciclos, operación retenida, doble ap
       return op.lastErrorCode === 'COOPERATION_PAUSED' ? op : undefined;
     },
     120_000,
+    async () => `operación: ${JSON.stringify(await wallet.api.operation(held))}\n${await cooperationDiagnostics()}`,
   );
   expect(retained.txHash).toBeNull();
   await until(
