@@ -21,7 +21,7 @@ Detalle:
 - **Listeners:** el proceso de la API expone un listener para el cliente Wallet (puerto interno 8080) y otro para el cliente Recovery (8081) (§5.3, §5.5); cada uno expone sólo sus rutas: el de Recovery no expone send, swap ni alta de whitelist, y el de Wallet no expone el envío de enrollment ni propuestas firmadas por R ([B-AUTHZ] punto 3).
 - **Cookies de cuenta:** `__Host-mtw_sid` en el listener Wallet y `__Host-mtr_sid` en el listener Recovery, con `HttpOnly; Secure; SameSite=Strict; Path=/` ([B-AUTH-04]).
 - **CORS y CSRF:** CORS estricto por listener (sólo el origin de su frontend, `credentials: true`, P08.T08) y `Origin` exacto permitido para ese listener en todo método no-GET ([B-AUTH-05]).
-- **Links entre apps:** por fragmento, que no llega a los servidores: `https://recovery.<RECOVERY_DOMAIN>/enroll#eid=<enrollmentId>&n=<nonce>` y `https://wallet.<WALLET_DOMAIN>/onboarding/confirm-recovery#eid=<id>&r=<R>` ([F-LNK-01], [F-LNK-02]).
+- **Enlaces entre apps:** por fragmento, que no llega a los servidores: `https://recovery.<RECOVERY_DOMAIN>/enroll#eid=<enrollmentId>&n=<nonce>&k=<k>` y `https://wallet.<WALLET_DOMAIN>/onboarding/confirm-recovery#eid=<id>&r=<R>&k=<k>` ([F-LNK-01], [F-LNK-02]); `k` es el secreto del pedido que genera la Wallet y el backend nunca ve (ADR-033).
 - **En producción:** cada frontend se sirve desde su propio contenedor estático (`wallet-web`, `recovery-web`) en su propio servidor; los reverse proxies y el DNS se configuran a mano al desplegar (CF-07, ADR-022); TLS termina en el reverse proxy de cada servidor y la API sólo confía en `X-Forwarded-*` desde `TRUSTED_PROXY_CIDRS` (§5.5).
 
 ## Alternativas consideradas
