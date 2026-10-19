@@ -8,10 +8,11 @@
 // puede armar un enlace de regreso que la Wallet acepte. La Wallet no muestra la R del backend hasta que coincide, así
 // que no se la puede copiar de su propia pantalla; la comparación manual tiene 3 intentos por pedido y, al agotarse, el
 // pedido se aborta como con un enlace de regreso distinto. Todo aborto se informa al backend (N10) para que quede
-// auditado y el usuario reciba la alerta.
+// auditado y el usuario reciba la alerta (abort-reports.ts). Revisión de seguridad de ADR-033 (MEDIO 2): en este paso
+// no se muestra ningún texto de la plataforma; con el `k` del pedido, cualquier respuesta que no confirme exactamente
+// la R del enlace aborta el pedido (sólo un error de red deja reintentar).
 import { getAddress, isAddress, isAddressEqual, type Address } from 'viem';
-import type { PlatformAuth } from '../api/request-signature.ts';
-import type { CreatedEnrollment, RecoveryEnrollment, WalletApi } from '../api/wallet-api.ts';
+import type { CreatedEnrollment, RecoveryEnrollment } from '../api/wallet-api.ts';
 import { randomBytes, toBase64Url } from '../crypto/bytes.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,13 +45,17 @@ export class RecoveryAbortError extends RecoveryActivationError {
   }
 }
 
-/** La R del enlace de regreso no es la que informa la plataforma: la activación se aborta y se pide otro enrollment. */
+/**
+ * Con el `k` del pedido, la plataforma no informa para ese pedido exactamente la R del enlace (otra R, otro pedido,
+ * ninguna R, otro estado o un error): la activación se aborta y se pide otro enrollment. Revisión de ADR-033 (MEDIO 2):
+ * nada de lo que respondió la plataforma se muestra.
+ */
 export class RecoveryKeyMismatchError extends RecoveryAbortError {
   override name = 'RecoveryKeyMismatchError';
 
   constructor() {
     super(
-      'La dirección que trae el enlace de Recovery no es la que recibió la plataforma: alguien pudo haberla cambiado en el camino. Se canceló este pedido.',
+      'La plataforma no informa para este pedido la dirección que trae el enlace de tu app Recovery: alguien pudo haberla cambiado en el camino. Se canceló este pedido.',
       'RETURN_LINK_KEY_MISMATCH',
     );
   }
@@ -124,8 +129,9 @@ export function submittedRecoveryKey(enrollment: RecoveryEnrollment): Address | 
 }
 
 /**
- * Con enlace de regreso: tiene que traer el mismo `k` del pedido (si no, no lo armó la app Recovery: se aborta), ser de
- * ese mismo enrollment y su R tiene que ser exactamente la del backend (si no, se aborta).
+ * Con enlace de regreso: tiene que traer el mismo `k` del pedido (si no, no lo armó la app Recovery: se aborta). Con el
+ * `k`, el enlace es auténtico y lo único que confirma R es que la plataforma informe ese mismo pedido SUBMITTED con
+ * exactamente esa R; cualquier otra respuesta (otra R, otro pedido, sin R, otro estado) aborta igual que otra R.
  */
 export function confirmWithReturnLink(
   enrollment: RecoveryEnrollment,
@@ -133,14 +139,43 @@ export function confirmWithReturnLink(
   secret: string,
 ): Address {
   if (!sameSecret(secret, fromLink.secret)) throw new ReturnLinkUnverifiedError();
-  if (fromLink.enrollmentId !== enrollment.id.toLowerCase()) {
-    throw new RecoveryActivationError('El enlace de regreso es de otro pedido de Recovery.');
+  if (
+    enrollment.id.toLowerCase() !== fromLink.enrollmentId.toLowerCase() ||
+    enrollment.status !== 'SUBMITTED' ||
+    enrollment.recoveryKey === null ||
+    !isAddress(enrollment.recoveryKey) ||
+    !isAddressEqual(fromLink.recoveryKey, enrollment.recoveryKey)
+  ) {
+    throw new RecoveryKeyMismatchError();
   }
-  const reported = submittedRecoveryKey(enrollment);
-  if (reported === null) throw new RecoveryActivationError('Recovery todavía no informó la dirección de tu clave R.');
-  if (!isAddressEqual(fromLink.recoveryKey, reported)) throw new RecoveryKeyMismatchError();
-  return reported;
+  return getAddress(enrollment.recoveryKey);
 }
+
+/** El pedido ya no sirve según la plataforma (vencido, cancelado, reemplazado o terminado): qué pasó, en texto local. */
+export function endedRequestText(enrollment: Pick<RecoveryEnrollment, 'status' | 'rejectionReason'>): string | null {
+  switch (enrollment.status) {
+    case 'REQUESTED':
+    case 'SUBMITTED':
+      return null;
+    case 'EXPIRED':
+      return 'El pedido venció antes de que Recovery informara la dirección de tu clave R.';
+    case 'REJECTED':
+      return enrollment.rejectionReason === 'SUPERSEDED'
+        ? 'Este pedido quedó reemplazado por otro más nuevo (generado en otra pestaña o en otro dispositivo).'
+        : 'Este pedido se canceló (desde otra pestaña o dispositivo, o porque no se pudo confirmar la dirección de tu clave R).';
+    case 'CONFIRMED':
+    case 'RETIRED':
+      return 'Este pedido ya no está vigente.';
+  }
+}
+
+/** La pestaña del pedido no pudo consultar a la plataforma para comprobar un enlace de regreso auténtico. */
+export const RETURN_LINK_NETWORK_TEXT =
+  'No se pudo consultar a la plataforma para comprobar el enlace de regreso: revisá tu conexión y abrí el enlace otra vez (o confirmá la dirección a mano).';
+
+/** Mientras se espera a Recovery: un error de la consulta, sin ningún texto de la plataforma (ui/errors.ts). */
+export const POLL_ERROR_TEXT =
+  'No se pudo consultar el estado del pedido a la plataforma: se sigue intentando. Revisá tu conexión.';
 
 /** Dirección en grupos de 4 caracteres hexadecimales (sin el 0x), como la muestran las dos apps. */
 export function addressGroups(address: Address): string[] {
@@ -249,24 +284,6 @@ export function requestExpiryText(expiresAt: string, timeZone?: string): string 
   return `Este pedido vence a las ${time}: si Recovery no informa la dirección antes, vas a tener que generar otro.`;
 }
 
-/**
- * Informa al backend el aborto del pedido (N10: queda REJECTED con el motivo, auditado y con la alerta al usuario). Si
- * falla, el aborto local sigue igual: ningún camino confirma ese pedido.
- */
-export async function reportAbort(
-  api: Pick<WalletApi, 'client'>,
-  platform: PlatformAuth,
-  enrollmentId: string,
-  reason: RejectReason,
-): Promise<boolean> {
-  try {
-    await api.client.request<RecoveryEnrollment>(
-      'POST',
-      `/recovery/enrollments/${encodeURIComponent(enrollmentId)}/reject`,
-      { platform, body: { reason } },
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
+/** Dejar el pedido después de una comparación que no coincidió es abortarlo (ADR-033): se informa igual. */
+export const LEFT_AFTER_MISMATCH_TEXT =
+  'Dejaste este pedido después de una comparación que no coincidió: se canceló y se le avisó a la plataforma. Si la dirección que copiaste de Recovery era la correcta, alguien pudo haberla cambiado en el camino.';

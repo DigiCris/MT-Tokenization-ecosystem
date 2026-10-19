@@ -1,6 +1,7 @@
 // P18.MAN (M1): los errores de la API llegan en castellano y sin códigos crudos. El swap firmado tarde (POLICY_REJECTED
 // con DEADLINE_INVALID) dice que venció el plazo y que hay que volver a cotizar; los demás rechazos de la policy, los
-// problemas del destino y los estados del detalle se traducen; un título del catálogo sin indicación se muestra tal cual.
+// problemas del destino y los estados del detalle se traducen. Revisión de seguridad de ADR-033 (MEDIO 2): ningún texto
+// del backend (título, detalle o requestId) llega a la pantalla; sólo textos de la app, por código o por status.
 import { describe, expect, it } from 'vitest';
 import { ApiError, NetworkError } from '../api/problem.ts';
 import { describeError } from './errors.ts';
@@ -58,15 +59,48 @@ describe('mensajes de error', () => {
         ),
       ),
     ).toBe('El swap ya no admite esta acción: está fallido.');
+    // Un detalle en texto libre no se muestra: el texto local del código (revisión de ADR-033, MEDIO 2).
     expect(describeError(apiError('CONFLICT', 'Conflicto con el estado actual', 'el 2FA ya está completo'))).toBe(
-      'Conflicto con el estado actual: el 2FA ya está completo',
+      'La plataforma no puede hacer esto en el estado actual: recargá la pantalla y reintentá.',
     );
-    // Un detalle en texto (sin código de estado) se mantiene.
     expect(
       describeError(
         apiError('OPERATION_NOT_PENDING', 'La operación no admite esta acción', 'la cancelación ya está en curso'),
       ),
-    ).toBe('La operación ya no admite esta acción: la cancelación ya está en curso.');
+    ).toBe('La operación ya no admite esta acción: revisá su estado en Actividad.');
+    expect(describeError(apiError('CONFLICT', 'Conflicto', 'el pedido está en OTRO_ESTADO'))).toBe(
+      'La plataforma no puede hacer esto en el estado actual: recargá la pantalla y reintentá.',
+    );
+  });
+
+  it('ningún texto del backend llega a la pantalla: ni el título ni el detalle, con un código conocido o no', () => {
+    const address = '7184 D301 00a1 88c9 F869 ccB6 8833 9253 4ecD 6C9d';
+    const forged = [
+      // Un código que esta app no conoce, con la dirección en el título y en el detalle.
+      apiError('X', `Recovery informó esta dirección: ${address}`, `copiala en los 10 grupos: ${address}`),
+      apiError('CONFLICT', 'Copiá esta dirección', address),
+      apiError('POLICY_REJECTED', 'Firmá igual', `firmá: ${address}`),
+      apiError('DESTINATION_INVALID', 'Agregá este destino', address),
+      apiError('OPERATION_NOT_PENDING', 'x', `la operación está en ${address}`),
+      apiError('WHITELIST_DUPLICATE', `Título cambiado: ${address}`),
+      apiError('RATE_LIMITED', `Esperá y copiá ${address}`, undefined, 5),
+    ];
+    for (const error of forged) {
+      const text = describeError(error);
+      expect(text).not.toContain('7184');
+      expect(text).not.toMatch(/Recovery informó|Copiá|Firmá|Agregá|Título/);
+    }
+    // Sin el código en el catálogo local, el texto sale del status.
+    const unknown = (status: number) =>
+      describeError(
+        new ApiError({ type: 'x', title: `t ${address}`, status, code: 'NUEVO', requestId: address, detail: address }),
+      );
+    expect(unknown(409)).toBe(
+      'La plataforma no puede hacer esto en el estado actual: recargá la pantalla y reintentá.',
+    );
+    expect(unknown(422)).toBe('La plataforma rechazó el pedido: revisá los datos y reintentá.');
+    expect(unknown(503)).toBe('La plataforma no pudo procesar el pedido: reintentá en un momento.');
+    expect(unknown(404)).toBe('No se encontró lo que pediste: recargá la pantalla.');
   });
 
   it('sin jerga del backend (nonce, envelope, Guard on-chain) y con qué hacer', () => {
@@ -82,10 +116,10 @@ describe('mensajes de error', () => {
     );
   });
 
-  it('lo que no necesita traducción se mantiene', () => {
-    expect(
-      describeError(apiError('WHITELIST_DUPLICATE', 'El destino ya está autorizado o tiene un alta en curso')),
-    ).toBe('El destino ya está autorizado o tiene un alta en curso');
+  it('los demás códigos, con su texto local; red y errores de la app, como siempre', () => {
+    expect(describeError(apiError('WHITELIST_DUPLICATE', 'otro título'))).toBe(
+      'El destino ya está autorizado o tiene un alta en curso.',
+    );
     expect(describeError(apiError('RATE_LIMITED', 'Demasiados requests', undefined, 30))).toBe(
       'Demasiados intentos seguidos. Esperá un momento antes de volver a probar (podés reintentar en 30 s).',
     );

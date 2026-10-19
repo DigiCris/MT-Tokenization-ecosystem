@@ -8,37 +8,50 @@
 // regreso trae otra R o no trae el `k` del pedido, o se agotan los intentos, ese pedido se aborta (ya no se confirma por
 // ningún camino), se le informa al backend para la auditoría y la alerta (N10) y hay que generar uno nuevo, que obliga a
 // crear otra R en Recovery. Recién con R confirmada sigue.
+//
+// Revisión de seguridad de ADR-033: ningún texto de la plataforma aparece en este paso (sólo textos locales); con el `k`
+// del pedido, cualquier respuesta que no confirme exactamente la R del enlace aborta (sólo un error de red deja
+// reintentar), y la pestaña del enlace recibe el resultado real. La comparación manual vuelve a leer el pedido antes de
+// aceptarse, y un pedido que la plataforma da por terminado (cancelado o reemplazado desde otra pestaña o dispositivo,
+// vencido) ofrece generar otro. Dejar el pedido después de una comparación que no coincidió lo aborta e informa: al
+// salir de la pantalla por la cola de avisos y al cerrar o recargar la pestaña con un aviso firmado de antemano.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Address } from 'viem';
+import { isAddress, type Address } from 'viem';
+import { ApiError, NetworkError } from '../api/problem.ts';
 import type { PlatformAuth } from '../api/request-signature.ts';
 import type { CreatedEnrollment, RecoveryEnrollment } from '../api/wallet-api.ts';
-import { api } from '../app/services.ts';
+import { abortReports, api } from '../app/services.ts';
 import { appConfig } from '../config/index.ts';
 import { AddressText } from '../ui/AddressText.tsx';
+import { describeError } from '../ui/errors.ts';
 import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { QrCanvas } from '../ui/QrCanvas.tsx';
-import { describeError } from '../ui/errors.ts';
+import type { EnrollmentPurpose, PendingAbort } from './abort-reports.ts';
 import {
   ADDRESS_GROUPS,
   BEFORE_NEW_REQUEST_TEXT,
   compareManually,
   confirmWithReturnLink,
   distributePaste,
+  endedRequestText,
+  LEFT_AFTER_MISMATCH_TEXT,
   MANUAL_ABORT_TEXT,
   MANUAL_MISMATCH_TEXT,
   manualRetryText,
   NEW_REQUEST_TEXT,
   newReturnSecret,
+  POLL_ERROR_TEXT,
   RecoveryAbortError,
   recoveryEnrollLink,
-  reportAbort,
+  RecoveryKeyMismatchError,
   requestExpiryText,
+  RETURN_LINK_NETWORK_TEXT,
   ReturnLinkUnverifiedError,
   sameSecret,
   submittedRecoveryKey,
   type RejectReason,
 } from './activation.ts';
-import { listenForReturn } from './return-channel.ts';
+import { listenForReturn, type ReturnResult } from './return-channel.ts';
 
 export interface ConfirmedRecovery {
   recoveryKey: Address;
@@ -57,16 +70,23 @@ interface Request {
 }
 
 const emptyGroups = () => Array.from({ length: ADDRESS_GROUPS }, () => '');
+const NOT_FOUND_TEXT = 'La plataforma ya no encuentra este pedido.';
+/** La respuesta es de ese pedido (una de otro no se usa). */
+const sameRequest = (enrollment: RecoveryEnrollment, enrollmentId: string) =>
+  enrollment.id.toLowerCase() === enrollmentId.toLowerCase();
 
 export function RecoveryActivationStep({
   walletId,
   platform,
+  sessionExpiresAt,
   onConfirmed,
   intro,
   warning,
 }: {
   walletId: string;
   platform: PlatformAuth;
+  /** Cuándo vence la PlatformSession (para reintentar los avisos de aborto mientras siga vigente). */
+  sessionExpiresAt?: string;
   onConfirmed: (confirmed: ConfirmedRecovery) => void;
   intro: string;
   /** Aviso destacado debajo de la introducción (p. ej. qué pasa si se pierden U y R). */
@@ -80,32 +100,67 @@ export function RecoveryActivationStep({
   const [typed, setTyped] = useState<string[]>(emptyGroups);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [mismatch, setMismatch] = useState<{ groups: number[]; attemptsLeft: number } | null>(null);
   const [confirmed, setConfirmed] = useState<Address | null>(null);
-  // Pedido abortado: el motivo se muestra y ningún camino (enlace de regreso o comparación manual) lo confirma.
-  const [abortReason, setAbortReason] = useState<string | null>(null);
-  const aborted = useRef(false);
+  // Pedido terminado: abortado acá (e informado) o dado por terminado por la plataforma. Se muestra el motivo y ningún
+  // camino (enlace de regreso o comparación manual) lo confirma.
+  const [ended, setEnded] = useState<string | null>(null);
+  // El pedido vigente y los terminados, por id: un resultado tardío de otro pedido o de uno terminado no confirma nada.
+  const current = useRef<string | null>(null);
+  const endedIds = useRef(new Set<string>());
+  // Pedidos ya confirmados: el mismo enlace abierto otra vez no vuelve a confirmar (ni cancela) nada.
+  const doneIds = useRef(new Set<string>());
+  // El callback y la sesión vigentes, sin volver a suscribir el canal del enlace en cada render del padre.
+  const onConfirmedRef = useRef(onConfirmed);
+  const sessionRef = useRef({ platform, expiresAt: sessionExpiresAt });
+  useEffect(() => {
+    onConfirmedRef.current = onConfirmed;
+    sessionRef.current = { platform, expiresAt: sessionExpiresAt };
+  });
 
+  const report = useCallback((abort: PendingAbort) => {
+    const { platform: auth, expiresAt } = sessionRef.current;
+    void abortReports.report(abort, {
+      platform: auth,
+      purpose: abort.purpose ?? 'ONBOARDING',
+      ...(expiresAt === undefined ? {} : { expiresAt }),
+    });
+  }, []);
+
+  /** Aborta el pedido acá y se lo informa al backend (si no llega ahora, queda en la cola para la próxima sesión). */
   const abort = useCallback(
-    (enrollmentId: string, message: string, reason: RejectReason) => {
-      if (aborted.current) return;
-      aborted.current = true;
-      setAbortReason(message);
-      // Si el backend no lo registra (red, sesión vencida), el aborto local sigue igual.
-      void reportAbort(api, platform, enrollmentId, reason);
+    (enrollmentId: string, purpose: EnrollmentPurpose, message: string, reason: RejectReason) => {
+      if (endedIds.current.has(enrollmentId)) return;
+      endedIds.current.add(enrollmentId);
+      if (current.current === enrollmentId) setEnded(message);
+      report({ enrollmentId, reason, purpose });
     },
-    [platform],
+    [report],
   );
+
+  /** La plataforma da el pedido por terminado: no se informa nada, sólo se ofrece generar otro. */
+  const end = useCallback((enrollmentId: string, message: string) => {
+    endedIds.current.add(enrollmentId);
+    if (current.current === enrollmentId) setEnded(message);
+  }, []);
+
+  const finish = useCallback((created: CreatedEnrollment, recoveryKey: Address) => {
+    if (endedIds.current.has(created.enrollmentId) || current.current !== created.enrollmentId) return false;
+    doneIds.current.add(created.enrollmentId);
+    onConfirmedRef.current({ recoveryKey, enrollmentId: created.enrollmentId, enrollmentNonce: created.nonce });
+    return true;
+  }, []);
 
   const create = useAsyncAction(
     useCallback(async () => {
       // Sin pedido mientras se crea el nuevo: el polling y el enlace de regreso del anterior se cortan (sus respuestas
       // tardías se descartan) y no vuelven a poblar el paso con su R. El secreto del anterior se descarta con él.
+      current.current = null;
       setRequest(null);
       setEnrollment(null);
-      aborted.current = false;
-      setAbortReason(null);
+      setEnded(null);
       setLinkError(null);
       setManualError(null);
       setPollError(null);
@@ -114,6 +169,8 @@ export function RecoveryActivationStep({
       setConfirmed(null);
       setTyped(emptyGroups());
       const created = await api.createRecoveryEnrollment(platform, walletId);
+      // Recién con el pedido nuevo puesto pasa a ser el vigente: nada tardío del anterior cae en éste.
+      current.current = created.enrollmentId;
       setRequest({ created, secret: newReturnSecret() });
       setRequests((n) => n + 1);
     }, [platform, walletId]),
@@ -133,77 +190,173 @@ export function RecoveryActivationStep({
       return null;
     }
   })();
+  const waiting = reported === null;
 
-  // Espera a que Recovery informe R (o a que el pedido venza). Un pedido abortado ya no se consulta.
-  const isAborted = abortReason !== null;
+  // Estado del pedido: hasta que Recovery informe R, cada 3 s; después, cada 10 s, para enterarse si otra pestaña u
+  // otro dispositivo lo canceló o lo reemplazó. Ningún texto de la plataforma se muestra.
   useEffect(() => {
-    if (created === null || reported !== null || isAborted) return undefined;
+    if (created === null || ended !== null || confirmed !== null) return undefined;
     let live = true;
     const tick = () => {
       api
         .getRecoveryEnrollment(created.enrollmentId)
-        .then((current) => {
+        .then((latest) => {
           if (!live) return;
-          setEnrollment(current);
-          submittedRecoveryKey(current);
+          // Una respuesta de otro pedido no se usa (la plataforma respondió mal): se sigue preguntando.
+          if (!sameRequest(latest, created.enrollmentId)) {
+            setPollError(POLL_ERROR_TEXT);
+            return;
+          }
+          setPollError(null);
+          const over = endedRequestText(latest);
+          if (over !== null) end(created.enrollmentId, over);
+          else setEnrollment(latest);
         })
         .catch((error: unknown) => {
-          if (live) setPollError(describeError(error));
+          if (!live) return;
+          if (error instanceof ApiError && error.status === 404) end(created.enrollmentId, NOT_FOUND_TEXT);
+          else setPollError(POLL_ERROR_TEXT);
         });
     };
     tick();
-    const timer = setInterval(tick, 3_000);
+    const timer = setInterval(tick, waiting ? 3_000 : 10_000);
     return () => {
       live = false;
       clearInterval(timer);
     };
-  }, [created, reported, isAborted]);
+  }, [created, ended, confirmed, waiting, end]);
 
-  const finish = useCallback(
-    (recoveryKey: Address) => {
-      if (!created || aborted.current) return;
-      onConfirmed({ recoveryKey, enrollmentId: created.enrollmentId, enrollmentNonce: created.nonce });
-    },
-    [created, onConfirmed],
-  );
-
-  // Enlace de regreso abierto en otra pestaña (sólo el del pedido vigente: lo que llega tarde de otro se descarta). Sin el
-  // `k` de este pedido no lo armó la app Recovery: se aborta sin consultar nada; con el `k`, la R tiene que ser la del
-  // backend.
+  // Enlace de regreso abierto en otra pestaña (sólo el del pedido vigente). Sin el `k` de este pedido no lo armó la app
+  // Recovery: se aborta sin consultar nada. Con el `k`, sólo confirma que la plataforma informe este mismo pedido
+  // SUBMITTED con esa R; cualquier otra respuesta aborta, y sólo un error de red deja reintentar. A la pestaña del enlace
+  // le llega el resultado real.
   useEffect(() => {
     if (request === null) return undefined;
-    const { created: current, secret } = request;
-    const alive = { current: true };
-    const stop = listenForReturn(current.enrollmentId, (recoveryKey, linkSecret) => {
+    const { created: pending, secret } = request;
+    const id = pending.enrollmentId;
+    return listenForReturn(id, async (recoveryKey, linkSecret): Promise<ReturnResult> => {
+      if (doneIds.current.has(id)) return 'confirmed';
+      if (endedIds.current.has(id) || current.current !== id) return 'aborted';
       if (!sameSecret(secret, linkSecret)) {
-        const error = new ReturnLinkUnverifiedError();
-        abort(current.enrollmentId, error.message, error.reason);
+        const unverified = new ReturnLinkUnverifiedError();
+        abort(id, pending.purpose, unverified.message, unverified.reason);
+        return 'aborted';
+      }
+      const mismatched = () => {
+        const error = new RecoveryKeyMismatchError();
+        abort(id, pending.purpose, error.message, error.reason);
+        return 'aborted' as const;
+      };
+      if (!isAddress(recoveryKey)) return mismatched();
+      let latest: RecoveryEnrollment;
+      try {
+        latest = await api.getRecoveryEnrollment(id);
+      } catch (error) {
+        if (!(error instanceof NetworkError)) return mismatched();
+        if (current.current === id) setLinkError(RETURN_LINK_NETWORK_TEXT);
+        return 'retry';
+      }
+      if (endedIds.current.has(id) || current.current !== id) return 'aborted';
+      try {
+        const confirmedKey = confirmWithReturnLink(
+          latest,
+          { enrollmentId: id, recoveryKey, secret: linkSecret },
+          secret,
+        );
+        setLinkError(null);
+        setEnrollment(latest);
+        return finish(pending, confirmedKey) ? 'confirmed' : 'aborted';
+      } catch (error) {
+        if (error instanceof RecoveryAbortError) {
+          abort(id, pending.purpose, error.message, error.reason);
+          return 'aborted';
+        }
+        return mismatched();
+      }
+    });
+  }, [request, abort, finish]);
+
+  // Con una comparación que no coincidió, dejar el pedido lo aborta (ADR-033). Al cerrar o recargar la pestaña sale el
+  // aviso firmado de antemano (keepalive); al salir del paso (otra pantalla, sesión vencida), por la cola de avisos.
+  const leaving = useRef<PendingAbort | null>(null);
+  useEffect(() => {
+    if (created === null || mismatch === null || confirmed !== null || ended !== null) {
+      leaving.current = null;
+      return undefined;
+    }
+    const entry: PendingAbort = {
+      enrollmentId: created.enrollmentId,
+      reason: 'MANUAL_COMPARISON_FAILED',
+      purpose: created.purpose,
+    };
+    leaving.current = entry;
+    const { platform: auth, expiresAt } = sessionRef.current;
+    return abortReports.armOnLeave(
+      entry,
+      { platform: auth, purpose: created.purpose, ...(expiresAt === undefined ? {} : { expiresAt }) },
+      () => {
+        // Si la pestaña vuelve del bfcache, el pedido ya quedó abortado e informado.
+        leaving.current = null;
+        endedIds.current.add(created.enrollmentId);
+        if (current.current === created.enrollmentId) setEnded(LEFT_AFTER_MISMATCH_TEXT);
+      },
+    );
+  }, [created, mismatch, confirmed, ended]);
+  useEffect(
+    () => () => {
+      const entry = leaving.current;
+      if (entry !== null) report(entry);
+    },
+    [report],
+  );
+
+  const compare = async () => {
+    if (created === null) return;
+    const id = created.enrollmentId;
+    if (endedIds.current.has(id)) return;
+    setManualError(null);
+    setChecking(true);
+    // La vista vigente del pedido, no la del último polling: otra pestaña o dispositivo lo pudo cancelar o reemplazar.
+    let latest: RecoveryEnrollment;
+    try {
+      latest = await api.getRecoveryEnrollment(id);
+    } catch (error) {
+      setChecking(false);
+      if (current.current !== id) return;
+      if (error instanceof ApiError && error.status === 404) end(id, NOT_FOUND_TEXT);
+      else setManualError('No se pudo consultar el pedido a la plataforma: revisá tu conexión y volvé a confirmar.');
+      return;
+    }
+    setChecking(false);
+    if (current.current !== id || endedIds.current.has(id)) return;
+    if (!sameRequest(latest, id)) {
+      setManualError('La plataforma no respondió bien: volvé a confirmar en un momento.');
+      return;
+    }
+    const over = endedRequestText(latest);
+    if (over !== null) {
+      end(id, over);
+      return;
+    }
+    setEnrollment(latest);
+    try {
+      const attempt = compareManually(latest, typed, failedAttempts);
+      if (attempt.match) {
+        setMismatch(null);
+        setConfirmed(attempt.recoveryKey);
         return;
       }
-      void api
-        .getRecoveryEnrollment(current.enrollmentId)
-        .then((latest) => {
-          if (!alive.current) return;
-          setEnrollment(latest);
-          finish(
-            confirmWithReturnLink(
-              latest,
-              { enrollmentId: current.enrollmentId, recoveryKey: recoveryKey as Address, secret: linkSecret },
-              secret,
-            ),
-          );
-        })
-        .catch((error: unknown) => {
-          if (!alive.current) return;
-          if (error instanceof RecoveryAbortError) abort(current.enrollmentId, error.message, error.reason);
-          else setLinkError(describeError(error));
-        });
-    });
-    return () => {
-      alive.current = false;
-      stop();
-    };
-  }, [request, finish, abort]);
+      setFailedAttempts((failed) => failed + 1);
+      if (attempt.attemptsLeft === 0) {
+        abort(id, created.purpose, MANUAL_ABORT_TEXT, 'MANUAL_COMPARISON_FAILED');
+        return;
+      }
+      setMismatch({ groups: attempt.mismatchedGroups, attemptsLeft: attempt.attemptsLeft });
+    } catch (error) {
+      // Sólo errores de esta app (p. ej. «todavía no informó»): ningún texto de la plataforma.
+      setManualError(describeError(error));
+    }
+  };
 
   const link = request ? recoveryEnrollLink(appConfig.recoveryOrigin, request.created, request.secret) : null;
   const newRequestButton = (
@@ -225,7 +378,7 @@ export function RecoveryActivationStep({
           </button>
         </>
       )}
-      {link && created && reported === null && abortReason === null && (
+      {link && created && reported === null && ended === null && (
         <div className="stack">
           {requests > 1 && <Notice tone="warning">{NEW_REQUEST_TEXT}</Notice>}
           <p>
@@ -245,24 +398,16 @@ export function RecoveryActivationStep({
           <p data-request-expires={created.expiresAt}>{requestExpiryText(created.expiresAt)}</p>
           <Notice>Esperando que Recovery informe la dirección de tu clave R…</Notice>
           {pollError && <Notice tone="error">{pollError}</Notice>}
-          {enrollment?.status === 'EXPIRED' && (
-            <div className="stack">
-              <p>{BEFORE_NEW_REQUEST_TEXT}</p>
-              <button type="button" className="button" onClick={() => void create.run()}>
-                El pedido venció: generar uno nuevo
-              </button>
-            </div>
-          )}
         </div>
       )}
-      {abortReason !== null && (
-        <div className="stack">
-          <Notice tone="error">{abortReason}</Notice>
+      {ended !== null && (
+        <div className="stack" data-request-ended="">
+          <Notice tone="error">{ended}</Notice>
           <p>{BEFORE_NEW_REQUEST_TEXT}</p>
           {newRequestButton}
         </div>
       )}
-      {reported !== null && abortReason === null && confirmed !== null && (
+      {reported !== null && ended === null && confirmed !== null && created && (
         <div className="stack">
           <Notice tone="success">
             Dirección de tu clave R (confirmada): <AddressText address={confirmed} />
@@ -271,14 +416,14 @@ export function RecoveryActivationStep({
             type="button"
             className="button"
             onClick={() => {
-              finish(confirmed);
+              finish(created, confirmed);
             }}
           >
             Continuar
           </button>
         </div>
       )}
-      {created && reported !== null && abortReason === null && confirmed === null && (
+      {created && reported !== null && ended === null && confirmed === null && (
         <div className="stack">
           <p>
             Recovery ya informó la dirección de tu clave R. Si abriste el enlace de regreso de Recovery, se confirma
@@ -294,24 +439,7 @@ export function RecoveryActivationStep({
             className="stack"
             onSubmit={(event) => {
               event.preventDefault();
-              if (!enrollment || aborted.current) return;
-              try {
-                setManualError(null);
-                const attempt = compareManually(enrollment, typed, failedAttempts);
-                if (attempt.match) {
-                  setMismatch(null);
-                  setConfirmed(attempt.recoveryKey);
-                  return;
-                }
-                setFailedAttempts((failed) => failed + 1);
-                if (attempt.attemptsLeft === 0) {
-                  abort(created.enrollmentId, MANUAL_ABORT_TEXT, 'MANUAL_COMPARISON_FAILED');
-                  return;
-                }
-                setMismatch({ groups: attempt.mismatchedGroups, attemptsLeft: attempt.attemptsLeft });
-              } catch (error) {
-                setManualError(describeError(error));
-              }
+              if (!checking) void compare();
             }}
           >
             {typed.map((value, i) => (
@@ -348,7 +476,7 @@ export function RecoveryActivationStep({
                   className="button button--secondary"
                   onClick={() => {
                     // Dejar este pedido después de una comparación que no coincidió es abortarlo: se informa igual.
-                    void reportAbort(api, platform, created.enrollmentId, 'MANUAL_COMPARISON_FAILED');
+                    abort(created.enrollmentId, created.purpose, MANUAL_ABORT_TEXT, 'MANUAL_COMPARISON_FAILED');
                     void create.run();
                   }}
                 >
@@ -357,7 +485,7 @@ export function RecoveryActivationStep({
               </div>
             )}
             {manualError && <Notice tone="error">{manualError}</Notice>}
-            <button type="submit" className="button">
+            <button type="submit" className="button" disabled={checking} aria-busy={checking}>
               Confirmar la dirección de R
             </button>
           </form>

@@ -3,9 +3,9 @@
 // tiempo constante) y su R tiene que ser exactamente la del backend y del mismo enrollment; sin enlace, la dirección
 // completa copiada de Recovery (sus 10 grupos, sin distinguir mayúsculas) tiene que coincidir, con 3 intentos por pedido
 // y sin revelar los caracteres esperados. Un enrollment vencido o reemplazado no se usa. Cada aborto lleva su motivo
-// para el backend (N10) y su informe no frena el aborto local si falla.
+// para el backend (N10; el aviso, en abort-reports.test.ts). Revisión de seguridad de ADR-033 (MEDIO 2): con el k del
+// pedido, cualquier respuesta de la plataforma que no sea ese pedido SUBMITTED con esa misma R aborta.
 import { describe, expect, it } from 'vitest';
-import type { PlatformAuth } from '../api/request-signature.ts';
 import type { RecoveryEnrollment } from '../api/wallet-api.ts';
 import {
   ADDRESS_GROUPS,
@@ -13,6 +13,7 @@ import {
   compareManually,
   confirmWithReturnLink,
   distributePaste,
+  endedRequestText,
   groupsText,
   MANUAL_ABORT_TEXT,
   MANUAL_ATTEMPTS,
@@ -25,7 +26,6 @@ import {
   recoveryEnrollLink,
   RecoveryActivationError,
   RecoveryKeyMismatchError,
-  reportAbort,
   requestExpiryText,
   ReturnLinkUnverifiedError,
   sameSecret,
@@ -35,6 +35,8 @@ import {
 const R = '0x7184D30100a188c9F869ccB6883392534ecD6C9d';
 const ID = '0f0e0d0c-0b0a-4908-8706-050403020100';
 const K = 'q1Zs-0bM4_Lr8xWp2cYtNg';
+/** Un valor que no es una dirección (el backend inconsistente lo podría mandar como R). */
+const NOT_AN_ADDRESS = '0xno-es-una-direccion' as const;
 const enrollment = (overrides: Partial<RecoveryEnrollment> = {}): RecoveryEnrollment => ({
   id: ID,
   walletId: 'w',
@@ -113,7 +115,7 @@ describe('activar Recovery', () => {
       expect(error).toBeInstanceOf(RecoveryAbortError);
       expect((error as RecoveryAbortError).reason).toBe('RETURN_LINK_UNVERIFIED');
     }
-    // Con el k pero otra R: aborta (la R cambió en el camino); otro pedido es otro error, que no aborta.
+    // Con el k pero otra R: aborta (la R cambió en el camino).
     const otherKey = () =>
       confirmWithReturnLink(
         enrollment(),
@@ -123,13 +125,38 @@ describe('activar Recovery', () => {
     expect(otherKey).toThrow(RecoveryKeyMismatchError);
     expect(otherKey).toThrow('alguien pudo haberla cambiado en el camino. Se canceló este pedido.');
     expect(new RecoveryKeyMismatchError().reason).toBe('RETURN_LINK_KEY_MISMATCH');
-    const otherRequest = () =>
-      confirmWithReturnLink(enrollment(), { ...fromLink, enrollmentId: '11111111-1111-4111-8111-111111111111' }, K);
-    expect(otherRequest).toThrow('otro pedido');
-    expect(otherRequest).not.toThrow(RecoveryAbortError);
-    expect(() => confirmWithReturnLink(enrollment({ status: 'REQUESTED', recoveryKey: null }), fromLink, K)).toThrow(
-      'todavía no informó',
-    );
+    // Con el k, el enlace es auténtico: si la plataforma informa otro pedido, ninguna R u otro estado, también aborta
+    // como otra R (un backend comprometido no puede dejar el pedido vivo con una respuesta rara).
+    for (const inconsistent of [
+      enrollment({ id: '11111111-1111-4111-8111-111111111111' }),
+      enrollment({ status: 'REQUESTED', recoveryKey: null }),
+      enrollment({ recoveryKey: null }),
+      ...(['CONFIRMED', 'EXPIRED', 'REJECTED', 'RETIRED'] as const).map((status) => enrollment({ status })),
+      enrollment({ recoveryKey: NOT_AN_ADDRESS }),
+    ]) {
+      expect(() => confirmWithReturnLink(inconsistent, fromLink, K), JSON.stringify(inconsistent)).toThrow(
+        RecoveryKeyMismatchError,
+      );
+    }
+    // Las mayúsculas del id y de la dirección no importan.
+    expect(
+      confirmWithReturnLink(
+        enrollment({ id: ID.toUpperCase(), recoveryKey: R.toLowerCase() as `0x${string}` }),
+        fromLink,
+        K,
+      ),
+    ).toBe(R);
+  });
+
+  it('un pedido que la plataforma da por terminado: qué pasó, en texto de la app (vigente → null)', () => {
+    expect(endedRequestText({ status: 'REQUESTED' })).toBeNull();
+    expect(endedRequestText({ status: 'SUBMITTED' })).toBeNull();
+    expect(endedRequestText({ status: 'EXPIRED' })).toContain('venció');
+    expect(endedRequestText({ status: 'REJECTED', rejectionReason: 'SUPERSEDED' })).toContain('reemplazado por otro');
+    expect(endedRequestText({ status: 'REJECTED', rejectionReason: 'RETURN_LINK_UNVERIFIED' })).toContain('se canceló');
+    expect(endedRequestText({ status: 'REJECTED' })).toContain('se canceló');
+    expect(endedRequestText({ status: 'RETIRED' })).toBe('Este pedido ya no está vigente.');
+    expect(endedRequestText({ status: 'CONFIRMED' })).toBe('Este pedido ya no está vigente.');
   });
 
   it('vencimiento del pedido con la hora que informa el backend', () => {
@@ -139,27 +166,6 @@ describe('activar Recovery', () => {
     expect(NEW_REQUEST_TEXT).toBe(
       'Escaneá el QR nuevo: Recovery va a crear otra clave R; destruí los backups de la anterior.',
     );
-  });
-
-  it('el aborto se informa al backend con su motivo; si falla, no frena nada', async () => {
-    const sent: { method: string; path: string; body: unknown }[] = [];
-    const platform = { token: 't', sessionId: 's' } as PlatformAuth;
-    const ok = {
-      client: {
-        request: (method: string, path: string, options?: { body?: unknown }) => {
-          sent.push({ method, path, body: options?.body });
-          return Promise.resolve({});
-        },
-      },
-    } as unknown as Parameters<typeof reportAbort>[0];
-    await expect(reportAbort(ok, platform, ID, 'RETURN_LINK_UNVERIFIED')).resolves.toBe(true);
-    expect(sent).toEqual([
-      { method: 'POST', path: `/recovery/enrollments/${ID}/reject`, body: { reason: 'RETURN_LINK_UNVERIFIED' } },
-    ]);
-    const failing = {
-      client: { request: () => Promise.reject(new Error('sin red')) },
-    } as unknown as Parameters<typeof reportAbort>[0];
-    await expect(reportAbort(failing, platform, ID, 'MANUAL_COMPARISON_FAILED')).resolves.toBe(false);
   });
 });
 

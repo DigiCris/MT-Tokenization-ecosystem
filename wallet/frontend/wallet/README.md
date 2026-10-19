@@ -51,8 +51,13 @@ Los contratos del sistema salen de `contracts/deployments/<env>.json` (`MTW_DEPL
 - La Safe se verifica por el RPC propio del frontend (V9 §16 y codehash de los contratos del sistema) al crearla y en
   cada desbloqueo (`src/safe/`); la asignación de S exige la `SignerKeyAttestation` firmada con la clave fijada en el
   build y la dirección calculada por la app (CREATE2 propio).
-- R se confirma con el link de regreso de Recovery o comparando la dirección completa; si el link trae otra R, el
-  pedido se aborta. Plazos y madurez (deadline del swap, 24 h de la whitelist, 48 h de rotaciones) usan la hora de la
-  cadena; la firma de envío usa la hora del servidor (`ServerAlignedClock`).
+- R se confirma con el link de regreso de Recovery (con el secreto `k` del pedido, ADR-033) o comparando la dirección
+  completa; si el link no trae el `k` del pedido, trae otra R o el backend responde algo inconsistente, el pedido se
+  aborta y se informa (`src/recovery-activation/abort-reports.ts`: cola en memoria y aviso keepalive al cerrar la
+  pestaña). Plazos y madurez (deadline del swap, 24 h de la whitelist, 48 h de rotaciones) usan la hora de la cadena; la
+  firma de envío usa la hora del servidor (`ServerAlignedClock`).
+- Ningún texto del backend (título, detalle o `requestId` de un error) llega a la pantalla: `src/ui/errors.ts` muestra
+  textos de la app por código o por status, y traduce con tablas cerradas los códigos que vienen en el detalle. Así un
+  backend comprometido no puede poner una dirección o una instrucción junto a lo que el usuario compara o firma.
 - La co-firma soberana (`/sovereign`) no usa la cuenta ni el backend: importa el documento [W-05] (archivo o QR),
   verifica la Safe por RPC y exporta la firma de U (archivo y QR animado `MTWQR1`).

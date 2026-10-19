@@ -1,6 +1,7 @@
 // P18.MAN (M1, B1): los motivos que el backend informa con un código llegan a la pantalla en texto. El rechazo de la
 // policy dice qué regla (el swap vencido: «venció el plazo del swap»), un reintento agotado dice el último problema, y
-// un código que esta versión no conoce se muestra como código interno (para soporte), nunca solo.
+// un código que esta versión no conoce se muestra como código interno (para soporte), nunca solo; un texto libre, ni
+// eso (revisión de seguridad de ADR-033).
 import { describe, expect, it } from 'vitest';
 import { destinationProblemText, operationReasonText, policyReasonText } from './reasons.ts';
 
@@ -43,7 +44,15 @@ describe('motivos de las operaciones', () => {
     expect(operationReasonText('RETRIES_EXHAUSTED: NEW_RETRY')).toBe(
       'no se pudo enviar después de varios intentos (el último problema: código interno NEW_RETRY)',
     );
-    expect(operationReasonText('algo raro')).toBe('código interno algo raro');
+    // Un texto libre del backend nunca llega a la pantalla (revisión de ADR-033): ni frases ni direcciones.
+    expect(operationReasonText('algo raro')).toBe('un motivo que esta versión de la app no reconoce');
+    expect(operationReasonText('copiá 7184 D301 00a1 88c9 en Recovery')).toBe(
+      'un motivo que esta versión de la app no reconoce',
+    );
+    expect(operationReasonText('X_7184D30100A188C9F869CCB6883392534ECD6C9D')).toBe(
+      'un motivo que esta versión de la app no reconoce',
+    );
+    expect(policyReasonText('copiá esta dirección')).toBe('un motivo que esta versión de la app no reconoce');
   });
 
   it('rechazos de la policy y problemas del destino', () => {

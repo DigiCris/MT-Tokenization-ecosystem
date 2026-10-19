@@ -11,6 +11,7 @@ import type { SystemContracts } from '../config/system-contracts.ts';
 import type { KeyEnvelope } from '../crypto/envelope.ts';
 import { signTypedDataWithKey, withKey } from '../crypto/sign.ts';
 import { PLATFORM_DOMAIN_NAME, PLATFORM_TYPES, walletCreationAuthorization } from '../crypto/typed-data.ts';
+import { internalCode } from '../operations/reasons.ts';
 import { verifySignerKeyAttestation } from './attestation.ts';
 import { predictSafeAddress, safeInitializer, walletSaltNonce, type WalletKeys } from './predict.ts';
 
@@ -189,8 +190,10 @@ export async function waitForDeployment(
   for (;;) {
     const deployment = await api.walletDeployment(walletId);
     if (deployment.status === 'FAILED') {
+      // Sólo los códigos de la verificación (separados por coma), nunca un texto libre del backend (ui/errors.ts).
+      const codes = (deployment.failureReason ?? '').split(',').flatMap((item) => internalCode(item) ?? []);
       throw new WalletCreationFailed(
-        `La plataforma no pudo verificar la Safe (${deployment.failureReason ?? 'sin detalle'}).`,
+        `La plataforma no pudo verificar la Safe (${codes.length === 0 ? 'sin detalle' : `códigos internos ${codes.join(', ')}`}).`,
       );
     }
     if (deployment.status === 'ACTIVE') {

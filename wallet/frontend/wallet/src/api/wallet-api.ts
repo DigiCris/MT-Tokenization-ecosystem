@@ -144,6 +144,9 @@ export interface RecoveryEnrollment {
   rType: 'INTERNAL' | 'EXTERNAL' | null;
   submittedAt: string | null;
   confirmedAt: string | null;
+  /** Sólo con REJECTED (ADR-033): SUPERSEDED o el motivo con el que la Wallet abortó el pedido. */
+  rejectionReason?:
+    'SUPERSEDED' | 'MANUAL_COMPARISON_FAILED' | 'RETURN_LINK_KEY_MISMATCH' | 'RETURN_LINK_UNVERIFIED' | null;
 }
 
 export interface CreatedEnrollment {

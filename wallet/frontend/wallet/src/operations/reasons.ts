@@ -1,6 +1,7 @@
 // Motivos que el backend informa con un código (rechazos de la policy, fallas y reintentos del pipeline de operaciones,
 // validación del destino) en texto para el usuario (P18.MAN): qué pasó, sin códigos crudos. Un código que esta versión
-// de la app no conoce se muestra como "código interno", para poder consultarlo con soporte.
+// de la app no conoce se muestra como "código interno", para poder consultarlo con soporte, sólo si tiene la forma de
+// un código; un texto libre nunca se muestra (ui/errors.ts).
 
 /** Rechazos de la policy de la plataforma ([B-POL]): el `detail` de POLICY_REJECTED o el motivo de una operación. */
 const POLICY_REASON_TEXT: Readonly<Record<string, string>> = {
@@ -85,7 +86,20 @@ const DESTINATION_PROBLEM_TEXT: Readonly<Record<string, string>> = {
   TOKEN_CONTRACT: 'es el contrato de un token',
 };
 
-const unknownCode = (code: string) => `código interno ${code}`;
+/**
+ * Un código interno que se puede mostrar para consultarlo con soporte: sólo un identificador corto (mayúsculas, dígitos
+ * y `_`, hasta 32 caracteres). Cualquier otra cosa es texto libre del backend y no llega a la pantalla (revisión de
+ * ADR-033, MEDIO 2: un backend comprometido podría meter ahí una dirección o una instrucción).
+ */
+export function internalCode(raw: string): string | null {
+  const code = raw.trim();
+  return /^[A-Z][A-Z0-9_]{0,31}$/.test(code) ? code : null;
+}
+
+const unknownCode = (raw: string) => {
+  const code = internalCode(raw);
+  return code === null ? 'un motivo que esta versión de la app no reconoce' : `código interno ${code}`;
+};
 
 /** Un rechazo de la policy en texto (sin mayúscula inicial ni punto final). */
 export function policyReasonText(code: string): string {
@@ -95,6 +109,16 @@ export function policyReasonText(code: string): string {
 /** Un problema del destino en texto (sin mayúscula inicial ni punto final). */
 export function destinationProblemText(code: string): string {
   return DESTINATION_PROBLEM_TEXT[code] ?? unknownCode(code);
+}
+
+/** El rechazo de la policy si esta app lo conoce (null si no: el que muestra el error usa su texto genérico). */
+export function knownPolicyReason(code: string): string | null {
+  return Object.hasOwn(POLICY_REASON_TEXT, code) ? (POLICY_REASON_TEXT[code] ?? null) : null;
+}
+
+/** El problema del destino si esta app lo conoce (null si no). */
+export function knownDestinationProblem(code: string): string | null {
+  return Object.hasOwn(DESTINATION_PROBLEM_TEXT, code) ? (DESTINATION_PROBLEM_TEXT[code] ?? null) : null;
 }
 
 /**

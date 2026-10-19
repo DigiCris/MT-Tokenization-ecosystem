@@ -1,13 +1,19 @@
-// Confirmación de la dirección de R ([F-LNK-02], ADR-033; hallazgos B2 de la primera revisión de P17.MAN y N2–N6 y N10
-// de la segunda) contra `vite preview`, con la API simulada (test/browser/helpers/mock-api.ts). Al retomar la creación
-// con U ya registrada y activar Recovery: el QR y el enlace llevan el secreto k del pedido, la pantalla dice cuándo vence
-// el pedido y no muestra la R que informa el backend antes de confirmarla (ni completa ni en grupos); una dirección que
-// no coincide en ningún grupo recomienda no seguir, un error de tipeo dice qué grupos revisar sin revelar lo esperado,
-// el tercer intento fallido aborta el pedido y se lo informa al backend (que después tampoco lo confirma un enlace de
-// regreso), un pedido nuevo avisa que Recovery va a crear otra R, y pegar la dirección completa la reparte en los grupos.
-// Con enlace de regreso en otra pestaña: con el k del pedido y la R del backend se confirma sola; sin k, con otro k o
-// con otra R se cancela el pedido y se informa. Abierto en una pestaña que no tiene el pedido, no confirma nada y ofrece
-// generar uno nuevo (y si no trae k, además lo informa).
+// Confirmación de la dirección de R ([F-LNK-02], ADR-033; hallazgos B2 de la primera revisión de P17.MAN, N2–N6 y N10
+// de la segunda, y la revisión de seguridad de ADR-033) contra `vite preview`, con la API simulada
+// (test/browser/helpers/mock-api.ts). Al retomar la creación con U ya registrada y activar Recovery: el QR y el enlace
+// llevan el secreto k del pedido, la pantalla dice cuándo vence el pedido y no muestra la R que informa el backend antes
+// de confirmarla (ni completa ni en grupos); una dirección que no coincide en ningún grupo recomienda no seguir, un error
+// de tipeo dice qué grupos revisar sin revelar lo esperado, el tercer intento fallido aborta el pedido y se lo informa
+// al backend (que después tampoco lo confirma un enlace de regreso, ni con el k y la R correctos), un pedido nuevo avisa
+// que Recovery va a crear otra R, y pegar la dirección completa la reparte en los grupos. Con enlace de regreso en otra
+// pestaña: con el k del pedido y la R del backend se confirma sola; sin k, con otro k o con otra R se cancela el pedido y
+// se informa, y la pestaña del enlace muestra el resultado real. Con el k del pedido, una respuesta inconsistente de la
+// plataforma (otro estado, otro pedido, un error con una dirección en el texto) también aborta, y nada de lo que
+// responde aparece en pantalla. Un enlace viejo o el de antes de recargar la pestaña no confirman nada. Abierto en una
+// pestaña sin el pedido, la explicación sale enseguida y, sin k, el aviso va con la sesión del propósito del pedido. Un
+// pedido cancelado o reemplazado desde otra pestaña lo ve la del pedido (también al comparar), y dejar el pedido después
+// de una comparación que no coincidió lo aborta e informa (al salir de la pantalla y al recargar la pestaña). El k nunca
+// viaja a la API: ni en las rutas, ni en los cuerpos (también los de los rechazos), ni en los headers.
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import type { Address } from 'viem';
 import { serializeEnvelope } from '../../src/crypto/envelope.ts';
@@ -19,6 +25,7 @@ import {
   MANUAL_ABORT_TEXT,
   MANUAL_MISMATCH_TEXT,
   NEW_REQUEST_TEXT,
+  POLL_ERROR_TEXT,
   RecoveryKeyMismatchError,
   RETURN_LINK_ELSEWHERE_TEXT,
   ReturnLinkUnverifiedError,
@@ -33,6 +40,7 @@ import {
   onboardingStepUpRoutes,
   WALLET_ID,
   type ApiCall,
+  type MockResponse,
 } from './helpers/mock-api.ts';
 
 test.use({ timezoneId: 'America/Argentina/Buenos_Aires' });
@@ -59,6 +67,10 @@ interface Scenario {
   reported: Address[];
   /** Pedidos para los que Recovery ya envió su R (hasta entonces la plataforma no la informa). */
   released: Set<number>;
+  /** Respuesta forzada del GET de un pedido (una plataforma inconsistente o que lo canceló desde otro lado). */
+  view: Map<string, MockResponse>;
+  /** Respuesta forzada del alta de un pedido. */
+  create: MockResponse | null;
 }
 
 /** Recovery envía la R de ese pedido (la plataforma empieza a informarla). */
@@ -70,9 +82,22 @@ function release(s: Scenario, enrollmentId: string): Address {
   return r;
 }
 
+/** Un error de la plataforma como lo armaría un backend comprometido: un título y un detalle con lo que quiera. */
+function problemResponse(status: number, code: string, title: string, detail: string): MockResponse {
+  return { status, body: { type: 'about:blank', title, status, code, detail, requestId: 'r-1' } };
+}
+
 /** API simulada: wallet en CREATING con U registrada, step-up, pedidos de R y su rechazo. */
 async function scenario(context: BrowserContext, baseURL: string | undefined, userKey: Address): Promise<Scenario> {
-  const state: Scenario = { calls: [], enrollments: [], rejected: [], reported: [], released: new Set() };
+  const state: Scenario = {
+    calls: [],
+    enrollments: [],
+    rejected: [],
+    reported: [],
+    released: new Set(),
+    view: new Map(),
+    create: null,
+  };
   state.calls = await mockApi(context, new URL(baseURL ?? '').origin, [
     ...accountRoutes(() => creatingWallet()),
     ...onboardingStepUpRoutes('2030-01-01T15:10:00.000Z', () => WALLET_ID),
@@ -85,8 +110,10 @@ async function scenario(context: BrowserContext, baseURL: string | undefined, us
       method: 'POST',
       path: /^\/wallets\/[^/]+\/recovery\/enrollments$/,
       handle: () => {
+        if (state.create !== null) return state.create;
         const enrollmentId = crypto.randomUUID();
         state.enrollments.push(enrollmentId);
+        state.reported.push(randomAddress());
         return {
           status: 201,
           body: {
@@ -103,6 +130,8 @@ async function scenario(context: BrowserContext, baseURL: string | undefined, us
       method: 'GET',
       path: /^\/recovery\/enrollments\/([^/]+)$/,
       handle: (_request, [id = '']) => {
+        const forced = state.view.get(id);
+        if (forced !== undefined) return forced;
         const index = state.enrollments.indexOf(id);
         return { body: enrollmentView(id, state.released.has(index) ? (state.reported[index] ?? null) : null) };
       },
@@ -133,6 +162,14 @@ async function sealedUserKey() {
   return { userKey, envelopeJson: serializeEnvelope(sealed.envelope) };
 }
 
+/** El step-up con el código del email (la API simulada lo acepta). */
+async function stepUp(page: Page): Promise<void> {
+  await expect(page.getByRole('heading', { name: 'Confirmá que sos vos' })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Mandarme el código' }).click();
+  await page.getByLabel('Código del email').fill('12345678');
+  await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
+}
+
 /** Pestaña recargada con U ya registrada: se retoma abriendo el sobre con la Password U y verificando la identidad. */
 async function resume(page: Page, envelopeJson: string): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Seguir con la creación' })).toBeVisible();
@@ -144,10 +181,7 @@ async function resume(page: Page, envelopeJson: string): Promise<void> {
   });
   await page.getByLabel('Password U').fill(PASSWORD_U);
   await page.getByRole('button', { name: 'Abrir el sobre' }).click();
-  await expect(page.getByRole('heading', { name: 'Confirmá que sos vos' })).toBeVisible({ timeout: 60_000 });
-  await page.getByRole('button', { name: 'Mandarme el código' }).click();
-  await page.getByLabel('Código del email').fill('12345678');
-  await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
+  await stepUp(page);
 }
 
 /** El pedido que muestra la pantalla: id y secreto k del enlace de ida. */
@@ -174,15 +208,37 @@ async function typeGroups(page: Page, groups: readonly string[]): Promise<void> 
   await page.getByRole('button', { name: 'Confirmar la dirección de R' }).click();
 }
 
-/** Abre el enlace de regreso en otra pestaña (como el `<a>` de Recovery) y espera a que la del pedido lo tome. */
-async function openReturnLink(context: BrowserContext, fragment: Record<string, string>): Promise<void> {
+type Outcome = 'confirmed' | 'aborted' | 'retry' | 'none';
+
+/**
+ * Abre el enlace de regreso en otra pestaña (como el `<a>` de Recovery) y devuelve esa pestaña cuando muestra el
+ * resultado que informó la del pedido ('none': ninguna lo tomó y lo explica ella misma).
+ */
+async function openReturnLink(context: BrowserContext, fragment: Record<string, string>, outcome: Outcome) {
   const other = await context.newPage();
   await other.goto(`/onboarding/confirm-recovery#${new URLSearchParams(fragment).toString()}`);
-  await expect(other.getByText(/volvé a la pestaña de la Wallet/)).toBeVisible();
+  if (outcome === 'none') {
+    await expect(other.getByRole('heading', { name: 'Volviste desde la app Recovery' })).toBeVisible();
+  } else {
+    await expect(other.locator(`[data-return-outcome="${outcome}"]`)).toBeVisible();
+  }
   // El fragmento no queda en la URL ni en el historial.
   expect(await other.evaluate(() => window.location.hash)).toBe('');
-  await other.close();
+  return other;
 }
+
+/** Ningún pedido a la API lleva estos secretos: ni en la ruta, ni en el cuerpo, ni en los headers. */
+function expectSecretsNeverSent(calls: readonly ApiCall[], secrets: readonly string[]): void {
+  for (const secret of secrets) {
+    expect(secret).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    const leaked = calls.filter((c) => `${c.path} ${c.body ?? ''} ${JSON.stringify(c.headers)}`.includes(secret));
+    expect(leaked).toEqual([]);
+  }
+}
+
+const step = (page: Page) =>
+  page.locator('article').filter({ has: page.getByRole('heading', { name: 'Activar Recovery' }) });
+const confirmButton = (page: Page) => page.getByRole('button', { name: 'Confirmar la dirección de R' });
 
 test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto se informa; pedido nuevo y pegado', async ({
   page,
@@ -192,24 +248,26 @@ test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto s
   test.setTimeout(180_000);
   const { userKey, envelopeJson } = await sealedUserKey();
   const s = await scenario(context, baseURL, userKey);
-  s.reported = [randomAddress(), randomAddress()];
 
   await page.goto('/onboarding');
   await resume(page, envelopeJson);
 
   // Activar Recovery: el QR recomendado, qué no viaja a servidores, cuándo vence el pedido y qué pasa si se pierden U y R.
-  const step = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Activar Recovery' }) });
-  await expect(step).toBeVisible();
+  await expect(step(page)).toBeVisible();
   await expect(page.getByRole('list', { name: 'Pasos' }).locator('[aria-current="step"]')).toHaveText('Recovery');
-  await expect(step.getByText(LOST_U_AND_R_WARNING)).toBeVisible();
-  await expect(step.getByText(/^Te recomendamos crear tu clave R en otro dispositivo, como tu celular/)).toBeVisible();
-  await expect(step.getByText(/Si mandás el enlace por chat o por email, sí pasa por esos servicios/)).toBeVisible();
+  await expect(step(page).getByText(LOST_U_AND_R_WARNING)).toBeVisible();
   await expect(
-    step.getByText(
+    step(page).getByText(/^Te recomendamos crear tu clave R en otro dispositivo, como tu celular/),
+  ).toBeVisible();
+  await expect(
+    step(page).getByText(/Si mandás el enlace por chat o por email, sí pasa por esos servicios/),
+  ).toBeVisible();
+  await expect(
+    step(page).getByText(
       'Este pedido vence a las 12:25: si Recovery no informa la dirección antes, vas a tener que generar otro.',
     ),
   ).toBeVisible();
-  await expect(step.getByText('Esperando que Recovery informe la dirección de tu clave R…')).toBeVisible();
+  await expect(step(page).getByText('Esperando que Recovery informe la dirección de tu clave R…')).toBeVisible();
   // El enlace de ida lleva el secreto del pedido; es el primero, así que todavía no hay aviso de "otra R".
   const first = await shownRequest(page);
   expect(first.secret).toMatch(/^[A-Za-z0-9_-]{22}$/);
@@ -217,10 +275,9 @@ test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto s
 
   // Recovery informa R: la Wallet pide copiarla de Recovery y no la muestra (N3).
   const firstR = release(s, first.enrollmentId);
-  const confirm = page.getByRole('button', { name: 'Confirmar la dirección de R' });
-  await expect(confirm).toBeVisible({ timeout: 15_000 });
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
   await expect(
-    step.getByText(
+    step(page).getByText(
       'Si no, copiá la dirección que muestra la app Recovery (acá no la mostramos a propósito). Sirve para comprobar que nadie la cambió en el camino; da igual mayúsculas o minúsculas.',
       { exact: false },
     ),
@@ -259,11 +316,14 @@ test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto s
   await expect
     .poll(() => s.rejected)
     .toEqual([{ enrollmentId: first.enrollmentId, reason: 'MANUAL_COMPARISON_FAILED' }]);
-  // Abortado, tampoco lo confirma un enlace de regreso (ni con la R que recibió la plataforma), y no se informa de nuevo.
+  // Abortado, tampoco lo confirma un enlace de regreso: ni sin k ni con el k y la R correctos (que la pestaña del enlace
+  // vea que se canceló), sin consultar a la plataforma y sin informarlo de nuevo.
   const before = s.calls.length;
-  await openReturnLink(context, { eid: first.enrollmentId, r: firstR });
-  await page.waitForTimeout(500);
-  expect(s.calls.slice(before).filter((c) => c.method === 'GET' && c.path.startsWith('/recovery/'))).toEqual([]);
+  await openReturnLink(context, { eid: first.enrollmentId, r: firstR }, 'aborted');
+  await openReturnLink(context, { eid: first.enrollmentId, r: firstR, k: first.secret }, 'aborted');
+  expect(s.calls.slice(before).filter((c) => c.path.startsWith(`/recovery/enrollments/${first.enrollmentId}`))).toEqual(
+    [],
+  );
   expect(s.rejected).toHaveLength(1);
   await expect(page.getByText(MANUAL_ABORT_TEXT)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Crear tu Safe' })).toHaveCount(0);
@@ -276,7 +336,7 @@ test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto s
   expect(second.enrollmentId).not.toBe(first.enrollmentId);
   expect(second.secret).not.toBe(first.secret);
   const secondR = release(s, second.enrollmentId);
-  await expect(confirm).toBeVisible({ timeout: 15_000 });
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
   expect(s.enrollments).toHaveLength(2);
   await expectNotShown(page, secondR);
   const firstGroup = page.getByLabel('Grupo 1 de 10', { exact: true });
@@ -289,21 +349,24 @@ test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto s
   for (const [i, group] of addressGroups(secondR).entries()) {
     await expect(page.getByLabel(`Grupo ${String(i + 1)} de 10`, { exact: true })).toHaveValue(group.toLowerCase());
   }
-  await confirm.click();
+  // La comparación vuelve a leer el pedido antes de aceptarse (BAJO 7).
+  const reads = s.calls.length;
+  await confirmButton(page).click();
   const confirmed = page.getByRole('status').filter({ hasText: 'Dirección de tu clave R (confirmada):' });
   await expect(confirmed.locator(`[data-address="${secondR}"]`)).toBeVisible();
+  expect(
+    s.calls.slice(reads).some((c) => c.method === 'GET' && c.path === `/recovery/enrollments/${second.enrollmentId}`),
+  ).toBe(true);
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(page.getByRole('heading', { name: 'Crear tu Safe' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Preparar la Safe' })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Pasos' }).locator('[aria-current="step"]')).toHaveText('Safe');
   expect(s.rejected).toHaveLength(1);
   // k nunca viajó a la API.
-  for (const secret of [first.secret, second.secret]) {
-    expect(s.calls.filter((c) => `${c.path} ${c.body ?? ''}`.includes(secret))).toEqual([]);
-  }
+  expectSecretsNeverSent(s.calls, [first.secret, second.secret]);
 });
 
-test('enlace de regreso en otra pestaña: con el k del pedido se confirma sola; sin k, con otro k o con otra R se cancela y se informa', async ({
+test('enlace de regreso en otra pestaña: con el k del pedido se confirma sola; sin k, con otro k o con otra R se cancela, se informa y la pestaña del enlace lo dice', async ({
   page,
   context,
   baseURL,
@@ -311,17 +374,17 @@ test('enlace de regreso en otra pestaña: con el k del pedido se confirma sola; 
   test.setTimeout(180_000);
   const { userKey, envelopeJson } = await sealedUserKey();
   const s = await scenario(context, baseURL, userKey);
-  s.reported = [randomAddress(), randomAddress(), randomAddress(), randomAddress()];
   await page.goto('/onboarding');
   await resume(page, envelopeJson);
-  const confirm = page.getByRole('button', { name: 'Confirmar la dirección de R' });
   const unverified = new ReturnLinkUnverifiedError().message;
 
   // 1) Sin k: no lo armó la app Recovery (aunque traiga la R que recibió la plataforma).
   const noSecret = await shownRequest(page);
   const firstR = release(s, noSecret.enrollmentId);
-  await expect(confirm).toBeVisible({ timeout: 15_000 });
-  await openReturnLink(context, { eid: noSecret.enrollmentId, r: firstR });
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  const forgedTab = await openReturnLink(context, { eid: noSecret.enrollmentId, r: firstR }, 'aborted');
+  await expect(forgedTab.getByText(/no aceptó este enlace y canceló el pedido/)).toBeVisible();
+  await expect(forgedTab.getByText(/^Listo/)).toHaveCount(0);
   await expect(page.getByText(unverified)).toBeVisible();
   await expect(page.getByLabel(/^Grupo \d+ de 10$/)).toHaveCount(0);
   await expect(page.getByText(BEFORE_NEW_REQUEST_TEXT)).toBeVisible();
@@ -333,12 +396,16 @@ test('enlace de regreso en otra pestaña: con el k del pedido se confirma sola; 
   await page.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
   const otherSecret = await shownRequest(page);
   const secondR = release(s, otherSecret.enrollmentId);
-  await expect(confirm).toBeVisible({ timeout: 15_000 });
-  await openReturnLink(context, {
-    eid: otherSecret.enrollmentId,
-    r: secondR,
-    k: `${otherSecret.secret.slice(0, 21)}${otherSecret.secret.endsWith('A') ? 'B' : 'A'}`,
-  });
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  await openReturnLink(
+    context,
+    {
+      eid: otherSecret.enrollmentId,
+      r: secondR,
+      k: `${otherSecret.secret.slice(0, 21)}${otherSecret.secret.endsWith('A') ? 'B' : 'A'}`,
+    },
+    'aborted',
+  );
   await expect(page.getByText(unverified)).toBeVisible();
   await expect
     .poll(() => s.rejected.at(-1))
@@ -348,26 +415,285 @@ test('enlace de regreso en otra pestaña: con el k del pedido se confirma sola; 
   await page.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
   const otherR = await shownRequest(page);
   release(s, otherR.enrollmentId);
-  await expect(confirm).toBeVisible({ timeout: 15_000 });
-  await openReturnLink(context, { eid: otherR.enrollmentId, r: randomAddress(), k: otherR.secret });
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  await openReturnLink(context, { eid: otherR.enrollmentId, r: randomAddress(), k: otherR.secret }, 'aborted');
   await expect(page.getByText(new RecoveryKeyMismatchError().message)).toBeVisible();
   await expect
     .poll(() => s.rejected.at(-1))
     .toEqual({ enrollmentId: otherR.enrollmentId, reason: 'RETURN_LINK_KEY_MISMATCH' });
   await expect(page.getByRole('heading', { name: 'Crear tu Safe' })).toHaveCount(0);
 
-  // 4) Con el k del pedido y la R del backend: se confirma sola, sin tipear nada.
+  // 4) Con el k del pedido y la R del backend: se confirma sola, sin tipear nada, y la pestaña del enlace dice «Listo».
   await page.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
   const good = await shownRequest(page);
   const goodR = release(s, good.enrollmentId);
-  await expect(confirm).toBeVisible({ timeout: 15_000 });
-  await openReturnLink(context, { eid: good.enrollmentId, r: goodR, k: good.secret });
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  const goodTab = await openReturnLink(context, { eid: good.enrollmentId, r: goodR, k: good.secret }, 'confirmed');
+  await expect(goodTab.getByText(/^Listo: la dirección de tu clave R quedó confirmada/)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Crear tu Safe' })).toBeVisible();
   expect(s.rejected).toHaveLength(3);
   expect(s.enrollments).toHaveLength(4);
+  // Ni las consultas, ni los rechazos (POST /reject), ni sus headers llevaron un k.
+  expect(s.calls.filter((c) => c.method === 'POST' && c.path.endsWith('/reject'))).toHaveLength(3);
+  expectSecretsNeverSent(s.calls, [noSecret.secret, otherSecret.secret, otherR.secret, good.secret]);
 });
 
-test('enlace de regreso abierto en una pestaña sin el pedido: no confirma, ofrece un pedido nuevo y, sin k, lo informa', async ({
+test('con el k del pedido, una respuesta inconsistente de la plataforma aborta y nada de lo que responde aparece en pantalla', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(180_000);
+  const { userKey, envelopeJson } = await sealedUserKey();
+  const s = await scenario(context, baseURL, userKey);
+  // La dirección que un backend comprometido querría que el usuario copie (R′), en grupos y completa.
+  const attacker = randomAddress();
+  const attackerGroups = addressGroups(attacker).join(' ');
+  const inject = (status = 409) =>
+    problemResponse(status, 'X', 'Recovery informó esta dirección', `copiala en los 10 grupos: ${attackerGroups}`);
+  const expectNothingInjected = async (tab: Page) => {
+    await expectNotShown(tab, attacker);
+    const text = await tab.locator('body').innerText();
+    expect(text).not.toContain('Recovery informó esta dirección');
+    expect(text).not.toContain('copiala en los 10 grupos');
+  };
+  await page.goto('/onboarding');
+  await resume(page, envelopeJson);
+  const mismatch = new RecoveryKeyMismatchError().message;
+
+  // Mientras espera a Recovery, un error del polling con texto inyectado: sólo el texto de la app, y el pedido sigue.
+  const waiting = await shownRequest(page);
+  s.view.set(waiting.enrollmentId, inject());
+  await expect(page.getByText(POLL_ERROR_TEXT)).toBeVisible({ timeout: 15_000 });
+  await expectNothingInjected(page);
+  s.view.delete(waiting.enrollmentId);
+
+  const cases: [string, (id: string, r: Address) => MockResponse][] = [
+    // La plataforma dice que el pedido sigue sin R (REQUESTED) aunque Recovery mandó el enlace.
+    ['sin R', (id) => ({ body: enrollmentView(id, null) })],
+    // Otro pedido.
+    ['otro pedido', (_id, r) => ({ body: enrollmentView(crypto.randomUUID(), r) })],
+    // Un error con una dirección y una instrucción en el texto.
+    ['409 con texto', () => inject()],
+  ];
+  let request = waiting;
+  for (const [, response] of cases) {
+    const r = release(s, request.enrollmentId);
+    await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+    s.view.set(request.enrollmentId, response(request.enrollmentId, r));
+    const linkTab = await openReturnLink(context, { eid: request.enrollmentId, r, k: request.secret }, 'aborted');
+    await expect(page.getByText(mismatch)).toBeVisible();
+    await expect(page.getByLabel(/^Grupo \d+ de 10$/)).toHaveCount(0);
+    await expect
+      .poll(() => s.rejected.at(-1))
+      .toEqual({ enrollmentId: request.enrollmentId, reason: 'RETURN_LINK_KEY_MISMATCH' });
+    await expectNothingInjected(page);
+    await expectNothingInjected(linkTab);
+    await linkTab.close();
+    await page.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
+    await expect(page.getByText(NEW_REQUEST_TEXT)).toBeVisible();
+    request = await shownRequest(page);
+  }
+  expect(s.rejected).toHaveLength(3);
+
+  // Si el alta de un pedido falla con texto inyectado, tampoco se muestra: el texto de la app y «Reintentar».
+  s.view.set(request.enrollmentId, { body: { ...enrollmentView(request.enrollmentId, null), status: 'EXPIRED' } });
+  await expect(page.locator('[data-request-ended]')).toBeVisible({ timeout: 15_000 });
+  s.create = inject();
+  await page.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
+  await expect(page.getByRole('button', { name: 'Reintentar' })).toBeVisible();
+  await expectNothingInjected(page);
+  s.create = null;
+  await page.getByRole('button', { name: 'Reintentar' }).click();
+  await expect(page.locator('[data-recovery-link]')).toBeVisible();
+});
+
+test('un enlace de un pedido anterior, o de antes de recargar la pestaña del pedido, no confirma nada', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(180_000);
+  const { userKey, envelopeJson } = await sealedUserKey();
+  const s = await scenario(context, baseURL, userKey);
+  await page.goto('/onboarding');
+  await resume(page, envelopeJson);
+
+  // Pedido 1: abortado por un enlace sin k; pedido 2 vivo, con R.
+  const first = await shownRequest(page);
+  const firstR = release(s, first.enrollmentId);
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  await openReturnLink(context, { eid: first.enrollmentId, r: firstR }, 'aborted');
+  await page.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
+  const second = await shownRequest(page);
+  const secondR = release(s, second.enrollmentId);
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+
+  // El enlace de regreso del pedido 1, con su k y su R: ninguna pestaña lo toma (la del pedido espera el 2) y no toca
+  // el pedido vivo.
+  const stale = await openReturnLink(context, { eid: first.enrollmentId, r: firstR, k: first.secret }, 'none');
+  await expect(stale.getByText(RETURN_LINK_ELSEWHERE_TEXT)).toBeVisible();
+  await expect(confirmButton(page)).toBeVisible();
+  await expect(page.locator('[data-request-ended]')).toHaveCount(0);
+  expect(s.rejected).toEqual([{ enrollmentId: first.enrollmentId, reason: 'RETURN_LINK_UNVERIFIED' }]);
+
+  // La pestaña del pedido se recarga: el k del pedido 2 se perdió con ella y se pide el 3. El enlace del 2 ya no lo
+  // confirma nadie.
+  await page.goto('/onboarding');
+  await resume(page, envelopeJson);
+  const third = await shownRequest(page);
+  expect(third.enrollmentId).not.toBe(second.enrollmentId);
+  await openReturnLink(context, { eid: second.enrollmentId, r: secondR, k: second.secret }, 'none');
+  await expect(page.getByRole('heading', { name: 'Crear tu Safe' })).toHaveCount(0);
+  // El del pedido vigente sí.
+  const thirdR = release(s, third.enrollmentId);
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  await openReturnLink(context, { eid: third.enrollmentId, r: thirdR, k: third.secret }, 'confirmed');
+  await expect(page.getByRole('heading', { name: 'Crear tu Safe' })).toBeVisible();
+  expectSecretsNeverSent(s.calls, [first.secret, second.secret, third.secret]);
+});
+
+test('un pedido cancelado, reemplazado o vencido desde otra pestaña lo ve la del pedido (también al comparar) y ofrece otro', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(180_000);
+  const { userKey, envelopeJson } = await sealedUserKey();
+  const s = await scenario(context, baseURL, userKey);
+  await page.goto('/onboarding');
+  await resume(page, envelopeJson);
+  const ended = page.locator('[data-request-ended]');
+
+  // Con la comparación a punto de aceptarse, otra pestaña generó un pedido nuevo (este quedó reemplazado): la
+  // comparación vuelve a leer el pedido y no confirma la R de un pedido que ya no vale.
+  const first = await shownRequest(page);
+  const firstR = release(s, first.enrollmentId);
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  s.view.set(first.enrollmentId, {
+    body: { ...enrollmentView(first.enrollmentId, firstR), status: 'REJECTED', rejectionReason: 'SUPERSEDED' },
+  });
+  await typeGroups(page, addressGroups(firstR));
+  await expect(ended.getByText(/quedó reemplazado por otro más nuevo/)).toBeVisible();
+  await expect(page.getByText('Dirección de tu clave R (confirmada):')).toHaveCount(0);
+  await expect(ended.getByRole('button', { name: 'Generar un pedido nuevo' })).toBeVisible();
+
+  // Esperando a Recovery, otro dispositivo lo canceló: el polling lo ve y ofrece otro (no sólo un error).
+  await ended.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
+  const second = await shownRequest(page);
+  s.view.set(second.enrollmentId, {
+    body: {
+      ...enrollmentView(second.enrollmentId, null),
+      status: 'REJECTED',
+      rejectionReason: 'RETURN_LINK_UNVERIFIED',
+    },
+  });
+  await expect(ended.getByText(/Este pedido se canceló/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-recovery-link]')).toHaveCount(0);
+
+  // Vencido: lo mismo.
+  await ended.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
+  const third = await shownRequest(page);
+  s.view.set(third.enrollmentId, { body: { ...enrollmentView(third.enrollmentId, null), status: 'EXPIRED' } });
+  await expect(ended.getByText(/venció/)).toBeVisible({ timeout: 15_000 });
+  await ended.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
+  await expect(page.locator('[data-recovery-link]')).toBeVisible();
+  // Ninguno de estos lo abortó la Wallet: no se informa nada.
+  expect(s.rejected).toEqual([]);
+});
+
+test('dejar el pedido después de una comparación que no coincidió lo aborta y lo informa: al salir de la pantalla y al recargar', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(240_000);
+  const { userKey, envelopeJson } = await sealedUserKey();
+  const s = await scenario(context, baseURL, userKey);
+  // El fetch keepalive que sale en pagehide no lo intercepta Playwright (el documento ya se está yendo; Chromium sí lo
+  // manda, con su preflight: lo prueba el spec del stack contra el backend real). Acá se registra lo que la página
+  // manda, sin red, y queda en el storage del origin para leerlo después de recargar.
+  await context.addInitScript(() => {
+    const original = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      if (init?.keepalive !== true) return original(input, init);
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      window.localStorage.setItem(
+        'mtw-test-keepalive',
+        JSON.stringify({ url, method: init.method, headers: init.headers, body: init.body }),
+      );
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    };
+  });
+  await page.goto('/onboarding');
+  await resume(page, envelopeJson);
+
+  // Al salir de la pantalla (navegación dentro de la app): el aviso va por la cola, con la sesión vigente.
+  const first = await shownRequest(page);
+  const firstR = release(s, first.enrollmentId);
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  await typeGroups(page, everyGroupDifferent(firstR));
+  await expect(page.getByText(MANUAL_MISMATCH_TEXT)).toBeVisible();
+  expect(s.rejected).toEqual([]);
+  await page.getByRole('link', { name: 'MT Wallet, inicio' }).click();
+  await expect
+    .poll(() => s.rejected)
+    .toEqual([{ enrollmentId: first.enrollmentId, reason: 'MANUAL_COMPARISON_FAILED' }]);
+
+  // Al recargar (o cerrar) la pestaña: el aviso firmado de antemano sale con keepalive en pagehide.
+  await page.goto('/onboarding');
+  await resume(page, envelopeJson);
+  const second = await shownRequest(page);
+  const secondR = release(s, second.enrollmentId);
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  await typeGroups(page, everyGroupDifferent(secondR));
+  await expect(page.getByText(MANUAL_MISMATCH_TEXT)).toBeVisible();
+  // El aviso se firma apenas no coincide la comparación (pagehide no espera la firma).
+  await page.waitForTimeout(500);
+  await page.reload();
+  const sent = await page.evaluate(() => window.localStorage.getItem('mtw-test-keepalive'));
+  const keepalive = JSON.parse(sent ?? 'null') as {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body: string;
+  } | null;
+  expect(keepalive).toMatchObject({
+    url: `${buildConfig.apiBaseUrl}/recovery/enrollments/${second.enrollmentId}/reject`,
+    method: 'POST',
+  });
+  expect(JSON.parse(keepalive?.body ?? '{}')).toEqual({ reason: 'MANUAL_COMPARISON_FAILED' });
+  // Firmado con la PlatformSession, como cualquier request crítico, y con el token CSRF.
+  expect(Object.keys(keepalive?.headers ?? {})).toEqual(
+    expect.arrayContaining([
+      'X-Platform-Session',
+      'X-Session-Signature',
+      'X-Session-Nonce',
+      'X-Session-Timestamp',
+      'X-CSRF-Token',
+      'Content-Type',
+    ]),
+  );
+  expect(JSON.stringify(keepalive)).not.toContain(second.secret);
+  expectSecretsNeverSent(s.calls, [first.secret, second.secret]);
+  // Una comparación que coincide no deja nada armado: confirmar y recargar no informa nada.
+  await resume(page, envelopeJson);
+  const third = await shownRequest(page);
+  const thirdR = release(s, third.enrollmentId);
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  await typeGroups(page, everyGroupDifferent(thirdR));
+  await typeGroups(page, addressGroups(thirdR));
+  await expect(page.getByText('Dirección de tu clave R (confirmada):')).toBeVisible();
+  await page.evaluate(() => {
+    window.localStorage.removeItem('mtw-test-keepalive');
+  });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Seguir con la creación' })).toBeVisible();
+  expect(await page.evaluate(() => window.localStorage.getItem('mtw-test-keepalive'))).toBeNull();
+  expect(s.rejected.map((r) => r.enrollmentId)).not.toContain(third.enrollmentId);
+});
+
+test('enlace de regreso abierto en una pestaña sin el pedido: lo explica enseguida y, sin k, lo informa con la sesión de su propósito', async ({
   page,
   context,
   baseURL,
@@ -378,26 +704,78 @@ test('enlace de regreso abierto en una pestaña sin el pedido: no confirma, ofre
   const enrollmentId = crypto.randomUUID();
   const r = randomAddress();
 
-  // Con k: esta pestaña no conoce el secreto del pedido (vive sólo en la pestaña que lo generó, que ya no está).
+  // Con k: esta pestaña no conoce el secreto del pedido (vive sólo en la pestaña que lo generó, que ya no está). Lo
+  // explica sin pedir el sobre ni la Password U, y ofrece seguir con la creación (el pedido es del onboarding).
   await page.goto(`/onboarding/confirm-recovery#eid=${enrollmentId}&r=${r}&k=q1Zs-0bM4_Lr8xWp2cYtNg`);
-  await resume(page, envelopeJson);
   await expect(page.getByRole('heading', { name: 'Volviste desde la app Recovery' })).toBeVisible();
   await expect(page.getByText(RETURN_LINK_ELSEWHERE_TEXT)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Seguir con la creación' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Confirmar la dirección de R' })).toHaveCount(0);
   await expect(page.locator(`[data-address="${r}"]`)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Avisale a la plataforma' })).toHaveCount(0);
   expect(s.rejected).toEqual([]);
-  // «Generar un pedido nuevo» sigue con el paso normal: pedido nuevo con su QR (N6).
-  await page.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
+  // «Seguir con la creación de tu wallet» sigue con el paso normal: pedido nuevo con su QR (N6).
+  await page.getByRole('link', { name: 'Seguir con la creación de tu wallet' }).click();
+  await resume(page, envelopeJson);
   await expect(page.locator('[data-recovery-link]')).toBeVisible();
   expect(s.enrollments).toHaveLength(1);
 
-  // Sin k: además, no lo armó la app Recovery: se cancela ese pedido y se informa.
+  // Sin k: además, no lo armó la app Recovery. Se cancela ese pedido: el aviso espera una sesión ONBOARDING, que se
+  // obtiene ahí mismo con el step-up (sin abrir el sobre).
   const other = await context.newPage();
   await other.goto(`/onboarding/confirm-recovery#eid=${enrollmentId}&r=${r}`);
-  await resume(other, envelopeJson);
   await expect(other.getByText(new ReturnLinkUnverifiedError().message)).toBeVisible();
   await expect(other.getByRole('button', { name: 'Confirmar la dirección de R' })).toHaveCount(0);
+  await expect(other.getByRole('heading', { name: 'Avisale a la plataforma' })).toBeVisible();
+  expect(s.rejected).toEqual([]);
+  await stepUp(other);
   await expect.poll(() => s.rejected).toEqual([{ enrollmentId, reason: 'RETURN_LINK_UNVERIFIED' }]);
-  await other.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
-  await expect(other.locator('[data-recovery-link]')).toBeVisible();
+  await expect(other.getByText('La plataforma ya registró el aviso.')).toBeVisible();
+  await expect(other.getByRole('link', { name: 'Seguir con la creación de tu wallet' })).toBeVisible();
+});
+
+test('enlace de regreso de un reemplazo de R con la wallet ya activa: lo explica (no «Tu wallet ya está creada») y el aviso espera el desbloqueo', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  const enrollmentId = crypto.randomUUID();
+  const r = randomAddress();
+  const rejected: string[] = [];
+  const calls = await mockApi(context, new URL(baseURL ?? '').origin, [
+    ...accountRoutes(() => ({ ...creatingWallet(), status: 'ACTIVE', safe: randomAddress() })),
+    {
+      method: 'GET',
+      path: /^\/recovery\/enrollments\/([^/]+)$/,
+      handle: (_request, [id = '']) => ({ body: { ...enrollmentView(id, r), purpose: 'REPLACEMENT' } }),
+    },
+    {
+      method: 'POST',
+      path: /^\/recovery\/enrollments\/([^/]+)\/reject$/,
+      handle: (_request, [id = '']) => {
+        rejected.push(id);
+        return { body: {} };
+      },
+    },
+  ]);
+
+  // Con k: la explicación, y seguir desde el reemplazo de R.
+  await page.goto(`/onboarding/confirm-recovery#eid=${enrollmentId}&r=${r}&k=q1Zs-0bM4_Lr8xWp2cYtNg`);
+  await expect(page.getByRole('heading', { name: 'Volviste desde la app Recovery' })).toBeVisible();
+  await expect(page.getByText(RETURN_LINK_ELSEWHERE_TEXT)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tu wallet ya está creada' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Ir a tu clave de recuperación' })).toBeVisible();
+
+  // Sin k: se cancela; el aviso necesita una sesión OPERATIONS (no la de onboarding): desbloquear la wallet.
+  const other = await context.newPage();
+  await other.goto(`/onboarding/confirm-recovery#eid=${enrollmentId}&r=${r}`);
+  await expect(other.getByText(new ReturnLinkUnverifiedError().message)).toBeVisible();
+  await expect(other.getByRole('heading', { name: 'Tu wallet ya está creada' })).toHaveCount(0);
+  await expect(other.getByRole('heading', { name: 'Avisale a la plataforma' })).toHaveCount(0);
+  await expect(other.getByRole('link', { name: 'desbloqueá tu wallet' })).toBeVisible();
+  await expect(other.locator(`[data-address="${r}"]`)).toHaveCount(0);
+  await other.waitForTimeout(500);
+  expect(rejected).toEqual([]);
+  // Ningún step-up de onboarding se pidió para avisar.
+  expect(calls.filter((c) => c.path.startsWith('/platform-sessions/'))).toEqual([]);
 });

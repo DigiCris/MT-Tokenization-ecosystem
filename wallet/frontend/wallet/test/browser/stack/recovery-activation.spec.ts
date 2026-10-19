@@ -6,7 +6,9 @@
 // regreso en otra pestaña (con el k del enlace de ida, como lo arma Recovery) se confirma sola por BroadcastChannel; si
 // trae otra R que la que informa la plataforma, o no trae el k del pedido, la activación se aborta [F-LNK-02] y el
 // pedido queda REJECTED en el backend con el motivo (N10). Con R confirmada, la app verifica la asignación de S
-// (atestación con la clave fijada, dirección calculada por la app) antes de ofrecer la firma de U.
+// (atestación con la clave fijada, dirección calculada por la app) antes de ofrecer la firma de U. Revisión de
+// seguridad de ADR-033: la pestaña del enlace muestra el resultado real, y recargar la pestaña del pedido después de una
+// comparación que no coincidió lo informa con el aviso keepalive (llega al backend real, con su preflight CORS).
 import { expect, test } from '@playwright/test';
 import { getAddress } from 'viem';
 import {
@@ -77,6 +79,8 @@ test('enlace de regreso de Recovery en otra pestaña, con el k del pedido: confi
   const other = await context.newPage();
   await other.goto(returnLinkPath(enrollment, r.address));
   await expect(other.getByText(/volvé a la pestaña de la Wallet/)).toBeVisible();
+  // La pestaña del enlace muestra el resultado real que informó la del pedido.
+  await expect(other.locator('[data-return-outcome="confirmed"]')).toBeVisible();
   // El fragmento no queda en la URL ni en el historial.
   expect(await other.evaluate(() => window.location.hash)).toBe('');
   await expect(page.getByRole('heading', { name: 'Crear tu Safe' })).toBeVisible();
@@ -108,6 +112,24 @@ test('enlace de regreso con otra R que la que informa la plataforma: el pedido s
   const renewed = await recoveryRequest(page);
   expect(renewed.enrollmentId).not.toBe(enrollment.enrollmentId);
   expect(renewed.secret).not.toBe(enrollment.secret);
+});
+
+test('recargar la pestaña después de una comparación que no coincidió: el aviso keepalive llega y el pedido queda REJECTED', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const { account, enrollment } = await onboardUpToRecovery(page, 'activation-left');
+  const r = await submitRecovery(account, enrollment);
+  await confirmGroupsManually(page, r.address, 2);
+  await expect(page.getByText(MANUAL_MISMATCH_TEXT)).toBeVisible();
+  // El aviso se firma apenas no coincide la comparación; pagehide lo manda con keepalive (con su preflight CORS).
+  await page.waitForTimeout(1_000);
+  await page.reload();
+  await expect
+    .poll(async () => (await account.api.getRecoveryEnrollment(enrollment.enrollmentId)) as unknown, {
+      timeout: 30_000,
+    })
+    .toMatchObject({ status: 'REJECTED', rejectionReason: 'MANUAL_COMPARISON_FAILED' });
 });
 
 test('enlace de regreso sin el k del pedido (un backend comprometido conoce el pedido y R, no k): se aborta y queda REJECTED', async ({

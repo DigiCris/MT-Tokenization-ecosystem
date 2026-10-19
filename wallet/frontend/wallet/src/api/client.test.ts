@@ -183,6 +183,35 @@ describe('ApiClient', () => {
     await expect(client.request('GET', 'sin-barra')).rejects.toThrow(TypeError);
   });
 
+  it('prepare arma y firma el request sin mandarlo (para enviarlo después, p. ej. con keepalive en pagehide)', async () => {
+    const key = await generateSessionKey();
+    const { client, requests } = server(() => json({ csrfToken: 't' }));
+    const platform = { token: 'jws', sessionId: '5c1f0e2d-3b4a-4c5d-9e6f-7a8b9c0d1e2f', key };
+    const { url, init } = await client.prepare('POST', '/recovery/enrollments/e/reject', {
+      platform,
+      body: { reason: 'MANUAL_COMPARISON_FAILED' },
+    });
+    // Sólo se pidió el token CSRF: el request en sí no salió.
+    expect(requests.map((r) => new URL(r.url).pathname)).toEqual(['/api/v1/auth/csrf']);
+    expect(url).toBe(`${BASE}/recovery/enrollments/e/reject`);
+    expect(init).toMatchObject({ method: 'POST', credentials: 'include', mode: 'cors', redirect: 'error' });
+    expect(init.signal).toBeUndefined();
+    const headers = init.headers as Record<string, string>;
+    expect(headers['X-CSRF-Token']).toBe('t');
+    const canonical = canonicalRequest({
+      method: 'POST',
+      path: '/api/v1/recovery/enrollments/e/reject',
+      bodySha256Hex: await bodySha256Hex('{"reason":"MANUAL_COMPARISON_FAILED"}'),
+      timestamp: Number(headers['X-Session-Timestamp']),
+      nonce: headers['X-Session-Nonce'] ?? '',
+      platformSessionId: platform.sessionId,
+    });
+    expect(await verifyP256(key.publicJwk, canonical, headers['X-Session-Signature'] ?? '')).toBe(true);
+    // Cada armado lleva su propio nonce (un solo uso).
+    const again = await client.prepare('POST', '/recovery/enrollments/e/reject', { platform, body: {} });
+    expect((again.init.headers as Record<string, string>)['X-Session-Nonce']).not.toBe(headers['X-Session-Nonce']);
+  });
+
   it('DELETE sin cuerpo no manda Content-Type; logout descarta el token de la sesión', async () => {
     let n = 0;
     const { client, requests } = server(({ url }) => {

@@ -35,11 +35,13 @@ describe('después del login', () => {
 });
 
 describe('mensajes de error', () => {
-  it('indicaciones propias, títulos del backend y errores locales', () => {
+  it('indicaciones propias, nunca textos del backend, y errores locales', () => {
     expect(describeError(problem('ACCOUNT_LOCKED', 403))).toContain('Pedí un código de desbloqueo');
     expect(describeError(problem('RATE_LIMITED', 429))).toContain('podés reintentar en 9 s');
-    expect(describeError(problem('CONFLICT', 409, 'detalle'))).toBe('título CONFLICT: detalle');
-    expect(describeError(problem('CONFLICT', 409))).toBe('título CONFLICT');
+    // Revisión de ADR-033 (MEDIO 2): ni el título ni el detalle del backend llegan a la pantalla.
+    const conflict = 'La plataforma no puede hacer esto en el estado actual: recargá la pantalla y reintentá.';
+    expect(describeError(problem('CONFLICT', 409, 'detalle'))).toBe(conflict);
+    expect(describeError(problem('CONFLICT', 409))).toBe(conflict);
     expect(describeError(new NetworkError('no se pudo contactar a la API'))).toContain('Revisá tu conexión');
     expect(describeError(new BackupWordsError('el checksum no coincide'))).toBe('el checksum no coincide');
     expect(describeError(new Error('otra cosa'))).toBe('otra cosa');

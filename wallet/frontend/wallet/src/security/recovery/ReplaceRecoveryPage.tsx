@@ -77,6 +77,7 @@ function ReplaceRecovery({ ctx }: { ctx: OperatingWallet }) {
         <RecoveryActivationStep
           walletId={wallet.id}
           platform={unlocked.platform}
+          sessionExpiresAt={unlocked.session.expiresAt}
           intro="Creá o conectá tu nueva clave R en la app Recovery. El reemplazo se puede ejecutar 48 h después de proponerlo, y hasta entonces lo podés cancelar con U o con tu R actual."
           onConfirmed={setConfirmed}
         />

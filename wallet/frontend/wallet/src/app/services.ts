@@ -9,10 +9,14 @@ import { appConfig, systemContracts } from '../config/index.ts';
 import { DriveClient } from '../drive/client.ts';
 import type { OAuthClientConfig } from '../drive/oauth.ts';
 import { driveToken } from '../drive/token.ts';
+import { AbortReports } from '../recovery-activation/abort-reports.ts';
 import { runArgon2id } from '../workers/argon2-client.ts';
 
 // Los timestamps firmados (±60 s) usan la hora del servidor estimada en cada PlatformSession.
 export const api = new WalletApi(new ApiClient({ baseUrl: appConfig.apiBaseUrl, clock: new ServerAlignedClock() }));
+
+/** Avisos de pedidos de R abortados que esperan una sesión válida para llegar al backend (sólo en memoria). */
+export const abortReports = new AbortReports(api.client);
 
 export const drive = new DriveClient(() => driveToken());
 

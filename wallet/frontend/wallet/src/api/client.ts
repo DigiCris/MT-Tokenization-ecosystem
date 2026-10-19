@@ -102,7 +102,16 @@ export class ApiClient {
     }
   }
 
-  async #send<T>(method: HttpMethod, path: string, options: RequestOptions): Promise<T> {
+  /**
+   * Un request armado (y firmado, si lleva PlatformSession) ahora, para mandarlo después tal cual con `fetch(url, init)`:
+   * p. ej. con `keepalive` desde `pagehide`, que no espera promesas (la firma es asíncrona). La firma vale ±60 s
+   * ([B-PSES-05]) y su nonce, una sola vez: quien lo guarda lo vuelve a armar antes de que venza.
+   */
+  async prepare(method: HttpMethod, path: string, options: Omit<RequestOptions, 'signal'> = {}) {
+    return this.#build(method, path, options);
+  }
+
+  async #build(method: HttpMethod, path: string, options: RequestOptions): Promise<{ url: string; init: RequestInit }> {
     if (!path.startsWith('/')) throw new TypeError('el path empieza con /');
     const url = `${this.baseUrl}${path}`;
     const body =
@@ -122,10 +131,9 @@ export class ApiClient {
         await criticalHeaders(options.platform, method, `${pathname}${search}`, body, this.#clock),
       );
     }
-    const timeout = AbortSignal.timeout(this.#timeoutMs);
-    let response: Response;
-    try {
-      response = await this.#fetch(url, {
+    return {
+      url,
+      init: {
         method,
         headers,
         ...(body === '' ? {} : { body }),
@@ -134,6 +142,19 @@ export class ApiClient {
         cache: 'no-store',
         redirect: 'error',
         referrerPolicy: 'no-referrer',
+      },
+    };
+  }
+
+  async #send<T>(method: HttpMethod, path: string, options: RequestOptions): Promise<T> {
+    const { url, init } = await this.#build(method, path, options);
+    // El llamador pudo cancelar mientras se armaba: como fetch con una señal ya abortada.
+    options.signal?.throwIfAborted();
+    const timeout = AbortSignal.timeout(this.#timeoutMs);
+    let response: Response;
+    try {
+      response = await this.#fetch(url, {
+        ...init,
         signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
       });
     } catch (error) {

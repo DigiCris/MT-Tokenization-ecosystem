@@ -9,7 +9,7 @@ import { RouterProvider } from 'react-router/dom';
 import { createAppRouter } from './app/router.tsx';
 import { SecurityBlocked } from './app/SecurityBlocked.tsx';
 import { SecurityStatus } from './app/security-status.ts';
-import { api } from './app/services.ts';
+import { abortReports, api } from './app/services.ts';
 import { appConfig } from './config/index.ts';
 import { handleOAuthCallback } from './drive/oauth.ts';
 import { bootSecurity } from './security/boot.ts';
@@ -33,6 +33,18 @@ if (boot.failure === null) {
     // Sin API (red caída): las pantallas públicas siguen; las de cuenta reintentan al usarse.
   });
 }
+// Cada desbloqueo nuevo (PlatformSession OPERATIONS) lleva los avisos pendientes de reemplazos de R abortados (ADR-033).
+let unlockedSession: string | null = null;
+session.subscribe(() => {
+  const unlocked = session.state.unlocked;
+  if (unlocked === null || unlocked.session.id === unlockedSession) return;
+  unlockedSession = unlocked.session.id;
+  void abortReports.flush({
+    platform: unlocked.platform,
+    purpose: 'REPLACEMENT',
+    expiresAt: unlocked.session.expiresAt,
+  });
+});
 
 createRoot(container).render(
   <StrictMode>
