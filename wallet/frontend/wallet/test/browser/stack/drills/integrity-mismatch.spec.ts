@@ -7,7 +7,7 @@
 // sigue hasta que dos operadores aprueban ese release, y entonces la operación retenida se ejecuta sola.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
-import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -132,32 +132,38 @@ test('mismatch de Recovery: pausa en ≤ 2 ciclos, operación retenida, doble ap
   ok('pnpm', ['install', '--frozen-lockfile'], MONITOR);
   const ana = releaseKey(work, 'operator-ana');
   const beto = releaseKey(work, 'operator-beto');
-  children.push(
-    spawn('node', ['src/main.ts', 'serve'], {
-      cwd: MONITOR,
-      stdio: 'ignore',
-      env: {
-        PATH: process.env.PATH,
-        APP_ENV: 'local',
-        PLATFORM_ID: state.platformId,
-        MONITOR_TARGETS: `WALLET=http://localhost:4174,RECOVERY=http://localhost:${String(RECOVERY_PORT)}`,
-        MONITOR_MANIFEST_ENVIRONMENT: 'ci',
-        WALLET_RELEASE_PUBLIC_KEY: walletKey.publicDer,
-        RECOVERY_RELEASE_PUBLIC_KEY: recoveryKey.publicDer,
-        MONITOR_ATTESTATION_PRIVATE_KEY: envValue('INTEGRITY_MONITOR_PRIVATE_KEY'),
-        MONITOR_OPERATOR_KEYS: JSON.stringify({ ana: ana.publicDer, beto: beto.publicDer }),
-        MONITOR_STATE_FILE: join(work, 'monitor-state.json'),
-        MONITOR_INTERVAL_SECONDS: '5',
-        MONITOR_PORT: new URL(MONITOR_URL).port,
-      },
-    }),
-  );
+  // El log del monitor (JSON de pino, sin secretos) queda como evidencia y explica cualquier falla del simulacro.
+  const monitorLog = join(process.env.MTW_REVIEW_DIR ?? work, 'integrity-drill', 'integrity-monitor.log');
+  mkdirSync(join(monitorLog, '..'), { recursive: true });
+  const monitorOut = openSync(monitorLog, 'a', 0o600);
+  const monitor = spawn('node', ['src/main.ts', 'serve'], {
+    cwd: MONITOR,
+    stdio: ['ignore', monitorOut, monitorOut],
+    env: {
+      PATH: process.env.PATH,
+      APP_ENV: 'local',
+      PLATFORM_ID: state.platformId,
+      MONITOR_TARGETS: `WALLET=http://localhost:4174,RECOVERY=http://localhost:${String(RECOVERY_PORT)}`,
+      MONITOR_MANIFEST_ENVIRONMENT: 'ci',
+      WALLET_RELEASE_PUBLIC_KEY: walletKey.publicDer,
+      RECOVERY_RELEASE_PUBLIC_KEY: recoveryKey.publicDer,
+      MONITOR_ATTESTATION_PRIVATE_KEY: envValue('INTEGRITY_MONITOR_PRIVATE_KEY'),
+      MONITOR_OPERATOR_KEYS: JSON.stringify({ ana: ana.publicDer, beto: beto.publicDer }),
+      MONITOR_STATE_FILE: join(work, 'monitor-state.json'),
+      MONITOR_INTERVAL_SECONDS: '5',
+      MONITOR_PORT: new URL(MONITOR_URL).port,
+    },
+  });
+  children.push(monitor);
+  const monitorTail = (): string =>
+    `monitor (exit ${String(monitor.exitCode)}):\n${readFileSync(monitorLog, 'utf8').slice(-4_000)}`;
   for (const app of ['WALLET', 'RECOVERY'] as const) {
     let last: AppStatus | undefined;
     const deadline = Date.now() + 120_000;
     while (last?.status !== 'OK') {
       last = await monitorStatus(app).catch(() => undefined);
-      if (Date.now() > deadline) throw new Error(`${app} no quedó OK en el monitor: ${JSON.stringify(last)}`);
+      if (Date.now() > deadline)
+        throw new Error(`${app} no quedó OK en el monitor: ${JSON.stringify(last)}\n${monitorTail()}`);
       await sleep(1_000);
     }
   }

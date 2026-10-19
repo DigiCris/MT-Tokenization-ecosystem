@@ -7,6 +7,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { configChecks, validateVars } from '../checks/config.mjs';
 import { chainChecks } from '../checks/chain.mjs';
+import { rpc, RpcError, retryDelayMs } from '../lib/net.mjs';
 import { ctxWithEnv, validLocalEnv, tmp } from './helpers.mjs';
 
 const byId = (list, id) => list.find((c) => c.id === id);
@@ -51,6 +52,65 @@ function rpcServer(chainIdHex) {
     srv.listen(0, '127.0.0.1', () => resolve(srv));
   });
 }
+
+// Responde 429 (con Retry-After: 0) a las primeras `limited` llamadas y después el chainId.
+function rateLimitedRpcServer(limited) {
+  let calls = 0;
+  return new Promise((resolve) => {
+    const srv = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (d) => (body += d));
+      req.on('end', () => {
+        calls += 1;
+        if (calls <= limited) {
+          res.writeHead(429, { 'retry-after': '0' });
+          return res.end('rate limited');
+        }
+        const { id } = JSON.parse(body);
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify({ jsonrpc: '2.0', id, result: '0x2105' }));
+      });
+    });
+    srv.listen(0, '127.0.0.1', () => resolve({ srv, calls: () => calls }));
+  });
+}
+
+test('RPC con 429 transitorio (CI con muchos jobs a la vez) → reintenta y PF-13 PASS', async () => {
+  const { srv, calls } = await rateLimitedRpcServer(2);
+  try {
+    const { ctx } = ctxWithEnv(validLocalEnv());
+    ctx.env.BASE_RPC_URL = `http://127.0.0.1:${srv.address().port}/`;
+    const r = await byId(chainChecks, 'PF-13').run(ctx);
+    assert.equal(r.status, 'PASS');
+    assert.ok(calls() >= 6, 'los dos 429 se reintentaron');
+  } finally {
+    srv.close();
+  }
+});
+
+test('RPC con 429 sostenido → RpcError con la cantidad de intentos y sin la URL', async () => {
+  const { srv, calls } = await rateLimitedRpcServer(Infinity);
+  try {
+    await assert.rejects(
+      rpc(`http://127.0.0.1:${srv.address().port}/v2/CLAVE-SECRETA`, 'eth_chainId', [], 5000, {}, { retries: 3 }),
+      (e) => e instanceof RpcError && /HTTP 429 de 127\.0\.0\.1 tras 4 intentos/.test(e.message) && !/CLAVE-SECRETA/.test(e.message),
+    );
+    assert.equal(calls(), 4);
+  } finally {
+    srv.close();
+  }
+});
+
+test('espera entre reintentos: Retry-After con tope de 10 s o backoff exponencial', () => {
+  assert.equal(retryDelayMs('3', 0), 3000);
+  assert.equal(retryDelayMs('0', 2), 0);
+  assert.equal(retryDelayMs('120', 0), 10_000);
+  for (const attempt of [0, 1, 2, 3]) {
+    const ms = retryDelayMs(null, attempt);
+    assert.ok(ms >= 500 * 2 ** attempt && ms < 500 * 2 ** attempt + 500, `intento ${attempt}: ${ms}`);
+  }
+  assert.ok(retryDelayMs('no-es-un-número', 0) >= 500);
+});
 
 test('RPC con chainId incorrecto → FAIL', async () => {
   const srv = await rpcServer('0x1');
