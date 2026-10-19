@@ -1,7 +1,9 @@
 // Inicio de Wallet: qué es la app y, según la sesión, el próximo paso (cuenta, crear la wallet, desbloquearla) o, con la
-// wallet ACTIVE, desbloqueada y verificada por la app, la Safe operativa (P18.T03).
+// wallet ACTIVE, desbloqueada y verificada por la app, la Safe operativa (P18.T03). Con sesión de cuenta, los avisos
+// in-app (P15.T07) se ven también con la wallet bloqueada o todavía no operativa.
 import { Link } from 'react-router';
 import { OperatingHome } from '../home/OperatingHome.tsx';
+import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
 import { SafeGate } from '../safe/SafeGate.tsx';
 import { useSession, useSessionStore } from '../session/context.tsx';
 
@@ -19,10 +21,19 @@ export function HomePage() {
   const { status, user, wallet, unlocked } = useSession();
   const store = useSessionStore();
   if (status === 'account' && wallet?.status === 'ACTIVE') {
-    return <SafeGate>{(ctx) => <OperatingHome ctx={ctx} />}</SafeGate>;
+    const operating = <SafeGate>{(ctx) => <OperatingHome ctx={ctx} />}</SafeGate>;
+    // Desbloqueada, el inicio operativo muestra los avisos junto con las alertas leídas de la cadena.
+    if (unlocked) return operating;
+    return (
+      <div className="stack">
+        <NotificationsPanel />
+        {operating}
+      </div>
+    );
   }
   return (
     <div className="stack">
+      {status === 'account' && <NotificationsPanel />}
       {status === 'account' && user && (
         <section className="card stack" aria-labelledby="wallet-title">
           <h1 id="wallet-title">Tu wallet</h1>

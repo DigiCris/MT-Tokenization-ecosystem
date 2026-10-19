@@ -20,7 +20,8 @@ export const ROTATION_KINDS: readonly RotationRole[] = ['U', 'R', 'S', 'GUARD', 
 export type DecodedCall =
   | { kind: 'NOOP' }
   | { kind: 'TRANSFER'; token: TokenSymbol; recipient: Address; amount: bigint }
-  | { kind: 'APPROVE'; token: TokenSymbol; spender: Address; amount: bigint }
+  /** `spenderIsSwapExecutor`: el permiso es para el SwapExecutor fijado en el build (el único que acepta el Guard). */
+  | { kind: 'APPROVE'; token: TokenSymbol; spender: Address; amount: bigint; spenderIsSwapExecutor: boolean }
   | {
       kind: 'SWAP';
       tokenIn: TokenSymbol;
@@ -81,8 +82,11 @@ export function decodeSafeTx(tx: SafeTx, ctx: DecodeContext): DecodedCall {
     const call = safely(() => decodeFunctionData({ abi: erc20Abi, data: tx.data }));
     if (call?.functionName === 'transfer')
       return { kind: 'TRANSFER', token, recipient: call.args[0], amount: call.args[1] };
-    if (call?.functionName === 'approve')
-      return { kind: 'APPROVE', token, spender: call.args[0], amount: call.args[1] };
+    if (call?.functionName === 'approve') {
+      const spender = call.args[0];
+      const spenderIsSwapExecutor = isAddressEqual(spender, c.swapExecutor.address);
+      return { kind: 'APPROVE', token, spender, amount: call.args[1], spenderIsSwapExecutor };
+    }
     return unknown('llamada al token no reconocida');
   }
   if (isAddressEqual(tx.to, c.swapExecutor.address)) {

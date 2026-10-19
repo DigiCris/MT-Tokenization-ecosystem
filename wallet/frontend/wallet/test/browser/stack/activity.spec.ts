@@ -84,7 +84,10 @@ test('operaciones con su estado y transfers entrantes y salientes indexados, con
   // El envío de la plataforma muestra su transfer saliente (monto y destino reales), sin repetirlo como ítem.
   const send = page.locator('li[data-kind="operation"]').filter({ hasText: 'Envío' });
   await expect(send.first()).toHaveAttribute('data-status', /^(MINED|CONFIRMED|FINALIZED)$/);
-  await expect(send.first()).toContainText(`enviaste 2,50 USDC a ${shownAddress(getAddress(destination))}`);
+  // El destino con su nombre de la whitelist y la dirección completa.
+  await expect(send.first()).toContainText(
+    `enviaste 2,50 USDC a Cuenta de Carla ${shownAddress(getAddress(destination))}`,
+  );
   await expect(outgoing.filter({ hasText: 'Enviaste 2,50 USDC' })).toHaveCount(0);
   await expect(page.locator('li[data-kind="operation"]').filter({ hasText: 'Alta en la whitelist' })).toHaveAttribute(
     'data-status',
@@ -101,6 +104,11 @@ test('una operación cancelada antes de firmar aparece con su estado y sin trans
   await openActivity();
   const cancelled = page.locator('li[data-kind="operation"][data-status="CANCELLED"]');
   await expect(cancelled.filter({ hasText: 'Envío' })).toHaveCount(1);
+  // Sin transacción, la operación dice qué era (su intención guardada) y cuándo se preparó.
+  await expect(cancelled.filter({ hasText: 'Envío' })).toContainText(
+    `de 1,00 USDC a Cuenta de Carla ${shownAddress(getAddress(destination))}`,
+  );
+  await expect(cancelled.filter({ hasText: 'Envío' })).toContainText('preparada el');
   await expect(cancelled.getByRole('link', { name: 'ver transacción' })).toHaveCount(0);
 });
 

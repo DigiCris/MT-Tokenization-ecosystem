@@ -12,7 +12,7 @@ import { addressOf, generatePrivateKey } from '../../../src/crypto/keys.ts';
 import { encodeFrames } from '../../../src/qr/frames.ts';
 import { unlockWallet } from '../../../src/unlock/unlock.ts';
 import { activeWallet, nodeArgon2, testWordlist, type ActiveWallet } from './helpers/onboard.ts';
-import { backupToFile, completeStepUp, login, writeDownAndConfirmPassword } from './helpers/ui.ts';
+import { backupToFile, completeStepUp, login, shownAddress, writeDownAndConfirmPassword } from './helpers/ui.ts';
 import { writeQrVideo } from './helpers/y4m.ts';
 
 const VIDEO = resolve(import.meta.dirname, '../../../test-results/stack/qr-envelope.y4m');
@@ -47,7 +47,9 @@ test('desde el archivo cifrado y la Password U', async ({ page }) => {
   });
   await page.getByLabel('Password U').fill(wallet.passwordWords.join(' '));
   await page.getByRole('button', { name: 'Restaurar y desbloquear' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Wallet desbloqueada' })).toContainText(wallet.userAddress);
+  await expect(page.getByRole('status').filter({ hasText: 'Wallet desbloqueada' })).toContainText(
+    shownAddress(wallet.userAddress),
+  );
 });
 
 test('desde el QR del sobre leído con la cámara', async ({ page }) => {
@@ -58,7 +60,9 @@ test('desde el QR del sobre leído con la cámara', async ({ page }) => {
   await expect(page.getByText(`Sobre de la clave ${wallet.userAddress}`)).toBeVisible({ timeout: 60_000 });
   await page.getByLabel('Password U').fill(wallet.passwordWords.join(' '));
   await page.getByRole('button', { name: 'Restaurar y desbloquear' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Wallet desbloqueada' })).toContainText(wallet.userAddress);
+  await expect(page.getByRole('status').filter({ hasText: 'Wallet desbloqueada' })).toContainText(
+    shownAddress(wallet.userAddress),
+  );
 });
 
 test('desde las 17 palabras: rol U on-chain, KEY_RESTORE y Password U nueva; otra clave se rechaza', async ({

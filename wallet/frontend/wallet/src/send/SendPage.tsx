@@ -2,6 +2,7 @@
 // fijados) → review decodificado desde la SafeTx que arma la app, comparada byte a byte con la del backend (si difieren,
 // no se firma) → segundo factor si corresponde → firma de U → seguimiento.
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import type { Address } from 'viem';
 import type { TokenSymbol } from '../api/wallet-api.ts';
 import { api } from '../app/services.ts';
@@ -11,11 +12,12 @@ import { readAssets, type AssetView } from '../assets/assets.ts';
 import { pinnedChain } from '../config/chain.ts';
 import { systemContracts } from '../config/index.ts';
 import { decodeContext, onchainNonce } from '../operations/context.ts';
+import { labelsOf } from '../operations/names.ts';
 import { OperationReview } from '../operations/OperationReview.tsx';
 import { releasePrepared, verifiedOrReleased } from '../operations/prepared.ts';
 import { SafeGate, type OperatingWallet } from '../safe/SafeGate.tsx';
 import { useSensitiveScreen } from '../session/context.tsx';
-import { AddressText } from '../ui/AddressText.tsx';
+import { AddressText, groupAddress } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { isActiveDestination, readWhitelist, type Destination } from '../whitelist/whitelist.ts';
@@ -28,6 +30,9 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
   const [active, setActive] = useState<Destination[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<VerifiedOperation | null>(null);
+  const [tokenChoice, setTokenChoice] = useState<TokenSymbol | null>(null);
+  const [chosen, setChosen] = useState<Address | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     const alive = { current: true };
@@ -49,7 +54,7 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
     return () => {
       alive.current = false;
     };
-  }, [wallet, reader, whitelistAddress]);
+  }, [wallet, reader, whitelistAddress, reload]);
 
   const prepare = useAsyncAction(
     useCallback(
@@ -60,7 +65,7 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
         const balance = assets?.find((a) => a.symbol === token)?.balance ?? 0n;
         if (amount > balance) throw new Error(`No tenés saldo suficiente de ${token}.`);
         if (!(await isActiveDestination(reader, whitelistAddress, wallet.safe, destination))) {
-          throw new Error('Ese destino no está activo en tu whitelist on-chain.');
+          throw new Error('Ese destino todavía no está activo en tu whitelist (en Base).');
         }
         // Lo preparado y abandonado antes en esta pestaña libera su nonce antes de reservar uno nuevo.
         await releasePrepared(api, unlocked.platform);
@@ -90,20 +95,44 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
     return (
       <OperationReview
         title="Revisá el envío"
+        doneTitle="Envío realizado"
         items={[review]}
         unlocked={unlocked}
         decode={decodeContext(wallet.safe)}
+        labels={labelsOf(active)}
         onCancel={() => {
           setReview(null);
         }}
+        doneActions={
+          <>
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                setReview(null);
+                setReload((n) => n + 1);
+              }}
+            >
+              Hacer otro envío
+            </button>
+            <Link className="button button--ghost" to="/activity">
+              Ver la actividad
+            </Link>
+          </>
+        }
       />
     );
   }
+  const selectedToken = tokenChoice ?? assets[0]?.symbol ?? 'USDC';
+  const selectedAsset = assets.find((a) => a.symbol === selectedToken);
+  const destination = active.find((d) => d.address === chosen) ?? active[0];
   return (
     <section className="card stack" aria-labelledby="send-title">
       <h1 id="send-title">Enviar</h1>
-      {active.length === 0 ? (
-        <Notice>No tenés destinos activos: agregá uno a tu whitelist (se activa 24 h después).</Notice>
+      {active.length === 0 || !destination ? (
+        <Notice>
+          No tenés destinos activos: agregá uno a tu <Link to="/whitelist">whitelist</Link> (se activa 24 h después).
+        </Notice>
       ) : (
         <form
           className="stack"
@@ -112,17 +141,25 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
             const form = event.currentTarget;
             void prepare.run(
               formValue(form, 'token') as TokenSymbol,
-              (form.elements.namedItem('destination') as HTMLSelectElement).value as Address,
+              formValue(form, 'destination') as Address,
               formValue(form, 'amount'),
             );
           }}
         >
           <fieldset className="choices">
             <legend>Token</legend>
-            {assets.map((a, i) => (
+            {assets.map((a) => (
               <label key={a.symbol} className="check">
-                <input type="radio" name="token" value={a.symbol} defaultChecked={i === 0} /> {a.symbol} (saldo{' '}
-                {formatAmount(a.balance, a.decimals)})
+                <input
+                  type="radio"
+                  name="token"
+                  value={a.symbol}
+                  checked={a.symbol === selectedToken}
+                  onChange={() => {
+                    setTokenChoice(a.symbol);
+                  }}
+                />{' '}
+                {a.symbol} (saldo {formatAmount(a.balance, a.decimals)})
               </label>
             ))}
           </fieldset>
@@ -130,25 +167,45 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
             <label htmlFor="send-destination" className="field__label">
               Destino (sólo los activos de tu whitelist)
             </label>
-            <select id="send-destination" name="destination" className="field__input" required>
+            <select
+              id="send-destination"
+              name="destination"
+              className="field__input"
+              required
+              value={destination.address}
+              aria-describedby="send-destination-hint"
+              onChange={(event) => {
+                setChosen(event.currentTarget.value as Address);
+              }}
+            >
               {active.map((d) => (
                 <option key={d.address} value={d.address}>
-                  {d.label ?? 'Sin nombre'} — {d.address}
+                  {d.label ?? 'Sin nombre'} — {groupAddress(d.address)}
                 </option>
               ))}
             </select>
+            <p id="send-destination-hint" className="field__hint">
+              Dirección completa: <AddressText address={destination.address} />. ¿Falta un destino? Agregalo en la{' '}
+              <Link to="/whitelist">whitelist</Link>: se activa 24 h después.
+            </p>
           </div>
-          <Field label="Monto" name="amount" inputMode="decimal" autoComplete="off" placeholder="0,00" required />
+          <Field
+            label={`Monto (${selectedToken})`}
+            name="amount"
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="0,00"
+            required
+            hint={
+              selectedAsset
+                ? `Disponible: ${formatAmount(selectedAsset.balance, selectedAsset.decimals)} ${selectedToken}`
+                : undefined
+            }
+          />
           {prepare.error && <Notice tone="error">{prepare.error}</Notice>}
           <button type="submit" className="button" disabled={prepare.pending} aria-busy={prepare.pending}>
             {prepare.pending ? 'Preparando…' : 'Revisar el envío'}
           </button>
-          <p className="muted">
-            Destinos activos:{' '}
-            {active.map((d) => (
-              <AddressText key={d.address} address={d.address} />
-            ))}
-          </p>
         </form>
       )}
     </section>

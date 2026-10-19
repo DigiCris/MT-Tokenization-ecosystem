@@ -1,8 +1,13 @@
 // `/activity` (P18.T08): operaciones con sus estados y transfers entrantes/salientes indexados, por fecha, con link al
-// explorer; paginada por cursor.
-import { useCallback, useEffect, useState } from 'react';
+// explorer; paginada por cursor. Los destinos aparecen con su nombre de la whitelist y los estados de la cadena tienen
+// una ayuda breve.
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { OperationStatus, Transfer } from '../api/wallet-api.ts';
 import { api } from '../app/services.ts';
+import { pinnedChain } from '../config/chain.ts';
+import { systemContracts } from '../config/index.ts';
+import { SETTLEMENT_HELP, STATE_TEXT } from '../operations/describe.ts';
+import { addressNames, backendLabels } from '../operations/names.ts';
 import { SafeGate, type OperatingWallet } from '../safe/SafeGate.tsx';
 import { useSensitiveScreen } from '../session/context.tsx';
 import { describeError } from '../ui/errors.ts';
@@ -10,20 +15,55 @@ import { Notice, useAsyncAction } from '../ui/forms.tsx';
 import { mergeActivity } from './activity.ts';
 import { ActivityList } from './ActivityList.tsx';
 
+/** Labels para nombrar contrapartes; sin ellos la actividad muestra sólo las direcciones completas. */
+async function whitelistLabels(walletId: string): Promise<Map<string, string>> {
+  return api
+    .whitelist(walletId)
+    .then(backendLabels)
+    .catch(() => new Map<string, string>());
+}
+
+/** Qué significa cada estado de una operación que ya está en la cadena. */
+export function SettlementHelp() {
+  return (
+    <details className="help">
+      <summary>¿Qué significa cada estado?</summary>
+      <dl className="summary">
+        {SETTLEMENT_HELP.map((help) => (
+          <Fragment key={help.state}>
+            <dt>{STATE_TEXT[help.state]}</dt>
+            <dd>{help.text}</dd>
+          </Fragment>
+        ))}
+      </dl>
+      <p>
+        La hora es la de la inclusión en un bloque de Base; las operaciones que no llegaron a la red muestran cuándo se
+        prepararon.
+      </p>
+    </details>
+  );
+}
+
 function Activity({ ctx }: { ctx: OperatingWallet }) {
   const walletId = ctx.wallet.id;
   const [operations, setOperations] = useState<OperationStatus[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [labels, setLabels] = useState<Map<string, string>>(new Map());
   const [cursors, setCursors] = useState<{ operations: string | null; transfers: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
-    void Promise.all([api.operations(walletId, { limit: 20 }), api.transfers(walletId, { limit: 20 })])
-      .then(([ops, trs]) => {
+    void Promise.all([
+      api.operations(walletId, { limit: 20 }),
+      api.transfers(walletId, { limit: 20 }),
+      whitelistLabels(walletId),
+    ])
+      .then(([ops, trs, names]) => {
         if (!live) return;
         setOperations(ops.items);
         setTransfers(trs.items);
+        setLabels(names);
         setCursors({ operations: ops.nextCursor, transfers: trs.nextCursor });
       })
       .catch((caught: unknown) => {
@@ -47,6 +87,7 @@ function Activity({ ctx }: { ctx: OperatingWallet }) {
     }, [walletId, cursors]),
   );
   const hasMore = cursors !== null && (cursors.operations !== null || cursors.transfers !== null);
+  const nameOf = addressNames({ safe: ctx.wallet.safe, chain: pinnedChain, system: systemContracts }, labels);
   return (
     <section className="card stack" aria-labelledby="activity-title">
       <h1 id="activity-title">Actividad</h1>
@@ -54,8 +95,9 @@ function Activity({ ctx }: { ctx: OperatingWallet }) {
       {cursors === null ? (
         <p className="muted">Cargando…</p>
       ) : (
-        <ActivityList items={mergeActivity(operations, transfers)} />
+        <ActivityList items={mergeActivity(operations, transfers)} nameOf={nameOf} />
       )}
+      <SettlementHelp />
       {hasMore && (
         <button
           type="button"

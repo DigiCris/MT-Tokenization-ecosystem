@@ -329,6 +329,19 @@ textarea.field__input {
   font-weight: var(--mtw-font-weight-medium);
 }
 
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+legend {
+  margin-bottom: var(--mtw-space-2);
+  padding: 0;
+  font-weight: var(--mtw-font-weight-medium);
+}
+
 .check {
   display: flex;
   align-items: flex-start;
@@ -346,6 +359,11 @@ textarea.field__input {
   border-radius: var(--mtw-radius-md);
   border: 1px solid var(--mtw-color-line);
   background: var(--mtw-color-surface-raised);
+}
+
+.notice p:last-child,
+.notice ul:last-child {
+  margin-bottom: 0;
 }
 
 .notice--warning {
@@ -394,7 +412,175 @@ textarea.field__input {
 .choices {
   display: flex;
   flex-wrap: wrap;
+  gap: var(--mtw-space-3) var(--mtw-space-5);
+}
+
+/* Direcciones completas en grupos de 4 y en monoespaciada (ui/AddressText.tsx), también dentro de una frase. */
+.address {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mtw-space-2);
+  max-width: 100%;
+  vertical-align: baseline;
+}
+
+.address__text {
+  min-width: 0;
+  padding: 0.1em var(--mtw-space-2);
+  border-radius: var(--mtw-radius-sm);
+  background: var(--mtw-color-surface-alt);
+  letter-spacing: 0.02em;
+}
+
+/* Un nombre conocido (label de la whitelist, contrato del sistema) junto a su dirección. */
+.party__name {
+  font-weight: var(--mtw-font-weight-bold);
+}
+
+/* Review de operaciones (P18): qué se firma, con el monto y el token destacados y los detalles técnicos aparte. */
+.review {
+  display: grid;
   gap: var(--mtw-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review__item {
+  display: grid;
+  gap: var(--mtw-space-3);
+  padding: var(--mtw-space-4);
+  border: 1px solid var(--mtw-color-line);
+  border-radius: var(--mtw-radius-md);
+  background: var(--mtw-color-surface-raised);
+}
+
+.review__item > * {
+  margin: 0;
+}
+
+.review__step {
+  color: var(--mtw-color-text-muted);
+  font-size: var(--mtw-font-size-xs);
+  font-weight: var(--mtw-font-weight-medium);
+  letter-spacing: var(--mtw-letter-spacing-caps);
+  text-transform: uppercase;
+}
+
+.review__what {
+  font-size: var(--mtw-font-size-lg);
+  font-weight: var(--mtw-font-weight-medium);
+  line-height: 1.8;
+}
+
+.review__amount {
+  color: var(--mtw-color-ink);
+  font-weight: var(--mtw-font-weight-bold);
+  white-space: nowrap;
+}
+
+.review__status {
+  font-weight: var(--mtw-font-weight-medium);
+  color: var(--mtw-color-brand-strong);
+}
+
+.review__facts {
+  margin: 0;
+  font-size: var(--mtw-font-size-sm);
+}
+
+/* Listas de definición (resúmenes, cotización, detalles técnicos). */
+.summary {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) 1fr;
+  gap: var(--mtw-space-2) var(--mtw-space-4);
+  margin: 0;
+}
+
+.summary dt {
+  color: var(--mtw-color-text-muted);
+}
+
+.summary dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Desplegables: detalles técnicos y ayudas breves. */
+.details > summary,
+.help > summary {
+  cursor: pointer;
+  color: var(--mtw-color-brand-strong);
+  font-size: var(--mtw-font-size-sm);
+  font-weight: var(--mtw-font-weight-medium);
+}
+
+.details[open] > summary,
+.help[open] > summary {
+  margin-bottom: var(--mtw-space-3);
+}
+
+.help {
+  font-size: var(--mtw-font-size-sm);
+}
+
+.help p,
+.help dl {
+  margin: 0 0 var(--mtw-space-2);
+  color: var(--mtw-color-ink-soft);
+}
+
+/* Listas de la app: destinos, saldos, actividad y avisos. */
+.destinations,
+.balances,
+.activity,
+.notices {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.destinations > li,
+.activity > li,
+.notices > li {
+  padding: var(--mtw-space-3) 0;
+  border-bottom: 1px solid var(--mtw-color-line);
+  line-height: 1.8;
+}
+
+.destinations > li:last-child,
+.activity > li:last-child,
+.notices > li:last-child {
+  border-bottom: 0;
+}
+
+.balances {
+  gap: var(--mtw-space-2);
+}
+
+.balances strong {
+  font-size: var(--mtw-font-size-xl);
+}
+
+.notices > li > p {
+  margin: 0;
+}
+
+.nowrap,
+.activity a {
+  white-space: nowrap;
+}
+
+.asset {
+  padding-top: var(--mtw-space-4);
+  border-top: 1px solid var(--mtw-color-line);
+}
+
+.asset > h2 {
+  margin: 0;
 }
 
 .steps {
@@ -552,7 +738,12 @@ textarea.field__input {
     padding: var(--mtw-space-6);
   }
 
-  .contracts__row {
+  .contracts__row,
+  .summary {
     grid-template-columns: 1fr;
+  }
+
+  .summary dd {
+    margin-bottom: var(--mtw-space-2);
   }
 }

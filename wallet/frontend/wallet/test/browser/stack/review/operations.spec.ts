@@ -4,11 +4,12 @@
 // y las pantallas de Seguridad. Corre en cada navegador de MTW_BROWSERS y sólo con MTW_REVIEW_DIR (capturas en
 // <dir>/operations/<navegador>/).
 import { expect, test } from '@playwright/test';
+import { getAddress } from 'viem';
 import { fund, USDC, USDC_HOLDER, USDT, USDT_HOLDER } from '../helpers/chain.ts';
 import { codeFrom, nextMail } from '../helpers/mailpit.ts';
 import { activeWallet } from '../helpers/onboard.ts';
 import { activeDestination, randomAddress } from '../helpers/operate.ts';
-import { openFromHome, openSecurity, settled, unlockToHome } from '../helpers/ui.ts';
+import { goHome, openFromHome, openSecurity, settled, unlockToHome } from '../helpers/ui.ts';
 import { reviewCamera } from './camera.ts';
 
 test('operación completa en el fork con capturas de cada review', async ({ page }, testInfo) => {
@@ -20,6 +21,8 @@ test('operación completa en el fork con capturas de cada review', async ({ page
   await activeDestination(wallet, 'Cuenta de Ana');
   await unlockToHome(page, wallet);
   await expect(page.getByRole('heading', { name: 'Tu Safe' })).toBeVisible({ timeout: 60_000 });
+  // La captura del inicio, con los saldos ya leídos de la cadena.
+  await expect(page.locator('ul.balances [data-balance]')).toHaveCount(2, { timeout: 60_000 });
   await snap('inicio');
 
   await openFromHome(page, 'Activos');
@@ -35,34 +38,47 @@ test('operación completa en el fork con capturas de cada review', async ({ page
   await page.getByLabel('Dirección en Base').fill(added.toLowerCase());
   await page.getByLabel('Nombre (para reconocerlo)').fill('Proveedor');
   await page.getByRole('button', { name: 'Pedir el código por email' }).click();
-  await expect(page.getByText('Revisá la dirección completa:')).toBeVisible();
+  await expect(
+    page.getByText('Compará esta dirección con la del email, los 10 grupos, antes de escribir el código:'),
+  ).toBeVisible();
+  // Otro formulario: el campo del código arranca vacío (no hereda el nombre).
+  await expect(page.getByLabel('Código del email (8 dígitos)')).toHaveValue('');
   await snap('whitelist-revisar-direccion');
   const code = codeFrom(
     await nextMail(wallet.email, (m) => m.text.includes(added.slice(2, 6)) && /Código: \d{8}/.test(m.text)),
   );
   await page.getByLabel('Código del email (8 dígitos)').fill(code);
   await page.getByRole('button', { name: 'Confirmar el código' }).click();
-  await expect(page.getByText(/Agregar a tu whitelist el destino/)).toBeVisible();
+  await expect(page.getByText(/Agregar a tu whitelist el destino Proveedor 0x/)).toBeVisible();
   await snap('whitelist-review');
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(settled(page)).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByRole('heading', { name: 'Destino agregado' })).toBeVisible();
   await snap('whitelist-firmado');
+
+  // El inicio alerta del destino nuevo que se está activando, con acceso directo a quitarlo.
+  await goHome(page);
+  await expect(page.locator(`[data-activating="${getAddress(added)}"]`)).toContainText('Proveedor', {
+    timeout: 60_000,
+  });
+  await snap('inicio-destino-en-activacion');
 
   await openFromHome(page, 'Enviar');
   await expect(page.locator('#send-destination option')).toHaveCount(1);
   await snap('enviar');
   await page.getByLabel('Monto').fill('1,5');
   await page.getByRole('button', { name: 'Revisar el envío' }).click();
-  await expect(page.getByText(/Enviar 1,50 USDC a 0x/)).toBeVisible();
+  await expect(page.getByText(/Enviar 1,50 USDC a Cuenta de Ana 0x/)).toBeVisible();
   await snap('enviar-review');
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(settled(page)).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByRole('heading', { name: 'Envío realizado' })).toBeVisible();
   await snap('enviar-minado');
 
   await openFromHome(page, 'Enviar');
   await page.getByLabel('Monto').fill('1000');
   await page.getByRole('button', { name: 'Revisar el envío' }).click();
-  await expect(page.getByText('Esta operación supera el monto que requiere un segundo factor.')).toBeVisible();
+  await expect(page.getByText('Los envíos de 1.000 USDC o más necesitan un segundo factor.')).toBeVisible();
   await snap('enviar-alto-valor');
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Revisar el envío' })).toBeVisible();
@@ -74,9 +90,11 @@ test('operación completa en el fork con capturas de cada review', async ({ page
   await snap('swap-cotizacion');
   await page.getByRole('button', { name: 'Preparar el swap' }).click();
   await expect(page.getByText(/Cambiar 20,00 USDC por al menos/)).toBeVisible();
+  await expect(page.getByText(/Permitir que el contrato de swap de la plataforma 0x/)).toBeVisible();
   await snap('swap-review');
-  await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
+  await page.getByRole('button', { name: 'Firmar las 2 operaciones con tu clave U' }).click();
   await expect(settled(page)).toHaveCount(2, { timeout: 300_000 });
+  await expect(page.getByRole('heading', { name: 'Swap realizado' })).toBeVisible();
   await snap('swap-minado');
 
   await openFromHome(page, 'Ver toda la actividad');

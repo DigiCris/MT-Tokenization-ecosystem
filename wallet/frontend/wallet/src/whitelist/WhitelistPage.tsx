@@ -1,6 +1,9 @@
-// `/whitelist` (P18.T05): destinos leídos de la cadena (con los labels del backend), cuenta regresiva de activación,
-// alta (código por email, revisión de la dirección completa, firma de U de la SafeTx armada por la app) y baja.
-import { useCallback, useEffect, useState } from 'react';
+// `/whitelist` (P18.T05): destinos leídos de la cadena (con los labels del backend), cuenta regresiva de activación con
+// la alerta in-app de ADR-006 (si no lo agregaste vos, quitalo), alta (código por email, comparación de la dirección
+// completa con la del email, firma de U de la SafeTx armada por la app) y baja. El inicio puede abrir directamente la
+// baja de un destino en activación (estado de navegación `remove`).
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
 import type { Address } from 'viem';
 import type { WhitelistRequest } from '../api/wallet-api.ts';
 import { api } from '../app/services.ts';
@@ -8,14 +11,16 @@ import { verifyPrepared, type VerifiedOperation } from '../chain/safe-tx.ts';
 import { systemContracts } from '../config/index.ts';
 import { useChainNow } from '../chain/ChainNow.tsx';
 import { decodeContext, onchainNonce } from '../operations/context.ts';
+import { labelsOf } from '../operations/names.ts';
 import { OperationReview } from '../operations/OperationReview.tsx';
 import { releasePrepared, verifiedOrReleased } from '../operations/prepared.ts';
 import { SafeGate, type OperatingWallet } from '../safe/SafeGate.tsx';
-import { useSensitiveScreen } from '../session/context.tsx';
+import { useSensitiveScreen, useSession } from '../session/context.tsx';
 import { AddressText } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import {
+  activationText,
   addDestinationCall,
   parseDestination,
   readWhitelist,
@@ -23,23 +28,34 @@ import {
   type Destination,
 } from './whitelist.ts';
 
-function remaining(until: Date, now: number | null): string {
-  if (now === null) return `se activa el ${until.toLocaleString('es-AR')}`;
-  const ms = until.getTime() - now;
-  if (ms <= 0) return 'activo';
-  const hours = Math.floor(ms / 3_600_000);
-  const minutes = Math.floor((ms % 3_600_000) / 60_000);
-  return `se activa en ${String(hours)} h ${String(minutes)} min`;
+/** Estado de navegación con el que el inicio pide la baja de un destino (alerta de activación). */
+export interface RemoveIntent {
+  remove: Address;
+}
+
+function removeIntent(state: unknown): Address | null {
+  if (typeof state !== 'object' || state === null || !('remove' in state)) return null;
+  const value = state.remove;
+  return typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value) ? (value as Address) : null;
+}
+
+interface Review {
+  kind: 'add' | 'remove';
+  items: VerifiedOperation[];
+  labels: Map<string, string>;
 }
 
 function Whitelist({ ctx }: { ctx: OperatingWallet }) {
   const { wallet, reader, unlocked } = ctx;
+  const { user } = useSession();
+  const location = useLocation();
+  const navigate = useNavigate();
   const whitelistAddress = systemContracts.contracts.whitelist.address;
   const [destinations, setDestinations] = useState<Destination[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [request, setRequest] = useState<WhitelistRequest | null>(null);
-  const [pendingDestination, setPendingDestination] = useState<Address | null>(null);
-  const [review, setReview] = useState<{ title: string; items: VerifiedOperation[] } | null>(null);
+  const [pending, setPending] = useState<{ address: Address; label: string } | null>(null);
+  const [review, setReview] = useState<Review | null>(null);
 
   const [reload, setReload] = useState(0);
   const refresh = () => {
@@ -70,7 +86,7 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
     useCallback(
       async (destinationText: string, label: string) => {
         const destination = parseDestination(destinationText);
-        setPendingDestination(destination);
+        setPending({ address: destination, label });
         setRequest(await api.requestWhitelistDestination(unlocked.platform, wallet.id, { destination, label }));
       },
       [unlocked, wallet.id],
@@ -80,7 +96,7 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
   const confirmAdd = useAsyncAction(
     useCallback(
       async (code: string) => {
-        if (!request || !pendingDestination) return;
+        if (!request || !pending) return;
         await releasePrepared(api, unlocked.platform);
         const { operation } = await api.confirmWhitelistRequest(unlocked.platform, request.id, code);
         const verified = await verifiedOrReleased(api, unlocked.platform, [operation], async () =>
@@ -88,18 +104,18 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
             safe: wallet.safe,
             chainId: 8453,
             onchainNonce: await onchainNonce(reader, wallet.safe),
-            build: (n) => addDestinationCall(whitelistAddress, pendingDestination, n),
+            build: (n) => addDestinationCall(whitelistAddress, pending.address, n),
           }),
         );
-        setReview({ title: 'Agregar el destino a tu whitelist', items: [verified] });
+        setReview({ kind: 'add', items: [verified], labels: labelsOf([pending]) });
       },
-      [request, pendingDestination, unlocked, reader, wallet.safe, whitelistAddress],
+      [request, pending, unlocked, reader, wallet.safe, whitelistAddress],
     ),
   );
 
   const remove = useAsyncAction(
     useCallback(
-      async (destination: Address) => {
+      async (destination: Address, labels: Map<string, string>) => {
         await releasePrepared(api, unlocked.platform);
         const operation = await api.removeWhitelistDestination(unlocked.platform, wallet.id, destination);
         const verified = await verifiedOrReleased(api, unlocked.platform, [operation], async () =>
@@ -110,11 +126,30 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
             build: (n) => removeDestinationCall(whitelistAddress, destination, n),
           }),
         );
-        setReview({ title: 'Quitar el destino de tu whitelist', items: [verified] });
+        setReview({ kind: 'remove', items: [verified], labels });
       },
       [unlocked, wallet, reader, whitelistAddress],
     ),
   );
+
+  // Baja pedida desde la alerta del inicio: se prepara una sola vez, cuando la lista on-chain ya está leída.
+  const requestedRemoval = removeIntent(location.state);
+  const handledRemoval = useRef<string | null>(null);
+  const runRemove = remove.run;
+  useEffect(() => {
+    if (requestedRemoval === null || destinations === null || handledRemoval.current === requestedRemoval) return;
+    handledRemoval.current = requestedRemoval;
+    void navigate(location.pathname, { replace: true, state: null });
+    const target = destinations.find((d) => d.address.toLowerCase() === requestedRemoval.toLowerCase());
+    if (target) void runRemove(target.address, labelsOf(destinations));
+  }, [requestedRemoval, destinations, navigate, location.pathname, runRemove]);
+
+  const startOver = () => {
+    setRequest(null);
+    setPending(null);
+    requestAdd.setError(null);
+    confirmAdd.setError(null);
+  };
 
   return (
     <div className="stack">
@@ -128,16 +163,22 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
           {destinations?.map((d) => (
             <li key={d.address} data-destination={d.address} data-active={String(d.active)}>
               <strong>{d.label ?? 'Sin nombre'}</strong> <AddressText address={d.address} /> ·{' '}
-              {d.active ? 'Activo' : remaining(d.activatesAt, now)}{' '}
+              {d.active ? 'Activo' : activationText(d.activatesAt, now)}{' '}
               <button
                 type="button"
                 className="button button--link"
                 disabled={remove.pending}
                 aria-busy={remove.pending}
-                onClick={() => void remove.run(d.address)}
+                onClick={() => void remove.run(d.address, labelsOf(destinations))}
               >
                 Quitar
               </button>
+              {!d.active && (
+                <span className="muted" data-activation-alert>
+                  {' '}
+                  Si no lo agregaste vos, quitalo antes de que se active.
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -146,8 +187,10 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
       {!review && (
         <section className="card stack" aria-labelledby="add-title">
           <h2 id="add-title">Agregar un destino</h2>
+          {/* Cada paso es otro formulario (key): React no reutiliza el campo del nombre como campo del código. */}
           {!request ? (
             <form
+              key="request"
               className="stack"
               onSubmit={(event) => {
                 event.preventDefault();
@@ -164,16 +207,25 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
             </form>
           ) : (
             <form
+              key="confirm"
               className="stack"
               onSubmit={(event) => {
                 event.preventDefault();
                 void confirmAdd.run(formValue(event.currentTarget, 'code').trim());
               }}
             >
-              {pendingDestination && (
-                <p>
-                  Revisá la dirección completa: <AddressText address={pendingDestination} />
-                </p>
+              <p>
+                Te mandamos un código por email{user ? ` a ${user.email}` : ''}. El email muestra la dirección que estás
+                por agregar.
+              </p>
+              {pending && (
+                <Notice tone="warning">
+                  <p>Compará esta dirección con la del email, los 10 grupos, antes de escribir el código:</p>
+                  <p>
+                    <strong>{pending.label}</strong> <AddressText address={pending.address} />
+                  </p>
+                  <p>Si algún grupo no coincide, no escribas el código: alguien pudo cambiar la dirección.</p>
+                </Notice>
               )}
               <Field
                 label="Código del email (8 dígitos)"
@@ -183,29 +235,62 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
                 required
               />
               {confirmAdd.error && <Notice tone="error">{confirmAdd.error}</Notice>}
-              <button type="submit" className="button" disabled={confirmAdd.pending} aria-busy={confirmAdd.pending}>
-                Confirmar el código
-              </button>
+              <div className="actions">
+                <button type="submit" className="button" disabled={confirmAdd.pending} aria-busy={confirmAdd.pending}>
+                  Confirmar el código
+                </button>
+                <button type="button" className="button button--ghost" onClick={startOver}>
+                  Empezar de nuevo
+                </button>
+              </div>
             </form>
           )}
         </section>
       )}
       {review && (
         <OperationReview
-          title={review.title}
+          title={review.kind === 'add' ? 'Revisá el alta del destino' : 'Revisá la baja del destino'}
+          doneTitle={review.kind === 'add' ? 'Destino agregado' : 'Destino quitado'}
           items={review.items}
           unlocked={unlocked}
           decode={decodeContext(wallet.safe)}
+          labels={review.labels}
+          summary={
+            review.kind === 'add' ? (
+              <p>
+                Tiene que ser la misma dirección que mostraba el email. El destino se activa 24 h después de que el alta
+                se incluya en un bloque: recién ahí le podés enviar, y mientras tanto lo podés quitar.
+              </p>
+            ) : (
+              <p>La baja es inmediata: desde que se incluye en un bloque ya no le podés enviar a ese destino.</p>
+            )
+          }
           onSettled={() => {
             setRequest(null);
-            setPendingDestination(null);
+            setPending(null);
             refresh();
           }}
           onCancel={() => {
             setReview(null);
             setRequest(null);
-            setPendingDestination(null);
+            setPending(null);
           }}
+          doneActions={
+            <>
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  setReview(null);
+                }}
+              >
+                {review.kind === 'add' ? 'Agregar otro destino' : 'Volver a la whitelist'}
+              </button>
+              <Link className="button button--ghost" to="/">
+                Volver al inicio
+              </Link>
+            </>
+          }
         />
       )}
     </div>

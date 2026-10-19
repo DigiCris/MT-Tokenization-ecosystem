@@ -93,6 +93,21 @@ export async function readWhitelist(
     }));
 }
 
+/** Destinos agregados que todavía no se activaron (la alerta in-app de ADR-006: si no lo agregaste vos, quitalo). */
+export function activating(destinations: readonly Destination[]): Destination[] {
+  return destinations.filter((d) => !d.active);
+}
+
+/** Cuánto falta para que se active un destino, medido con la hora de la cadena (null: todavía sin leerla). */
+export function activationText(activatesAt: Date, chainNowMs: number | null): string {
+  if (chainNowMs === null) return `se activa el ${activatesAt.toLocaleString('es-AR')}`;
+  const ms = activatesAt.getTime() - chainNowMs;
+  if (ms <= 0) return 'ya se activó';
+  const hours = Math.floor(ms / 3_600_000);
+  const minutes = Math.floor((ms % 3_600_000) / 60_000);
+  return `se activa en ${String(hours)} h ${String(minutes)} min`;
+}
+
 /** El destino está activo on-chain para esta Safe (lo único que habilita un envío). */
 export async function isActiveDestination(
   reader: Pick<BaseClient, 'readContract'>,

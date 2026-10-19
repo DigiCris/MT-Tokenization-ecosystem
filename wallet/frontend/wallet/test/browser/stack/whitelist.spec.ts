@@ -8,7 +8,7 @@ import { increaseTime } from './helpers/chain.ts';
 import { codeFrom, nextMail } from './helpers/mailpit.ts';
 import { activeWallet, type ActiveWallet } from './helpers/onboard.ts';
 import { activeDestination, randomAddress } from './helpers/operate.ts';
-import { openFromHome, settled, unlockToHome } from './helpers/ui.ts';
+import { goHome, openFromHome, settled, unlockToHome } from './helpers/ui.ts';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -59,22 +59,32 @@ test('alta: dirección revisada completa, código del email y firma de U; cuenta
   await page.getByLabel('Dirección en Base').fill(added.toLowerCase());
   await page.getByLabel('Nombre (para reconocerlo)').fill('Proveedor');
   await page.getByRole('button', { name: 'Pedir el código por email' }).click();
-  await expect(page.getByText('Revisá la dirección completa:')).toBeVisible();
+  await expect(
+    page.getByText('Compará esta dirección con la del email, los 10 grupos, antes de escribir el código:'),
+  ).toBeVisible();
   await expect(page.locator(`[data-address="${getAddress(added)}"]`)).toBeVisible();
+  // El paso del código es otro formulario: su campo arranca vacío (no hereda el nombre recién escrito).
+  await expect(page.getByLabel('Código del email (8 dígitos)')).toHaveValue('');
   const code = codeFrom(
     await nextMail(wallet.email, (m) => m.text.includes(added.slice(2, 6)) && /Código: \d{8}/.test(m.text)),
   );
   await page.getByLabel('Código del email (8 dígitos)').fill(code);
   await page.getByRole('button', { name: 'Confirmar el código' }).click();
-  await expect(page.getByText(/Agregar a tu whitelist el destino/)).toBeVisible();
+  await expect(page.getByText(/Agregar a tu whitelist el destino Proveedor 0x/)).toBeVisible();
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(settled(page)).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByRole('heading', { name: 'Destino agregado' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Agregar otro destino' })).toBeVisible();
 
-  await openFromHome(page, 'Whitelist');
+  // Alerta in-app (ADR-006): el inicio avisa del destino que se está activando.
+  await goHome(page);
+  await expect(page.locator(`[data-activating="${added}"]`)).toContainText('Proveedor', { timeout: 60_000 });
+  await page.getByRole('link', { name: 'Whitelist', exact: true }).click();
   const row = page.locator(`li[data-destination="${added}"]`);
   await expect(row).toHaveAttribute('data-active', 'false', { timeout: 60_000 });
   await expect(row).toContainText('Proveedor');
   await expect(row).toContainText(/se activa en (23|24) h \d+ min/);
+  await expect(row).toContainText('Si no lo agregaste vos, quitalo antes de que se active.');
   await increaseTime(24 * 3600 + 60);
   await openFromHome(page, 'Whitelist');
   await expect(row).toHaveAttribute('data-active', 'true', { timeout: 60_000 });
@@ -84,10 +94,39 @@ test('alta: dirección revisada completa, código del email y firma de U; cuenta
 test('baja firmada por U: el destino sale de la lista on-chain', async () => {
   const row = page.locator(`li[data-destination="${added}"]`);
   await row.getByRole('button', { name: 'Quitar' }).click();
-  await expect(page.getByText(/Quitar de tu whitelist el destino/)).toBeVisible();
+  await expect(page.getByText(/Quitar de tu whitelist el destino Proveedor 0x/)).toBeVisible();
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(settled(page)).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByRole('heading', { name: 'Destino quitado' })).toBeVisible();
   await openFromHome(page, 'Whitelist');
   await expect(page.locator(`li[data-destination="${existing}"]`)).toBeVisible({ timeout: 60_000 });
   await expect(page.locator(`li[data-destination="${added}"]`)).toHaveCount(0);
+});
+
+test('un destino nuevo que no agregaste se quita directo desde la alerta del inicio (ESC-16)', async () => {
+  const suspicious = randomAddress();
+  await openFromHome(page, 'Whitelist');
+  await page.getByLabel('Dirección en Base').fill(suspicious);
+  await page.getByLabel('Nombre (para reconocerlo)').fill('Sospechoso');
+  await page.getByRole('button', { name: 'Pedir el código por email' }).click();
+  const code = codeFrom(
+    await nextMail(wallet.email, (m) => m.text.includes(suspicious.slice(2, 6)) && /Código: \d{8}/.test(m.text)),
+  );
+  await page.getByLabel('Código del email (8 dígitos)').fill(code);
+  await page.getByRole('button', { name: 'Confirmar el código' }).click();
+  await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
+  await expect(settled(page)).toBeVisible({ timeout: 240_000 });
+
+  await goHome(page);
+  const alert = page.locator(`[data-activating="${suspicious}"]`);
+  await expect(alert).toContainText(/Un destino nuevo \(Sospechoso 0x .*\) se activa en (23|24) h \d+ min/, {
+    timeout: 60_000,
+  });
+  await alert.getByRole('link', { name: 'Quitarlo' }).click();
+  await expect(page.getByRole('heading', { name: 'Revisá la baja del destino' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/Quitar de tu whitelist el destino Sospechoso 0x/)).toBeVisible();
+  await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
+  await expect(settled(page)).toBeVisible({ timeout: 240_000 });
+  await goHome(page);
+  await expect(page.locator(`[data-activating="${suspicious}"]`)).toHaveCount(0, { timeout: 60_000 });
 });

@@ -1,6 +1,7 @@
 // Inicio con la wallet operativa (P18.T03): dirección de la Safe (EIP-55, copiar, QR de recepción con la advertencia de
-// red), saldos leídos de la cadena y cruzados con el backend, alertas de rotaciones pendientes leídas on-chain (y del
-// pedido de rotación de S de la plataforma) y la actividad reciente.
+// red), saldos leídos de la cadena y cruzados con el backend, alertas leídas on-chain (rotaciones pendientes y destinos
+// de la whitelist que todavía se están activando: la alerta in-app de ADR-006/ESC-16, con acceso directo a la baja),
+// el pedido de rotación de S de la plataforma, los avisos in-app del backend (P15.T07) y la actividad reciente.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { Rotation } from '../api/wallet-api.ts';
@@ -9,22 +10,20 @@ import { mergeActivity, type ActivityItem } from '../activity/activity.ts';
 import { ActivityList } from '../activity/ActivityList.tsx';
 import { formatAmount } from '../assets/amount.ts';
 import { readAssets, type AssetView } from '../assets/assets.ts';
+import { useChainNow } from '../chain/ChainNow.tsx';
 import { pinnedChain } from '../config/chain.ts';
 import { systemContracts } from '../config/index.ts';
+import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
+import { ROLE_TEXT } from '../operations/describe.ts';
+import { addressNames, backendLabels } from '../operations/names.ts';
 import type { OperatingWallet } from '../safe/SafeGate.tsx';
 import { readPendingProposals, type PendingProposal } from '../security/rotations/rotations.ts';
 import { AddressText } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
 import { Notice } from '../ui/forms.tsx';
 import { QrCanvas } from '../ui/QrCanvas.tsx';
-
-const ROLE_TEXT: Record<string, string> = {
-  U: 'tu clave de usuario (U)',
-  R: 'tu clave de recuperación (R)',
-  S: 'la clave de la plataforma (S)',
-  GUARD: 'el Guard de seguridad',
-  MODULE_GUARD: 'el guard de módulos',
-};
+import { activating, activationText, readWhitelist, type Destination } from '../whitelist/whitelist.ts';
+import type { RemoveIntent } from '../whitelist/WhitelistPage.tsx';
 
 export function OperatingHome({ ctx }: { ctx: OperatingWallet }) {
   const { wallet, reader, unlocked } = ctx;
@@ -33,6 +32,11 @@ export function OperatingHome({ ctx }: { ctx: OperatingWallet }) {
   const [pending, setPending] = useState<PendingProposal[]>([]);
   const [request, setRequest] = useState<Rotation | null>(null);
   const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+  const [destinations, setDestinations] = useState<Destination[] | null>(null);
+  const [whitelistError, setWhitelistError] = useState(false);
+  const [labels, setLabels] = useState<Map<string, string>>(new Map());
+  // La activación de un destino la decide el contrato con block.timestamp: la cuenta regresiva usa la hora de la cadena.
+  const chainNow = useChainNow(reader);
 
   useEffect(() => {
     const alive = { current: true };
@@ -57,6 +61,17 @@ export function OperatingHome({ ctx }: { ctx: OperatingWallet }) {
           setRequest(items.find((r) => r.role === 'S' && r.status === 'DRAFT' && r.requestReason !== null) ?? null);
       })
       .catch(() => undefined);
+    // La whitelist sale de la cadena; del backend, sólo los nombres (también para la actividad).
+    void (async () => {
+      const backend = await api.whitelist(wallet.id).catch(() => ({ entries: [] }));
+      if (alive.current) setLabels(backendLabels(backend));
+      try {
+        const list = await readWhitelist(reader, systemContracts.contracts.whitelist.address, wallet.safe, backend);
+        if (alive.current) setDestinations(list);
+      } catch {
+        if (alive.current) setWhitelistError(true);
+      }
+    })();
     void Promise.all([api.operations(wallet.id, { limit: 10 }), api.transfers(wallet.id, { limit: 10 })])
       .then(([operations, transfers]) => {
         if (alive.current) setActivity(mergeActivity(operations.items, transfers.items).slice(0, 5));
@@ -67,8 +82,27 @@ export function OperatingHome({ ctx }: { ctx: OperatingWallet }) {
     };
   }, [wallet.id, wallet.safe, reader]);
 
+  const nameOf = addressNames({ safe: wallet.safe, chain: pinnedChain, system: systemContracts }, labels);
+
   return (
     <div className="stack">
+      {activating(destinations ?? []).map((d) => (
+        <Notice key={d.address} tone="warning">
+          <span data-activating={d.address}>
+            Un destino nuevo ({d.label ?? 'sin nombre'} <AddressText address={d.address} />){' '}
+            {activationText(d.activatesAt, chainNow)}: si no lo agregaste vos, quitalo antes de que se active.{' '}
+            <Link to="/whitelist" state={{ remove: d.address } satisfies RemoveIntent}>
+              Quitarlo
+            </Link>
+          </span>
+        </Notice>
+      ))}
+      {whitelistError && (
+        <Notice tone="warning">
+          No se pudo leer tu whitelist en Base para revisar si hay destinos nuevos:{' '}
+          <Link to="/whitelist">revisala</Link>.
+        </Notice>
+      )}
       {request && (
         <Notice tone="warning">
           La plataforma pidió rotar su clave (S). <Link to="/security/rotations">Revisar y firmar la propuesta</Link>
@@ -80,13 +114,15 @@ export function OperatingHome({ ctx }: { ctx: OperatingWallet }) {
           {p.executableAt.toLocaleString('es-AR')}. <Link to="/security/rotations">Ver rotaciones</Link>
         </Notice>
       ))}
+      <NotificationsPanel nameOf={nameOf} />
       <section className="card stack" aria-labelledby="safe-title">
         <h1 id="safe-title">Tu Safe</h1>
         <p>
           <AddressText address={wallet.safe} copy />
         </p>
         <p role="status" className="muted">
-          Wallet desbloqueada (dirección de tu clave U: <code>{unlocked.envelope.keyAddress}</code>).
+          Wallet desbloqueada (dirección de tu clave U: <AddressText address={unlocked.envelope.keyAddress} />
+          ).
         </p>
         <QrCanvas text={wallet.safe} label="QR de la dirección de tu Safe para recibir" size={200} />
         <Notice tone="warning">
@@ -130,7 +166,7 @@ export function OperatingHome({ ctx }: { ctx: OperatingWallet }) {
       </section>
       <section className="card stack" aria-labelledby="recent-title">
         <h2 id="recent-title">Actividad reciente</h2>
-        {activity === null ? <p className="muted">Cargando…</p> : <ActivityList items={activity} />}
+        {activity === null ? <p className="muted">Cargando…</p> : <ActivityList items={activity} nameOf={nameOf} />}
         <p>
           <Link to="/activity">Ver toda la actividad</Link> ·{' '}
           <Link to="/sovereign" reloadDocument>

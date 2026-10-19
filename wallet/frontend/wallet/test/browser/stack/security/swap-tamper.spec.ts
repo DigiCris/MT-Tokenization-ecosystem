@@ -56,7 +56,7 @@ test('approve ilimitado en lugar del monto exacto: no se firma', async () => {
   try {
     await quoteAndPrepare('10');
     await expect(page.getByText(/no coincide con la que armó esta app \(data\)/)).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByRole('button', { name: 'Firmar con tu clave U' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Firmar/ })).toHaveCount(0);
   } finally {
     await page.unrouteAll({ behavior: 'wait' });
   }
@@ -83,7 +83,7 @@ test('swap con un mínimo de salida que no respeta el slippage (1 unidad): no se
     await expect(page.getByText(/no coincide con la que armó esta app \(minAmountOut\)/)).toBeVisible({
       timeout: 60_000,
     });
-    await expect(page.getByRole('button', { name: 'Firmar con tu clave U' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Firmar/ })).toHaveCount(0);
   } finally {
     await page.unrouteAll({ behavior: 'wait' });
   }
@@ -91,8 +91,10 @@ test('swap con un mínimo de salida que no respeta el slippage (1 unidad): no se
 
 test('sin adulterar, el mismo swap se firma y se ejecuta enseguida (los nonces se liberaron)', async () => {
   await quoteAndPrepare('10');
-  await expect(page.getByText(/Permitir que 0x .* use exactamente 10,00 USDC/)).toBeVisible({ timeout: 60_000 });
-  await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
+  await expect(
+    page.getByText(/Permitir que el contrato de swap de la plataforma 0x .* use exactamente 10,00 USDC/),
+  ).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'Firmar las 2 operaciones con tu clave U' }).click();
   await expect(settled(page)).toHaveCount(2, { timeout: 300_000 });
   await expect(page.locator('[data-allowance]')).toHaveAttribute('data-allowance', '0');
   expect(await tokenBalance(USDC, wallet.wallet.safe)).toBe(20_000_000n);

@@ -33,6 +33,10 @@ function Assets({ ctx }: { ctx: OperatingWallet }) {
   return (
     <section className="card stack" aria-labelledby="assets-title">
       <h1 id="assets-title">Activos</h1>
+      <p className="muted">
+        Saldo, símbolo y decimales leídos directamente del contrato de cada token en Base, y comparados con los que trae
+        fijados esta versión de la app: si no coinciden, la app no opera con ese token.
+      </p>
       {error && <Notice tone="error">{error}</Notice>}
       {!assets && !error && <p className="muted">Leyendo los tokens en Base…</p>}
       {assets?.map((a) => (
@@ -43,13 +47,18 @@ function Assets({ ctx }: { ctx: OperatingWallet }) {
             <dd data-balance={a.balance.toString()}>
               {formatAmount(a.balance, a.decimals)} {a.symbol}
             </dd>
-            <dt>Decimales (on-chain = fijados)</dt>
+            <dt>Decimales</dt>
             <dd>{a.decimals}</dd>
-            <dt>Contrato</dt>
+            <dt>Contrato del token</dt>
             <dd>
               <AddressText address={a.address} />{' '}
-              <a href={explorerAddress(pinnedChain, a.address)} target="_blank" rel="noopener noreferrer">
-                ver en el explorer
+              <a
+                className="nowrap"
+                href={explorerAddress(pinnedChain, a.address)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                ver en el explorador de bloques
               </a>
             </dd>
           </dl>

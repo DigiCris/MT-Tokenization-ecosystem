@@ -12,8 +12,10 @@ import { systemContracts } from '../config/index.ts';
 import { zeroize } from '../crypto/bytes.ts';
 import { keysForEnvelope, openEnvelope, type KeyEnvelope } from '../crypto/envelope.ts';
 import { normalizePassword } from '../crypto/password.ts';
+import { CallDescription } from '../operations/CallDescription.tsx';
 import { decodeContext } from '../operations/context.ts';
-import { describeCall } from '../operations/describe.ts';
+import { describeParts } from '../operations/describe.ts';
+import { addressNames } from '../operations/names.ts';
 import { encodeFrames, FrameCollector } from '../qr/frames.ts';
 import { failureText } from '../safe/gate.ts';
 import { verifySafe } from '../safe/verify.ts';
@@ -199,7 +201,11 @@ export function SovereignPage() {
         <section className="card stack" aria-labelledby="sov-review-title">
           <h2 id="sov-review-title">Revisá la operación</h2>
           <p className="review__what" data-decoded={review.decoded.kind}>
-            {describeCall(review.decoded)}
+            <CallDescription
+              parts={describeParts(review.decoded, {
+                nameOf: addressNames({ safe: getAddress(doc.safe), chain: pinnedChain, system: systemContracts }),
+              })}
+            />
           </p>
           <p className="muted">
             Nonce {doc.safeTx.nonce} · hash recalculado <code>{review.hash.slice(0, 18)}…</code>

@@ -41,7 +41,7 @@ test('USDC y USDT: saldo, símbolo, decimales y contrato leídos de la cadena, c
     await expect(article.locator('[data-balance]')).toHaveText(text);
     await expect(article.locator('dt:has-text("Decimales") + dd')).toHaveText('6');
     await expect(article.locator(`[data-address="${getAddress(token)}"]`)).toBeVisible();
-    await expect(article.getByRole('link', { name: 'ver en el explorer' })).toHaveAttribute(
+    await expect(article.getByRole('link', { name: 'ver en el explorador de bloques' })).toHaveAttribute(
       'href',
       `https://basescan.org/address/${getAddress(token)}`,
     );

@@ -8,6 +8,8 @@ import systemVector from '../../test/vectors/system.json';
 import type { WhitelistEntry, WhitelistRequest } from '../api/wallet-api.ts';
 import { safeTxHash } from '../chain/safe-tx.ts';
 import {
+  activating,
+  activationText,
   addDestinationCall,
   DestinationError,
   isActiveDestination,
@@ -115,5 +117,24 @@ describe('lista on-chain', () => {
       requests: [request('PENDING_CHALLENGE', 'sin firmar')],
     });
     expect(unsigned[1]?.label).toBeNull();
+  });
+});
+
+describe('alerta de activación (ADR-006, P18.MAN)', () => {
+  it('cuánto falta para que un destino se active, con la hora de la cadena', () => {
+    const chainNow = Date.UTC(2026, 9, 19, 10, 0, 0);
+    const at = new Date(chainNow + 23 * 3_600_000 + 12 * 60_000);
+    expect(activationText(at, chainNow)).toBe('se activa en 23 h 12 min');
+    expect(activationText(at, at.getTime())).toBe('ya se activó');
+    expect(activationText(at, null)).toBe(`se activa el ${at.toLocaleString('es-AR')}`);
+  });
+
+  it('los destinos que todavía no se activaron', () => {
+    const at = new Date(0);
+    const list = [
+      { address: DEST, label: 'Activo', active: true, activatesAt: at },
+      { address: getAddress(`0x${'7'.repeat(40)}`), label: null, active: false, activatesAt: at },
+    ];
+    expect(activating(list).map((d) => d.label)).toEqual([null]);
   });
 });

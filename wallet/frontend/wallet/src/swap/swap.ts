@@ -76,6 +76,11 @@ export async function ownQuote(
   return result[0];
 }
 
+/** Slippage en puntos básicos como porcentaje es-AR: 30 → "0,3 %". */
+export function formatBps(bps: number): string {
+  return `${(bps / 100).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} %`;
+}
+
 /** Mínimo aceptable con el slippage pedido sobre una cotización. */
 export function minOutFor(expectedOut: bigint, slippageBps: number): bigint {
   if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > MAX_SLIPPAGE_BPS) {

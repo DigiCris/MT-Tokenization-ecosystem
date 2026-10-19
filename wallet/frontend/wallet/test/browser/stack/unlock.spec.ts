@@ -6,7 +6,7 @@
 import { expect, test } from '@playwright/test';
 import { serializeEnvelope } from '../../../src/crypto/envelope.ts';
 import { activeWallet, type ActiveWallet } from './helpers/onboard.ts';
-import { login, unlockWithFile } from './helpers/ui.ts';
+import { login, shownAddress, unlockWithFile } from './helpers/ui.ts';
 
 let wallet: ActiveWallet;
 
@@ -33,7 +33,9 @@ test('desbloquear desde archivo; password equivocada sin OPAQUE; recordar el sob
   await page.getByLabel('Password U').fill(wallet.passwordWords.join(' '));
   await page.getByLabel('Recordar el sobre cifrado en este dispositivo').check();
   await page.getByRole('button', { name: 'Desbloquear' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Wallet desbloqueada' })).toContainText(wallet.userAddress);
+  await expect(page.getByRole('status').filter({ hasText: 'Wallet desbloqueada' })).toContainText(
+    shownAddress(wallet.userAddress),
+  );
   expect(opaqueStarts).toHaveLength(1);
 
   const revoked = page.waitForRequest(

@@ -1,9 +1,10 @@
-// Lista de actividad: operaciones con su estado y transfers entrantes/salientes, con link al explorer (sólo un link).
-import { formatAmount } from '../assets/amount.ts';
+// Lista de actividad: operaciones con lo que hicieron y su estado, y transfers entrantes/salientes, con la hora de
+// inclusión en un bloque y link al explorer (sólo un link).
 import { pinnedChain } from '../config/chain.ts';
+import { CallDescription } from '../operations/CallDescription.tsx';
 import { STATE_TEXT } from '../operations/describe.ts';
-import { groupAddress } from '../ui/AddressText.tsx';
-import { explorerTx, type ActivityItem } from './activity.ts';
+import type { NameOf } from '../operations/names.ts';
+import { explorerTx, operationDetail, transferDetail, type ActivityItem } from './activity.ts';
 
 const OPERATION_TEXT: Record<string, string> = {
   SEND: 'Envío',
@@ -19,45 +20,49 @@ const OPERATION_TEXT: Record<string, string> = {
   GUARD_UPGRADE: 'Actualización del Guard',
 };
 
-export function ActivityList({ items }: { items: ActivityItem[] }) {
+function TxLink({ txHash }: { txHash: string }) {
+  return (
+    <>
+      {' · '}
+      <a href={explorerTx(pinnedChain, txHash)} target="_blank" rel="noopener noreferrer">
+        ver transacción
+      </a>
+    </>
+  );
+}
+
+export function ActivityList({ items, nameOf }: { items: ActivityItem[]; nameOf: NameOf }) {
   if (items.length === 0) return <p className="muted">Todavía no hay movimientos.</p>;
   return (
     <ul className="activity">
-      {items.map((item) =>
-        item.kind === 'operation' ? (
-          <li key={`op-${item.operation.id}`} data-kind="operation" data-status={item.operation.status}>
-            <strong>{OPERATION_TEXT[item.operation.operationType] ?? item.operation.operationType}</strong>
-            {item.transfers.map((t) => (
-              <span key={t.id} data-transfer-out={t.id}>
-                {' '}
-                · enviaste {formatAmount(BigInt(t.amount), 6)} {t.token} a {groupAddress(t.counterparty)}
-              </span>
-            ))}{' '}
-            · {STATE_TEXT[item.operation.status]} · {item.at.toLocaleString('es-AR')}
-            {item.operation.txHash && (
-              <>
-                {' '}
-                ·{' '}
-                <a href={explorerTx(pinnedChain, item.operation.txHash)} target="_blank" rel="noopener noreferrer">
-                  ver transacción
-                </a>
-              </>
-            )}
-          </li>
-        ) : (
+      {items.map((item) => {
+        const when = item.at.toLocaleString('es-AR');
+        if (item.kind === 'operation') {
+          const detail = operationDetail(item, nameOf);
+          return (
+            <li key={`op-${item.operation.id}`} data-kind="operation" data-status={item.operation.status}>
+              <strong>{OPERATION_TEXT[item.operation.operationType] ?? item.operation.operationType}</strong>
+              {detail && (
+                <span data-detail>
+                  {' · '}
+                  <CallDescription parts={detail} />
+                </span>
+              )}{' '}
+              · {STATE_TEXT[item.operation.status]} ·{' '}
+              <time dateTime={item.at.toISOString()}>{item.atKind === 'prepared' ? `preparada el ${when}` : when}</time>
+              {item.operation.txHash && <TxLink txHash={item.operation.txHash} />}
+            </li>
+          );
+        }
+        const { title, parts } = transferDetail(item.transfer, nameOf);
+        return (
           <li key={`tr-${item.transfer.id}`} data-kind="transfer" data-direction={item.transfer.direction}>
-            <strong>
-              {item.transfer.direction === 'IN' ? 'Recibiste' : 'Enviaste'}{' '}
-              {formatAmount(BigInt(item.transfer.amount), 6)} {item.transfer.token}
-            </strong>{' '}
-            {item.transfer.direction === 'IN' ? 'de' : 'a'} {groupAddress(item.transfer.counterparty)} ·{' '}
-            {item.at.toLocaleString('es-AR')} ·{' '}
-            <a href={explorerTx(pinnedChain, item.transfer.txHash)} target="_blank" rel="noopener noreferrer">
-              ver transacción
-            </a>
+            <strong>{title}</strong> <CallDescription parts={parts} /> ·{' '}
+            <time dateTime={item.at.toISOString()}>{when}</time>
+            <TxLink txHash={item.transfer.txHash} />
           </li>
-        ),
-      )}
+        );
+      })}
     </ul>
   );
 }

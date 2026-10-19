@@ -43,6 +43,10 @@ test('dirección en EIP-55 que se copia, y QR de recepción que se lee como esa 
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(safe);
   expect(await readCanvasQr(page.getByRole('img', { name: 'QR de la dirección de tu Safe para recibir' }))).toBe(safe);
   await expect(page.getByText('Enviá a esta dirección sólo USDC o USDT en la red Base')).toBeVisible();
+  // La clave U desbloqueada, completa y agrupada como toda dirección de la app.
+  await expect(page.getByRole('status').filter({ hasText: 'Wallet desbloqueada' })).toContainText(
+    shownAddress(wallet.userAddress),
+  );
 });
 
 test('saldos de la cadena; si el backend informa otro, se avisa y manda el de la cadena', async () => {
@@ -80,10 +84,24 @@ test('actividad reciente: el envío con su transfer saliente y los transfers ent
     )
     .toBeGreaterThanOrEqual(2);
   const send = recent.locator('li[data-kind="operation"]').filter({ hasText: 'Envío' }).first();
-  await expect(send).toContainText(`enviaste 1,00 USDC a ${shownAddress(destination)}`);
+  await expect(send).toContainText(`enviaste 1,00 USDC a Cuenta de Bruno ${shownAddress(destination)}`);
   await expect(recent.getByText(/Recibiste 12,34 USDC/)).toBeVisible();
   await expect(recent.getByText(/Recibiste 5,00 USDT/)).toBeVisible();
   await expect(recent.getByRole('link', { name: 'Ver toda la actividad' })).toBeVisible();
+});
+
+test('avisos in-app sin leer (P15.T07): el pedido de alta del destino, con acceso a la whitelist, y "Marcar como leído"', async () => {
+  await goHome(page);
+  const requested = page.locator('[data-notifications] [data-notification="WHITELIST_REQUESTED"]');
+  await expect(requested).toContainText(
+    `Se pidió agregar a tu whitelist el destino Cuenta de Bruno ${shownAddress(destination)}`,
+    { timeout: 60_000 },
+  );
+  await expect(requested.getByRole('link', { name: 'Revisar la whitelist' })).toHaveAttribute('href', '/whitelist');
+  await requested.getByRole('button', { name: 'Marcar como leído' }).click();
+  await expect(requested).toHaveCount(0);
+  await goHome(page);
+  await expect(page.locator('[data-notification="WHITELIST_REQUESTED"]')).toHaveCount(0);
 });
 
 test('rotación pendiente leída del timelock on-chain: aviso con la fecha desde la que se puede ejecutar', async () => {

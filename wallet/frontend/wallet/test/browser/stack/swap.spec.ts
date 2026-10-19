@@ -28,11 +28,26 @@ test('swap USDC → USDT: cotización propia y del backend, dos operaciones firm
   // Las dos cotizaciones son del mismo pool en bloques cercanos: casi iguales.
   expect(backendOut > ownOut ? backendOut - ownOut : ownOut - backendOut).toBeLessThan(ownOut / 1_000n);
 
+  // Una cotización vale para el formulario con el que se pidió: cambiar el monto la descarta.
+  await page.getByLabel('Monto').fill('21');
+  await expect(quote).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Preparar el swap' })).toHaveCount(0);
+  await page.getByLabel('Monto').fill('20');
+  await page.getByRole('button', { name: 'Cotizar' }).click();
+  await expect(quote).toBeVisible({ timeout: 60_000 });
+  await expect(quote).toContainText('Mínimo a recibir con 0,3 %');
+
   const usdtBefore = await tokenBalance(USDT, wallet.wallet.safe);
   await page.getByRole('button', { name: 'Preparar el swap' }).click();
-  await expect(page.getByText(/Permitir que 0x .* use exactamente 20,00 USDC/)).toBeVisible();
-  await expect(page.getByText(/Cambiar 20,00 USDC por al menos/)).toBeVisible();
-  await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
+  // El permiso nombra al contrato de swap de la plataforma; el review muestra la cotización y el slippage.
+  await expect(
+    page.getByText(/Permitir que el contrato de swap de la plataforma 0x .* use exactamente 20,00 USDC/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Cambiar 20,00 USDC por al menos .* USDT, que llegan a tu Safe; vence en \d+ min/),
+  ).toBeVisible();
+  await expect(page.locator('[data-slippage-bps]')).toHaveAttribute('data-slippage-bps', '30');
+  await page.getByRole('button', { name: 'Firmar las 2 operaciones con tu clave U' }).click();
   const settled = page.locator('[data-status="MINED"], [data-status="CONFIRMED"], [data-status="FINALIZED"]');
   await expect(settled).toHaveCount(2, { timeout: 300_000 });
   await expect(page.locator('[data-allowance]')).toHaveAttribute('data-allowance', '0');

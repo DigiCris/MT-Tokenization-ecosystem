@@ -160,8 +160,10 @@ export function TotpPage() {
           </button>
         </article>
       )}
+      {/* Formularios distintos en el mismo lugar (key): React no reutiliza un campo de uno como campo del otro. */}
       {user.totpEnabled ? (
         <form
+          key="totp-disable"
           className="card form"
           onSubmit={(event) => {
             event.preventDefault();
@@ -216,6 +218,7 @@ export function TotpPage() {
         </article>
       ) : (
         <form
+          key="totp-enable"
           className="card form"
           onSubmit={(event) => {
             event.preventDefault();

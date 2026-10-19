@@ -11,7 +11,7 @@ import { assistedCall, safeTxHash, SafeTxMismatchError, type SafeTx } from '../c
 import { pinnedChain } from '../config/chain.ts';
 import type { SystemContracts } from '../config/system-contracts.ts';
 import { transferCall } from '../send/send.ts';
-import { approveCall, minOutFor, ownQuote, swapCall, verifySwapPair } from './swap.ts';
+import { approveCall, formatBps, minOutFor, ownQuote, swapCall, verifySwapPair } from './swap.ts';
 
 const vectors = safeTxVectors as unknown as {
   safe: Address;
@@ -102,6 +102,10 @@ describe('swap', () => {
   it('piso del slippage y su límite de 0,5 %', () => {
     expect(minOutFor(OWN, 30)).toBe(99_690_030n);
     expect(() => minOutFor(OWN, 51)).toThrow(RangeError);
+  });
+
+  it('el slippage se muestra en es-AR (coma decimal)', () => {
+    expect([10, 30, 50, 5].map(formatBps)).toEqual(['0,1 %', '0,3 %', '0,5 %', '0,05 %']);
   });
 
   it('par correcto: approve exacto (N) y swap (N+1) con minOut y deadline acotados', () => {

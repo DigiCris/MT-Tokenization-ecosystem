@@ -70,7 +70,7 @@ test('montos: con coma o punto, sin más decimales que el token, mayores que cer
 test('review cancelado: lo preparado se cancela en el backend (libera su nonce) y se vuelve al formulario', async () => {
   await page.getByLabel('Monto').fill('1,5');
   await page.getByRole('button', { name: 'Revisar el envío' }).click();
-  await expect(page.getByText(/Enviar 1,50 USDC a 0x/)).toBeVisible();
+  await expect(page.getByText(/Enviar 1,50 USDC a Cuenta de Ana 0x/)).toBeVisible();
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Revisar el envío' })).toBeVisible();
   const { items } = await wallet.api.operations(wallet.wallet.id, { limit: 1 });
@@ -80,7 +80,7 @@ test('review cancelado: lo preparado se cancela en el backend (libera su nonce) 
 test('envío de USDC: review desde los bytes propios, firma de U y estado hasta minado', async () => {
   await page.getByLabel('Monto').fill('1,5');
   await page.getByRole('button', { name: 'Revisar el envío' }).click();
-  await expect(page.getByText(/Enviar 1,50 USDC a 0x/)).toBeVisible();
+  await expect(page.getByText(/Enviar 1,50 USDC a Cuenta de Ana 0x/)).toBeVisible();
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(settled(page)).toBeVisible({ timeout: 240_000 });
   expect(await tokenBalance(USDC, destination)).toBe(1_500_000n);
@@ -91,7 +91,7 @@ test('envío de USDT con monto con punto decimal', async () => {
   await page.getByLabel('USDT', { exact: false }).check();
   await page.getByLabel('Monto').fill('2.25');
   await page.getByRole('button', { name: 'Revisar el envío' }).click();
-  await expect(page.getByText(/Enviar 2,25 USDT a 0x/)).toBeVisible();
+  await expect(page.getByText(/Enviar 2,25 USDT a Cuenta de Ana 0x/)).toBeVisible();
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(settled(page)).toBeVisible({ timeout: 240_000 });
   expect(await tokenBalance(USDT, destination)).toBe(2_250_000n);
@@ -101,12 +101,18 @@ test('envío de alto valor: segundo factor por email antes de firmar', async () 
   await openFromHome(page, 'Enviar');
   await page.getByLabel('Monto').fill('1000');
   await page.getByRole('button', { name: 'Revisar el envío' }).click();
-  await expect(page.getByText('Esta operación supera el monto que requiere un segundo factor.')).toBeVisible();
+  // El umbral de la policy (ADR-025) y el canal: sin TOTP, el código llega por email con el monto y el destino.
+  await expect(page.getByText('Los envíos de 1.000 USDC o más necesitan un segundo factor.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Firmar con tu clave U' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Pedir el código' }).click();
+  await page.getByRole('button', { name: 'Pedir el código por email' }).click();
+  await expect(
+    page.getByText(
+      /Te mandamos un código por email a .*: antes de escribirlo, comprobá que el email muestre 1\.000,00 USDC y el destino 0x/,
+    ),
+  ).toBeVisible();
   const code = codeFrom(await nextMail(wallet.email, (m) => m.subject.includes('alto valor')));
   await page.getByLabel('Código que te mandamos por email').fill(code);
-  await page.getByRole('button', { name: 'Confirmar código' }).click();
+  await page.getByRole('button', { name: 'Confirmar el código' }).click();
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(settled(page)).toBeVisible({ timeout: 240_000 });
   expect(await tokenBalance(USDC, destination)).toBe(1_001_500_000n);

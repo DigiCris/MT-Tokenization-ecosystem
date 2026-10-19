@@ -2,7 +2,7 @@
 // operaciones del camino asistido con su hash y la firma de U), los decodificadores reconocen cada una desde los bytes
 // con las direcciones fijadas, y una operación preparada que difiere en cualquier campo de la armada localmente no se
 // firma.
-import { encodeFunctionData, keccak256, toBytes, type Address, type Hex } from 'viem';
+import { encodeFunctionData, erc20Abi, keccak256, toBytes, type Address, type Hex } from 'viem';
 import { describe, expect, it } from 'vitest';
 import safeTxVectors from '../../test/vectors/safe-tx.json';
 import systemVector from '../../test/vectors/system.json';
@@ -88,6 +88,14 @@ describe('SafeTx propia (vector de contracts/)', () => {
     expect(byType('SWAP')).toMatchObject({ kind: 'SWAP', tokenIn: 'USDC', tokenOut: 'USDT' });
     expect(byType('ROTATION_PROPOSE')).toMatchObject({ kind: 'ROTATION_PROPOSE', role: 'S' });
     expect(byType('APPROVE_REVOKE')).toMatchObject({ kind: 'APPROVE', amount: 0n });
+    // El permiso del swap es para el SwapExecutor fijado: el review lo nombra (el contrato de swap de la plataforma).
+    expect(byType('APPROVE')).toMatchObject({ kind: 'APPROVE', spenderIsSwapExecutor: true });
+    const toOther = assistedCall(
+      pinnedChain.tokens.usdc.address,
+      encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [system.keys.executor.address, 1n] }),
+      1n,
+    );
+    expect(decodeSafeTx(toOther, ctx)).toMatchObject({ kind: 'APPROVE', spenderIsSwapExecutor: false });
   });
 
   it('cada contrato reconoce sólo sus llamadas del camino asistido', () => {

@@ -268,6 +268,8 @@ export interface PreparedOperation {
   typedData: unknown;
   decoded: DecodedOperation;
   requiresTwoFactor: boolean;
+  /** Umbral de 2FA de la policy (unidades de 6 decimales) cuando la operación lo exige: sólo para el texto del review. */
+  twoFactorThreshold?: string | null;
   expiresAt: string;
 }
 
@@ -293,6 +295,8 @@ export interface OperationStatus {
   walletId: string;
   status: OperationState;
   operationType: OperationType;
+  /** Intención guardada al preparar (monto, token, destino…): la actividad la muestra aunque no haya transfers. */
+  decoded?: DecodedOperation;
   groupId: string | null;
   safeNonce: string | null;
   safeTxHash: `0x${string}` | null;
