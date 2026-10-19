@@ -82,11 +82,13 @@ export class IntegrityMonitorClient {
 
   /**
    * Atestaciones verificadas que entrega el monitor (como mucho una por app). Si el monitor no responde se devuelven
-   * las últimas obtenidas: el signer las rechaza cuando vencen (fail-closed), no el backend.
+   * las últimas obtenidas: el signer las rechaza cuando vencen (fail-closed), no el backend. Con `fresh` no se reutiliza
+   * la respuesta anterior: cada co-firma lleva lo último del monitor, para que un MISMATCH recién detectado pause en
+   * el acto y no viaje un OK previo todavía vigente.
    */
-  async attestations(): Promise<VerifiedAttestation[]> {
+  async attestations(options: { fresh?: boolean } = {}): Promise<VerifiedAttestation[]> {
     const now = this.#now();
-    if (this.#cache !== undefined && now - this.#cache.at < (this.#o.cacheMs ?? 10_000))
+    if (options.fresh !== true && this.#cache !== undefined && now - this.#cache.at < (this.#o.cacheMs ?? 10_000))
       return this.#cache.attestations;
     try {
       const response = await (this.#o.fetch ?? fetch)(`${this.#o.url.replace(/\/+$/, '')}/v1/attestations`, {

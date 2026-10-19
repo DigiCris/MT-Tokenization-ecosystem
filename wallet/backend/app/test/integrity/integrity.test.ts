@@ -72,6 +72,28 @@ async function fakeMonitor() {
 }
 
 describe('IntegrityMonitorClient', () => {
+  it('para la co-firma (fresh) no reutiliza la respuesta: un MISMATCH recién servido no queda tapado por un OK', async () => {
+    const monitor = await fakeMonitor();
+    monitor.state.served = { WALLET: attest('WALLET', 'OK', T0), RECOVERY: attest('RECOVERY', 'OK', T0) };
+    const client = new IntegrityMonitorClient({
+      url: monitor.url,
+      publicKey: monitorKey.publicKey,
+      platformId: 'mtw-local',
+      environment: 'local',
+      now: () => T0 * 1000,
+    });
+    expect((await client.attestations()).map((a) => a.attestation.status)).toEqual(['OK', 'OK']);
+    monitor.state.served = { WALLET: attest('WALLET', 'OK', T0), RECOVERY: attest('RECOVERY', 'MISMATCH', T0) };
+    // Dentro de la ventana de caché la lectura normal reutiliza; la de la co-firma va al monitor.
+    expect((await client.attestations()).map((a) => a.attestation.status)).toEqual(['OK', 'OK']);
+    const fresh = await client.attestations({ fresh: true });
+    expect(fresh.find((a) => a.attestation.app === 'RECOVERY')?.attestation.status).toBe('MISMATCH');
+    // Si el monitor cae, también la co-firma usa lo último obtenido (el signer decide por vencimiento).
+    monitor.state.down = true;
+    expect(await client.attestations({ fresh: true })).toEqual(fresh);
+    await monitor.close();
+  });
+
   it('sólo entrega atestaciones verificadas; reutiliza la respuesta y, si el monitor cae, la última', async () => {
     const monitor = await fakeMonitor();
     const other = generateKeyPairSync('ed25519');
