@@ -14,7 +14,12 @@ import tseslint from 'typescript-eslint';
 const APP_ROOT = import.meta.dirname;
 const TOKENS_CSS = resolve(APP_ROOT, '../design-tokens/tokens.css');
 
-/** Módulos que pueden usar Web Storage: flags no sensibles y el `state`/verificador PKCE del viaje de OAuth (P17). */
+/**
+ * Módulos que pueden usar Web Storage: flags no sensibles y el `state`/verificador PKCE del viaje de OAuth (P17). El
+ * estado de OAuth es también la única excepción a "nada sensible" (ADR-033): en `/enroll`, su ruta de regreso lleva el
+ * secreto `k` del pedido de la Wallet sólo mientras dura el viaje a Google (se borra al volver o si se abandona; ver
+ * src/drive/oauth-state.ts). La lista no cambia: ningún otro módulo puede guardar `k`.
+ */
 export const STORAGE_ALLOWLIST = ['src/storage/flags.ts', 'src/drive/oauth-state.ts'];
 
 const mtw = {

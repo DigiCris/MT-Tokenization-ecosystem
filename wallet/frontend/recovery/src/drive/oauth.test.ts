@@ -8,11 +8,12 @@ import {
   authorizationUrl,
   CALLBACK_PATH,
   completeDriveConnect,
+  discardAbandonedOAuthOnRestore,
   handleOAuthCallback,
   startDriveConnect,
   takeDriveConnectError,
 } from './oauth.ts';
-import { OAUTH_STATE_TTL_MS, saveOAuthState, takeOAuthState } from './oauth-state.ts';
+import { discardOAuthState, OAUTH_STATE_TTL_MS, saveOAuthState, takeOAuthState } from './oauth-state.ts';
 import { DRIVE_SCOPE, driveToken, hasDriveToken, revokeDriveToken, setDriveToken } from './token.ts';
 
 const config = {
@@ -111,6 +112,33 @@ describe('vuelta de Google', () => {
     expect(replaceState).toHaveBeenCalledWith(null, '', '/enroll#eid=x');
     expect(takeDriveConnectError()).toBeNull();
     expect(handleOAuthCallback({ pathname: '/restore', hash: '' } as Location)).toBe(false);
+  });
+
+  it('un viaje abandonado no deja su estado (con el k del pedido): al arrancar fuera del callback y al volver del bfcache', () => {
+    // ADR-033: la ruta de regreso de /enroll lleva el secreto k del pedido de la Wallet durante el viaje.
+    const returnTo = '/enroll#eid=0f0e0d0c-0b0a-4908-8706-050403020100&n=0xab&k=q1Zs-0bM4_Lr8xWp2cYtNg';
+    startDriveConnect(config, returnTo, () => undefined);
+    expect(window.sessionStorage.getItem('mtw.recovery.oauth.google')).toContain('q1Zs-0bM4_Lr8xWp2cYtNg');
+    // El usuario no completó el consentimiento y volvió a abrir la app (no por el callback): no queda nada.
+    expect(handleOAuthCallback({ pathname: '/enroll', hash: '' } as Location)).toBe(false);
+    expect(window.sessionStorage.length).toBe(0);
+
+    // «Atrás» desde Google devuelve la página del bfcache: tampoco queda.
+    const stop = discardAbandonedOAuthOnRestore();
+    try {
+      startDriveConnect(config, returnTo, () => undefined);
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }));
+      expect(window.sessionStorage.length).toBe(1);
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      expect(window.sessionStorage.length).toBe(0);
+    } finally {
+      stop();
+    }
+    startDriveConnect(config, returnTo, () => undefined);
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    expect(window.sessionStorage.length).toBe(1);
+    discardOAuthState();
+    expect(window.sessionStorage.length).toBe(0);
   });
 });
 

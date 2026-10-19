@@ -226,7 +226,9 @@ test('backups de R veraces, QR quieto e imprimible, 17 palabras confirmadas y en
   });
   expect(await readCanvasQr(page.getByRole('img', { name: /^QR para volver a la Wallet/ }))).toBe(returnLink);
   await expect(page.getByText(/No los mandes por chat ni por email/)).toBeVisible();
-  // k sólo viajó en los fragmentos: ningún pedido a la API lo lleva.
+  // k sólo viajó en los fragmentos: ningún pedido a la API lo lleva (ni en la ruta, ni en el cuerpo, ni en los headers).
   expect(calls.length).toBeGreaterThan(0);
-  expect(calls.filter((call) => `${call.path} ${call.body ?? ''}`.includes(secret))).toEqual([]);
+  expect(
+    calls.filter((call) => `${call.path} ${call.body ?? ''} ${JSON.stringify(call.headers)}`.includes(secret)),
+  ).toEqual([]);
 });

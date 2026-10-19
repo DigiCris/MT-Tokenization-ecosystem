@@ -2,9 +2,10 @@
 // la URL al leerlo). Login con la misma cuenta → estado del enrollment → step-up ENROLLMENT para esa wallet →
 // Enrollment Key (P-256 no extraíble) → R interna (Password R + backups) o wallet externa → prueba de control de R
 // (EIP-712) y, en un reemplazo, la KeyAcceptance de R′ → envío firmado por la Enrollment Key → enlace y QR de regreso
-// con R y el secreto `k` del pedido (ADR-033: sólo viaja en los fragmentos, nunca al backend). Lo que viaja y se
-// muestra es la dirección de R (la clave nunca sale de esta app): los textos lo dicen así, y piden copiarla en la Wallet
-// si está en otro dispositivo, porque la Wallet no la muestra hasta que coincide ([F-LNK-02]).
+// con R y el secreto `k` del pedido (ADR-033: sólo viaja en los fragmentos, nunca al backend; durante el viaje de OAuth
+// de Drive queda en el estado de ese viaje, que se borra al volver o si se abandona). Lo que viaja y se muestra es la
+// dirección de R (la clave nunca sale de esta app): los textos lo dicen así, y piden copiarla en la Wallet si está en
+// otro dispositivo, porque la Wallet no la muestra hasta que coincide ([F-LNK-02]).
 import { useCallback, useEffect, useState } from 'react';
 import type { Address, Hex } from 'viem';
 import type { EnrollmentStatus, StorageFlags } from '../api/recovery-api.ts';
@@ -13,6 +14,7 @@ import { api } from '../app/services.ts';
 import { LoginForm } from '../auth/LoginForm.tsx';
 import { appConfig, systemContracts } from '../config/index.ts';
 import { DriveConnect } from '../drive/DriveConnect.tsx';
+import { discardOAuthState } from '../drive/oauth-state.ts';
 import { signTypedDataWithRecovery, type UnlockedRecovery } from '../crypto/session.ts';
 import { keyAcceptance, recoveryProofOfControl } from '../crypto/typed-data.ts';
 import type { ExternalSession } from '../external-wallet/types.ts';
@@ -68,6 +70,11 @@ export function EnrollPage() {
   useSensitiveScreen();
   const session = useSession();
   const [link] = useState(readLink);
+  // Al montar sin venir del callback de Google, un viaje de OAuth anterior quedó abandonado: su estado (con la ruta de
+  // regreso y el `k` del pedido) no se deja en la pestaña. Al volver del callback ya se consumió, así que no hay nada.
+  useEffect(() => {
+    discardOAuthState();
+  }, []);
   const [enrollment, setEnrollment] = useState<EnrollmentStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [enrollmentKey, setEnrollmentKey] = useState<SessionKey | null>(null);

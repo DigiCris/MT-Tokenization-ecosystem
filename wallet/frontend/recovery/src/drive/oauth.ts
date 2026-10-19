@@ -2,10 +2,10 @@
 // otro proyecto de Google Cloud que el de Wallet, así que su carpeta privada es otra): flujo implícito
 // (`response_type=token`) por redirección de página completa. La ida guarda `state` y la ruta de regreso; la vuelta
 // (`/oauth/google/callback`) se procesa antes de renderizar: se lee el fragmento, se limpia con history.replaceState y
-// el token queda sólo en memoria.
+// el token queda sólo en memoria. Un viaje abandonado no deja su estado en la pestaña (oauth-state.ts).
 import { bytesToBase64Url } from '../crypto/encoding.ts';
 import { readFlag, writeFlag } from '../storage/flags.ts';
-import { saveOAuthState, takeOAuthState } from './oauth-state.ts';
+import { discardOAuthState, saveOAuthState, takeOAuthState } from './oauth-state.ts';
 import { DRIVE_SCOPE, setDriveToken } from './token.ts';
 
 export const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -115,12 +115,31 @@ export function takeDriveConnectError(): DriveConnectError | null {
 
 /**
  * En el arranque, antes de renderizar: si la URL es el callback, procesa el fragmento, limpia la URL con
- * history.replaceState (el token no queda en el historial ni en la barra) y deja la ruta de regreso como actual.
+ * history.replaceState (el token no queda en el historial ni en la barra) y deja la ruta de regreso como actual. Si no
+ * lo es, un viaje que no volvió por el callback quedó abandonado: su estado (que en `/enroll` lleva el secreto `k` del
+ * pedido, ADR-033) se descarta.
  */
 export function handleOAuthCallback(location: Location = window.location, history: History = window.history): boolean {
-  if (location.pathname !== CALLBACK_PATH) return false;
+  if (location.pathname !== CALLBACK_PATH) {
+    discardOAuthState();
+    return false;
+  }
   const result = completeDriveConnect(location.hash);
   history.replaceState(null, '', result.returnTo);
   lastError = result.error;
   return true;
+}
+
+/**
+ * Una página que vuelve del bfcache (p. ej. con «Atrás» desde el consentimiento de Google) dejó el viaje abandonado: su
+ * estado se descarta. Devuelve cómo dejar de escuchar.
+ */
+export function discardAbandonedOAuthOnRestore(target: Window = window): () => void {
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) discardOAuthState();
+  };
+  target.addEventListener('pageshow', onPageShow);
+  return () => {
+    target.removeEventListener('pageshow', onPageShow);
+  };
 }

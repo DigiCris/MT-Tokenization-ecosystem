@@ -79,8 +79,14 @@ const { wsEndpoint } = JSON.parse(readFileSync(browserState, 'utf8'));
 const browserEnv = wsEndpoint ? { PW_TEST_CONNECT_WS_ENDPOINT: wsEndpoint } : {};
 
 if (staticSpecs > 0) {
-  run('pnpm', ['exec', 'vite', 'build', '--logLevel', 'warn']);
-  run('pnpm', ['exec', 'playwright', 'test', '-c', 'playwright.config.ts', ...args], { ...process.env, ...browserEnv });
+  // Con un cliente OAuth de prueba (Google se simula en el spec): el viaje de OAuth de Drive desde /enroll
+  // (enroll-drive-oauth.spec.ts) necesita que la app ofrezca Drive.
+  const staticEnv = {
+    ...process.env,
+    GOOGLE_CLIENT_ID_RECOVERY: process.env.GOOGLE_CLIENT_ID_RECOVERY || 'mtw-browser-tests.apps.googleusercontent.com',
+  };
+  run('pnpm', ['exec', 'vite', 'build', '--logLevel', 'warn'], staticEnv);
+  run('pnpm', ['exec', 'playwright', 'test', '-c', 'playwright.config.ts', ...args], { ...staticEnv, ...browserEnv });
 }
 
 if (stackSpecs > 0) {

@@ -21,6 +21,8 @@ export interface ApiCall {
   method: string;
   path: string;
   body: string | null;
+  /** Headers del pedido (para comprobar que un secreto no viaja en ninguno). */
+  headers: Record<string, string>;
 }
 
 export const USER = {
@@ -52,7 +54,7 @@ export async function mockApi(context: BrowserContext, origin: string, routes: M
       return;
     }
     const path = new URL(request.url()).pathname.slice(base.length);
-    calls.push({ method: request.method(), path, body: request.postData() });
+    calls.push({ method: request.method(), path, body: request.postData(), headers: await request.allHeaders() });
     for (const { method, path: pattern, handle } of routes) {
       const match = pattern.exec(path);
       if (method !== request.method() || match === null) continue;
