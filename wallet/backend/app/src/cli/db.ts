@@ -105,6 +105,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  process.stderr.write(`${scrubString(error instanceof Error ? error.message : String(error))}\n`);
+  const message = error instanceof Error ? error.message : String(error);
+  // La causa (p. ej. la conexión rechazada detrás de "lock o lectura de estado"), también sin secretos.
+  const cause = error instanceof Error && error.cause !== undefined ? error.cause : undefined;
+  const detail = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : '';
+  process.stderr.write(`${scrubString(detail === '' ? message : `${message}: ${detail}`)}\n`);
   process.exitCode = 1;
 });
