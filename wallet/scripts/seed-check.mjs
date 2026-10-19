@@ -26,8 +26,12 @@ const rpc = value('LOCAL_RPC_URL') || 'http://127.0.0.1:8545';
 const origin = value('WALLET_ORIGIN') || 'http://localhost:5173';
 
 const jar = new Map();
+// Token CSRF como el cliente de Wallet: GET /auth/csrf antes del primer no-GET (atado a la cookie anónima) y el que
+// devuelva cada respuesta cuando la sesión rota (login).
+let csrfToken = null;
 async function call(method, path, body) {
   const headers = { Origin: origin, 'content-type': 'application/json' };
+  if (method !== 'GET') headers['X-CSRF-Token'] = csrfToken ?? (await call('GET', '/auth/csrf')).json.csrfToken;
   if (jar.size > 0) headers.Cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
   const response = await fetch(`${api}/api/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   for (const cookie of response.headers.getSetCookie()) {
@@ -35,16 +39,18 @@ async function call(method, path, body) {
     const index = pair.indexOf('=');
     jar.set(pair.slice(0, index).trim(), pair.slice(index + 1).trim());
   }
-  return { status: response.status, json: await response.json().catch(() => ({})) };
+  const json = await response.json().catch(() => ({}));
+  if (typeof json.csrfToken === 'string') csrfToken = json.csrfToken;
+  return { status: response.status, json };
 }
 const castCall = (to, signature, ...args) =>
   execFileSync('cast', ['call', to, signature, ...args, '--rpc-url', rpc], { encoding: 'utf8' }).trim().split(/\s/)[0];
 
 const login = await call('POST', '/auth/login', { email: credentials.email, password: credentials.accountPassword });
-if (login.status !== 200) fail(`login del usuario seed: HTTP ${login.status}`);
+if (login.status !== 200) fail(`login del usuario seed: HTTP ${login.status} ${login.json.code ?? ''}`.trim());
 const wallets = await call('GET', '/wallets/me');
 const wallet = wallets.json.wallet ?? wallets.json;
-if (wallets.status !== 200 || wallet.status !== 'ACTIVE') fail(`wallet del seed: HTTP ${wallets.status}, ${wallet.status}`);
+if (wallets.status !== 200 || wallet.status !== 'ACTIVE') fail(`wallet del seed: HTTP ${wallets.status} ${wallets.json.code ?? ''}, ${wallet.status}`);
 if (wallet.id !== seed.walletId || wallet.safe?.toLowerCase() !== seed.safe.toLowerCase()) fail('la wallet ACTIVE no es la del seed');
 const usdc = BigInt(castCall(chain.contracts.usdc.address, 'balanceOf(address)(uint256)', seed.safe));
 const usdt = BigInt(castCall(chain.contracts.usdt.address, 'balanceOf(address)(uint256)', seed.safe));
