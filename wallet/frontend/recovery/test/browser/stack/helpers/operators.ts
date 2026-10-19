@@ -79,9 +79,16 @@ export async function addOperator(label: string): Promise<StackOperator> {
     return {
       email,
       command: async (args) => {
-        const result = await run([...args, '--operator', email], await freshTotp(secret, used));
-        if (result.code !== 0) throw new Error(`${args[0] ?? ''} falló: ${result.stderr}`);
-        return JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '{}') as unknown;
+        // El código se calcula antes de lanzar la CLI y se verifica cuando ya arrancó y se conectó a la base: con la
+        // máquina muy cargada eso puede pasar la ventana de ±30 s (TOTP_INVALID, sin efectos: la autenticación va
+        // primero). Se reintenta con un código nuevo, sólo ante ese error y como mucho dos veces.
+        for (let attempt = 1; ; attempt++) {
+          const result = await run([...args, '--operator', email], await freshTotp(secret, used));
+          if (result.code === 0) return JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '{}') as unknown;
+          if (attempt >= 3 || !result.stderr.includes('TOTP_INVALID')) {
+            throw new Error(`${args[0] ?? ''} falló: ${result.stderr}`);
+          }
+        }
       },
     };
   } finally {
