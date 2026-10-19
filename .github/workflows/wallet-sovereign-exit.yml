@@ -1,0 +1,72 @@
+# CI de la herramienta de salida soberana (P19.T09): install congelado, lint, typecheck, tests (cripto y SafeTx contra los vectores, release reproducible y firmado), build y E2E en el fork con la plataforma apagada.
+name: wallet-sovereign-exit
+
+on:
+  push:
+    branches:
+      - "feat/walletWeb/**"
+      - main
+    paths:
+      - "wallet/tools/sovereign-exit/**"
+      - "wallet/contracts/test/vectors/**"
+      - "wallet/config/**"
+      - "wallet/ci/**"
+      - "wallet/scripts/tools/**"
+      - "wallet/backend/app/**"
+      - "wallet/backend/signer/**"
+      - "wallet/contracts/src/**"
+      - "wallet/contracts/script/**"
+      - "wallet/infra/local/postgres/**"
+      - "wallet/docker-compose.yml"
+      - "wallet/scripts/stack/**"
+      - "wallet/scripts/lib/**"
+      - "wallet/scripts/deploy-core"
+      - "wallet/scripts/env.sh"
+      - ".github/workflows/wallet-sovereign-exit.yml"
+  pull_request:
+    paths:
+      - "wallet/tools/sovereign-exit/**"
+      - "wallet/contracts/test/vectors/**"
+      - "wallet/config/**"
+      - "wallet/ci/**"
+      - "wallet/scripts/tools/**"
+      - "wallet/backend/app/**"
+      - "wallet/backend/signer/**"
+      - "wallet/contracts/src/**"
+      - "wallet/contracts/script/**"
+      - "wallet/infra/local/postgres/**"
+      - "wallet/docker-compose.yml"
+      - "wallet/scripts/stack/**"
+      - "wallet/scripts/lib/**"
+      - "wallet/scripts/deploy-core"
+      - "wallet/scripts/env.sh"
+      - ".github/workflows/wallet-sovereign-exit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sovereign-exit:
+    name: sovereign-exit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: wallet-ci-sovereign-exit
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: node pnpm foundry
+          foundry-rpc-cache: "true"
+      - name: ci-sovereign-exit
+        env:
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+        run: bash wallet/ci/scripts/ci-sovereign-exit.sh

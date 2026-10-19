@@ -1,0 +1,8 @@
+dist/
+coverage/
+node_modules/
+test-results/
+playwright-report/
+pnpm-lock.yaml
+# Copia verificada de wallet/config/wordlist (test/unit/wordlist.test.ts).
+src/vendor/

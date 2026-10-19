@@ -1,6 +1,6 @@
 # Revisores por trust domain de wallet/ (P02.T01). El repositorio es de un usuario (sin equipos de
 # organización), así que cada dominio apunta al owner; al sumar revisores, reemplazar por el usuario o
-# equipo de cada dominio (contracts, backend/signer, frontend-wallet, frontend-recovery, infra).
+# equipo de cada dominio (contracts, backend/signer, frontend-wallet, frontend-recovery, sovereign-exit, infra).
 
 # infra (CI, scripts, configuración, documentación)
 /.github/workflows/wallet-*.yml          @DigiCris
@@ -20,3 +20,6 @@
 
 # frontend-recovery
 /wallet/frontend/recovery/               @DigiCris
+
+# sovereign-exit (la única pieza que junta U y R, en la máquina del usuario: P19.T09)
+/wallet/tools/sovereign-exit/            @DigiCris

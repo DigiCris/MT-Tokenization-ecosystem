@@ -1,0 +1,6 @@
+# Política de supply chain del proyecto (P01.T05, docs/VERSIONS.md#supply-chain): versiones exactas, peers estrictos,
+# sólo releases de más de 7 días y ningún script de instalación de terceros.
+saveExact: true
+strictPeerDependencies: true
+minimumReleaseAge: 10080
+strictDepBuilds: true

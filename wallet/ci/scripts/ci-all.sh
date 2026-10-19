@@ -2,7 +2,7 @@
 # Runner local equivalente a CI (P02.T02, `pnpm ci:local`): corre cada área en orden y termina en
 # verde sólo si todas pasan (las áreas todavía no creadas imprimen SKIP).
 source "$(dirname "$0")/lib.sh"
-areas=(docs contracts backend signer integrity-monitor frontend-wallet frontend-recovery e2e repro-build security)
+areas=(docs contracts backend signer integrity-monitor frontend-wallet frontend-recovery sovereign-exit e2e repro-build security)
 failed=()
 for area in "${areas[@]}"; do
   printf '\n######## ci-%s ########\n' "$area"

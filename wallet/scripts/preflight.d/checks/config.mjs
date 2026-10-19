@@ -204,6 +204,8 @@ export const LOCAL_SECRETS = [
   ['WALLET_RELEASE_PUBLIC_KEY', v.b64len(44)],
   ['RECOVERY_RELEASE_SIGNING_KEY_LOCAL', v.b64len(48)],
   ['RECOVERY_RELEASE_PUBLIC_KEY', v.b64len(44)],
+  ['SOVEREIGN_EXIT_RELEASE_SIGNING_KEY_LOCAL', v.b64len(48)],
+  ['SOVEREIGN_EXIT_RELEASE_PUBLIC_KEY', v.b64len(44)],
 ];
 
 const appliesTo = (envs, name) => envs === '*' || envs.split(',').includes(name);
