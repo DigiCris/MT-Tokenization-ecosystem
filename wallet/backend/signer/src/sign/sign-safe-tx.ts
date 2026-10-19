@@ -27,7 +27,8 @@ import { safeTxHash, type SafeTx } from '../chain/safe-tx.ts';
 import { SignerError } from '../api/errors.ts';
 import type { Logger } from '../observability/logger.ts';
 import type { SignerMetrics } from '../observability/metrics.ts';
-import { verifyChallengeCompletion, verifyIntegrity, verifySignerKeyAttestation } from '../policy/attestations.ts';
+import { verifyChallengeCompletion, verifySignerKeyAttestation } from '../policy/attestations.ts';
+import { IntegrityGate, MAX_ATTESTATIONS } from '../policy/integrity.ts';
 import { evaluatePolicy, type PolicyFacts } from '../policy/evaluate.ts';
 import { OPERATION_TYPES, OWNER_ROLES, ROLE_ENUM, ROTATION_KINDS, type RotationKind } from '../policy/operations.ts';
 import {
@@ -102,7 +103,7 @@ export const SignSafeTxRequestSchema = z
     newKeyAttestation: z.string().max(8_192).optional(),
     pairedSafeTx: z.object(EnvelopeFields).strict().optional(),
     replacesSafeTxHash: bytes32.optional(),
-    integrityAttestation: z.string().max(8_192).optional(),
+    integrityAttestations: z.array(z.string().max(8_192)).max(MAX_ATTESTATIONS).optional(),
     policySnapshotVersion: z.number().int().positive(),
     execution: z
       .object({ accountNonce: uint, maxFeePerGas: uint, maxPriorityFeePerGas: uint, gasLimit: uint.optional() })
@@ -152,10 +153,12 @@ function rpcError(error: unknown): never {
 
 export class SignSafeTxService {
   readonly #deps: SignSafeTxDeps;
+  readonly #integrity: IntegrityGate;
   readonly #store: SignedSafeTxStore;
 
   constructor(deps: SignSafeTxDeps) {
     this.#deps = deps;
+    this.#integrity = new IntegrityGate(deps.integrity.monitorKeys);
     this.#store = new SignedSafeTxStore(deps.db);
   }
 
@@ -229,15 +232,28 @@ export class SignSafeTxService {
       throw error;
     }
     if (this.#deps.integrity.required) {
-      const app = claims.scope === 'RECOVERY' ? 'RECOVERY' : 'WALLET';
-      const ok = await verifyIntegrity(req.integrityAttestation, this.#deps.integrity.monitorKeys, {
+      // P20.T03: atestaciones vigentes de las dos apps (policy/integrity.ts); si no, la cooperación queda pausada.
+      const decision = await this.#integrity.decide(req.integrityAttestations ?? [], {
         platformId: snapshot.platformId,
         environment: this.#deps.appEnv,
-        app,
         now,
         clockSkewSeconds: snapshot.session.clockSkewSeconds,
       });
-      if (!ok) throw new SignerError('INTEGRITY_PAUSED', app);
+      if (decision.degraded.length > 0) {
+        this.#deps.logger.warn(
+          { alert: 'INTEGRITY_UNREACHABLE', apps: decision.degraded },
+          'integridad sin verificar: en gracia',
+        );
+      }
+      if (!decision.cooperate) {
+        const reason = `${decision.app ?? 'WALLET'}:${decision.reason ?? 'MISSING'}`;
+        this.#deps.metrics?.cooperationPaused.inc({ reason });
+        this.#deps.logger.error(
+          { alert: 'COOPERATION_PAUSED', reason, operationId: req.operationId },
+          'cooperación pausada',
+        );
+        throw new SignerError('COOPERATION_PAUSED', reason);
+      }
     }
 
     // 3. Firma U/R estricta.

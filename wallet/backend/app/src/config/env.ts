@@ -333,6 +333,14 @@ const rpcFields = {
   FINALIZATION_DEPTH: positiveInt(10, 100_000),
 };
 
+// Integridad de releases (P20.T03): el worker pide las atestaciones al integrity monitor (red interna) y las adjunta a
+// cada pedido de co-firma; el signer decide. Fuera de local es obligatorio (fail-closed).
+const integrityFields = {
+  INTEGRITY_REQUIRED: z.enum(['true', 'false'], { error: 'debe ser true o false' }).optional(),
+  INTEGRITY_MONITOR_URL: z.url({ protocol: /^https?$/, error: 'debe ser una URL http(s)' }).optional(),
+  INTEGRITY_MONITOR_PUBLIC_KEY: ed25519PublicKey.optional(),
+};
+
 const EMAIL_ADDRESS = /^[^\s@<>]{1,64}@[a-z0-9.-]{1,253}\.[a-z]{2,}$/i;
 const DOMAIN = /^(?=.{1,253}$)([a-z0-9-]{1,63}\.)+[a-z]{2,}$/i;
 
@@ -422,12 +430,19 @@ const appSchema = z
     ...rpcFields,
     ...emailFields,
     ...secretFields,
+    ...integrityFields,
   })
   .superRefine((v, ctx) => {
     const strict = v.APP_ENV !== 'local';
     const issue = (path: string, message: string) => {
       ctx.addIssue({ code: 'custom', path: [path], message });
     };
+    if (strict && v.INTEGRITY_REQUIRED === 'false')
+      issue('INTEGRITY_REQUIRED', `en ${v.APP_ENV} debe ser true (fail-closed)`);
+    if ((strict || v.INTEGRITY_MONITOR_URL !== undefined) && v.INTEGRITY_MONITOR_PUBLIC_KEY === undefined) {
+      issue('INTEGRITY_MONITOR_PUBLIC_KEY', 'falta (la clave pública del integrity monitor)');
+    }
+    if (strict && v.INTEGRITY_MONITOR_URL === undefined) issue('INTEGRITY_MONITOR_URL', 'falta');
     if (new Set([v.API_WALLET_PORT, v.API_RECOVERY_PORT, v.METRICS_PORT, v.WORKER_METRICS_PORT]).size !== 4) {
       issue('API_RECOVERY_PORT', 'los puertos de Wallet, Recovery y métricas (API y worker) deben ser distintos');
     }
@@ -506,6 +521,7 @@ export interface AppConfig {
   };
   auth: { failureSpikePerMinute: number };
   metrics: { bindHost: string; port: number; workerPort: number; gasTankPort: number };
+  integrity: { required: boolean; monitorUrl: string | undefined; monitorPublicKey: KeyObject | undefined };
   database: { url: Secret<string>; poolMax: number };
   redis: { url: Secret<string> };
   outbox: { pollIntervalMs: number; batchSize: number };
@@ -621,6 +637,11 @@ export function loadConfig(options: LoadOptions = {}): AppConfig {
       policy: v.CONFIRMATION_POLICY,
       confirmationDepth: v.CONFIRMATION_DEPTH,
       finalizationDepth: v.FINALIZATION_DEPTH,
+    },
+    integrity: {
+      required: (v.INTEGRITY_REQUIRED ?? (v.APP_ENV === 'local' ? 'false' : 'true')) === 'true',
+      monitorUrl: v.INTEGRITY_MONITOR_URL,
+      monitorPublicKey: v.INTEGRITY_MONITOR_PUBLIC_KEY,
     },
     secrets: {
       auditChainKey: v.AUDIT_CHAIN_KEY,

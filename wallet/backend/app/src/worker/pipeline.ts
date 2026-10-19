@@ -87,6 +87,8 @@ export interface PipelineDeps {
   lease: SafeLease;
   logger: Logger;
   metrics: Metrics;
+  /** Atestaciones del integrity monitor que se adjuntan a cada co-firma (P20.T03; el signer decide la pausa). */
+  integrity?: { attestations: () => Promise<{ token: string }[]> };
   options?: Partial<PipelineOptions>;
   now?: () => number;
 }
@@ -719,6 +721,10 @@ export class OperationPipeline {
       },
     };
     if (op.challenge_attestation !== null) body.challengeAttestation = op.challenge_attestation;
+    if (this.#d.integrity !== undefined) {
+      const attestations = await this.#d.integrity.attestations();
+      if (attestations.length > 0) body.integrityAttestations = attestations.map((a) => a.token);
+    }
     // Rotación: material de la clave nueva que el signer verifica por su cuenta (KeyAcceptance o SignerKeyAttestation).
     if (intent.operationType === 'ROTATION_PROPOSE' || intent.operationType === 'ROTATION_EXECUTE') {
       Object.assign(body, await rotationSignerFields(this.#d.db, op.id));

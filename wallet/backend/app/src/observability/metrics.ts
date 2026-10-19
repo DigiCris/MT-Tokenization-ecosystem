@@ -41,6 +41,8 @@ export interface Metrics {
   swapQuotes: Counter<'result'>;
   notificationsCreated: Counter<'type'>;
   frontendSecurityReports: Counter<'client' | 'type' | 'directive'>;
+  integrityStatus: Gauge<'app'>;
+  cooperationState: Gauge;
 }
 
 export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metrics {
@@ -260,6 +262,17 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_frontend_security_reports_total',
       help: 'Reportes de seguridad de los frontends (CSP/Trusted Types, service workers, CSP inactiva) por app y tipo',
       labelNames: ['client', 'type', 'directive'],
+      registers,
+    }),
+    integrityStatus: new Gauge({
+      name: 'mtw_integrity_attested_status',
+      help: 'Último estado atestado por el integrity monitor por app: 0 OK, 1 UNREACHABLE, 2 MISMATCH, 3 sin atestación vigente',
+      labelNames: ['app'],
+      registers,
+    }),
+    cooperationState: new Gauge({
+      name: 'mtw_cooperation_state',
+      help: 'Cooperación de S según las atestaciones de integridad: 0 ACTIVE, 1 DEGRADED (UNREACHABLE en gracia), 2 PAUSED',
       registers,
     }),
   };

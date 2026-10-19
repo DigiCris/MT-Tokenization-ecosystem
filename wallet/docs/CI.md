@@ -15,6 +15,7 @@ Pipelines por trust domain (P02). La lógica vive en `wallet/ci/scripts/*.sh` y 
 | `wallet-repro-build` | push/PR en `frontend/**`, `ci`, toolchain | `inputs` (contratos de la red ci sobre un Anvil efímero y clave pública de atestación: los mismos insumos para los dos builds) → `build-1` y `build-2` (jobs y runners distintos) → `compare` de los release manifests byte a byte. La firma Ed25519 la prueban `ci/scripts/repro-build.sh <app>` (local y `ci:local`) y los tests de cada app | `ci-repro-build.sh --inputs` / `--single` / `--compare` | `wallet-ci-contracts` (`BASE_RPC_URL`) sólo en `inputs` |
 | `wallet-e2e` | PR con label `e2e`; nightly (04:41 UTC); manual | `e2e`: Playwright + acceptance full-system sobre el fork | `ci-e2e.sh` | `wallet-ci-e2e` (todos los de servicios reales) |
 | `wallet-ci-gate` | todo PR hacia `main` | `wallet-ci-gate`: check requerido de la protección de `main` | `ci-gate.sh` | — |
+| `wallet-integrity-offhost` | programado cada 15 min (sólo en `main`); manual (`-f selftest=true` para el simulacro) | `offhost`: las verificaciones del integrity monitor (`check-once`: manifest firmado con las públicas de `config/release-keys/`, archivos, SRI, headers) contra las URLs públicas de `vars.INTEGRITY_OFFHOST_TARGETS` (vacío hasta el despliegue final: no chequea) y alerta por email (Mailgun) y webhook ante una discrepancia; no pausa al signer. El simulacro compila Recovery, firma su manifest con una clave efímera, la sirve con `vite preview`, altera un archivo y exige MISMATCH con la alerta enviada | `integrity-offhost.sh` | `wallet-integrity-offhost` (`BASE_RPC_URL` para el simulacro, `EMAIL_PROVIDER_*`, `ALERT_EMAIL_TO`, `ALERT_WEBHOOK_URL` opcional) |
 | `wallet-review-tours` | manual (`gh workflow run wallet-review-tours.yml -f app=wallet -f tour=onboarding -f browsers=chromium,firefox`) | `review`: un recorrido de `test/browser/stack/review/` de la app contra el stack local y el fork en los navegadores pedidos (instalados con sus dependencias en el runner) y las capturas de cada pantalla como artefacto, para los checks manuales que hace el agente con un revisor independiente (R-14). En local, Firefox y WebKit corren en la imagen fijada de Playwright (`MTW_BROWSERS`, `scripts/lib/browser-server.mjs`) | `review-tour.sh` | `wallet-ci-frontend-<app>` |
 
 Mientras un proyecto no existe, su script imprime `SKIP: proyecto no creado aún (fase Pxx)` y termina en verde.
@@ -84,8 +85,10 @@ receipts consultándolos directamente (`waitForReceipt` de `test/helpers/fork.ts
 | `wallet-ci-frontend-wallet` | `BASE_RPC_URL`, `GOOGLE_DRIVE_TEST_CLIENT_ID`, `GOOGLE_DRIVE_TEST_CLIENT_SECRET`, `GOOGLE_DRIVE_TEST_REFRESH_TOKEN` | ninguna |
 | `wallet-ci-frontend-recovery` | `BASE_RPC_URL`, `WALLETCONNECT_PROJECT_ID`, `GOOGLE_DRIVE_TEST_CLIENT_ID`, `GOOGLE_DRIVE_TEST_CLIENT_SECRET`, `GOOGLE_DRIVE_TEST_REFRESH_TOKEN` | ninguna |
 | `wallet-ci-e2e` | los de backend + frontends + `WALLETCONNECT_PROJECT_ID` | ninguna |
-| `wallet-staging` | claves de firma de releases de staging (P20, P26.T02.a) | sólo tags `wallet-v*` |
-| `wallet-production` | claves de firma de releases de producción (P20, P26.T02.a) | sólo tags `wallet-v*` |
+| `wallet-ci-sovereign-exit` | `BASE_RPC_URL` | ninguna |
+| `wallet-integrity-offhost` | `BASE_RPC_URL`, `EMAIL_PROVIDER_API_KEY`, `EMAIL_PROVIDER_DOMAIN`, `EMAIL_PROVIDER_BASE_URL`, `ALERT_EMAIL_TO` (y `ALERT_WEBHOOK_URL` si se usa); variable `INTEGRITY_OFFHOST_TARGETS` al desplegar | ninguna |
+| `wallet-staging` | `WALLET_RELEASE_SIGNING_KEY` y `RECOVERY_RELEASE_SIGNING_KEY` de staging (P20.T01; cada app firma en su propio job, P26.T02.a) | sólo tags `wallet-v*` |
+| `wallet-production` | `WALLET_RELEASE_SIGNING_KEY` y `RECOVERY_RELEASE_SIGNING_KEY` de producción (P20.T01, P26.T02.a) | sólo tags `wallet-v*` |
 
 El workflow de Recovery no declara el environment de Wallet ni viceversa, así que ninguno puede leer los secretos del otro. Los Environments no tienen reviewer obligatorio (la ejecución del planner no se frena); `wallet-staging` y `wallet-production` sólo aceptan tags `wallet-v*`, protegidos por un ruleset.
 

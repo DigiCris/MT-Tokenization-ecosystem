@@ -89,9 +89,18 @@ if (stackSpecs > 0) {
   const stackCli = join(WALLET_ROOT, 'scripts/stack/stack.mjs');
   const walletOrigin = `http://localhost:${STACK_PREVIEW_PORT}`;
   // Si `up` falla, el propio stack desarma lo que levantó (y deja sus logs); acá sólo queda borrar el estado.
-  const started = run('node', [stackCli, 'up', '--state', stateFile, '--wallet-origin', walletOrigin], process.env, {
-    allowFailure: true,
-  });
+  // Simulacro de integridad (P20.MAN, test/browser/stack/drills/): signer y worker con la integridad exigida y el
+  // integrity monitor que levanta el propio spec en MTW_DRILL_MONITOR_PORT.
+  const drillArgs =
+    process.env.MTW_DRILL === 'integrity'
+      ? ['--integrity-monitor', `http://127.0.0.1:${process.env.MTW_DRILL_MONITOR_PORT ?? '4190'}`]
+      : [];
+  const started = run(
+    'node',
+    [stackCli, 'up', '--state', stateFile, '--wallet-origin', walletOrigin, ...drillArgs],
+    process.env,
+    { allowFailure: true },
+  );
   if (started.status !== 0) {
     rmSync(stateDir, { recursive: true, force: true });
     process.exit(started.status ?? 1);

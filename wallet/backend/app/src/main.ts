@@ -43,6 +43,8 @@ import { WhitelistSync } from './whitelist/sync.ts';
 import { CancelRelayer, gasTankJobHandler } from './rotations/cancel-relay.ts';
 import { RotationSync } from './rotations/sync.ts';
 import { MigrationSync } from './recovery/migration.ts';
+import { IntegrityMonitorClient } from './integrity/monitor-client.ts';
+import { IntegrityStatusRecorder } from './integrity/status-recorder.ts';
 import { OperationPipeline } from './worker/pipeline.ts';
 import { SovereignModification } from './wallets/sovereign.ts';
 import { createAccountServices, createWalletServices } from './services.ts';
@@ -356,6 +358,40 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
     });
     const workerId = `${hostname()}:${String(process.pid)}:${randomBytes(4).toString('hex')}`;
     const signers = new SignerKeyService({ db, shards: signer.shards, clients });
+    // Integridad de los frontends (P20.T03): atestaciones del monitor para cada co-firma y registro de su estado.
+    const integrityClient =
+      config.integrity.monitorUrl !== undefined && config.integrity.monitorPublicKey !== undefined
+        ? new IntegrityMonitorClient({
+            url: config.integrity.monitorUrl,
+            publicKey: config.integrity.monitorPublicKey,
+            platformId: config.platformId,
+            environment: config.appEnv,
+          })
+        : undefined;
+    if (integrityClient !== undefined) {
+      const recorder = new IntegrityStatusRecorder({
+        db,
+        audit,
+        client: integrityClient,
+        platformId: config.platformId,
+        logger: logger.child({ component: 'integrity' }),
+        metrics,
+      });
+      const recordIntegrity = () => {
+        recorder.tick().catch((error: unknown) => {
+          logger.warn({ err: error }, 'registro de integridad falló');
+        });
+      };
+      recordIntegrity();
+      const integrityTimer = setInterval(recordIntegrity, 30_000);
+      integrityTimer.unref();
+      closers.unshift(() => {
+        clearInterval(integrityTimer);
+        return Promise.resolve();
+      });
+    } else if (config.integrity.required) {
+      throw new Error('INTEGRITY_REQUIRED sin INTEGRITY_MONITOR_URL: el worker no puede adjuntar atestaciones');
+    }
     const pipeline = new OperationPipeline({
       db,
       machine,
@@ -371,6 +407,7 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
       lease: new SafeLease(db, workerId, { ttlMs: config.worker.leaseTtlMs }),
       logger: logger.child({ component: 'operation-pipeline', workerId }),
       metrics,
+      ...(integrityClient === undefined ? {} : { integrity: integrityClient }),
       options: {
         receiptTimeoutMs: config.worker.receiptTimeoutMs,
         maxReplacements: config.worker.maxReplacements,

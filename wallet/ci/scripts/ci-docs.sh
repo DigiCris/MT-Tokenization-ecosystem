@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Documentación y herramientas de wallet/: preflight (tests), docs, wordlist y política de pnpm.
+# Documentación y herramientas de wallet/: preflight (tests), docs, wordlist, política de pnpm y claves de release.
 source "$(dirname "$0")/lib.sh"
 cd "$WALLET_ROOT"
 section "tests del preflight"
@@ -14,3 +14,5 @@ section "wordlist MTW-WORDLIST-V1"
 node scripts/verify-wordlist.mjs
 section "política de supply chain de pnpm"
 node scripts/check-pnpm-policy.mjs
+section "claves de release (P20.T01: públicas fijadas, ninguna privada versionada ni en el backend)"
+node scripts/check-release-keys.mjs

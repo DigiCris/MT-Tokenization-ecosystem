@@ -1,7 +1,7 @@
-# Recorridos de revisión de los checks manuales (R-14: P17.MAN, P18.MAN y los de fases siguientes): corre un spec de
-# test/browser/stack/review/ de la app elegida contra el stack local y el fork, en los navegadores pedidos (instalados
-# con sus dependencias en el runner), y sube las capturas de cada pantalla como artefacto para el agente revisor
-# independiente. Sólo a mano: no es un required check.
+# Checks manuales que ejecuta el agente (R-14: P17.MAN, P18.MAN, P20.MAN y los de fases siguientes): corre un recorrido
+# de revisión (test/browser/stack/review/) o un simulacro (test/browser/stack/drills/) de la app elegida contra el stack
+# local y el fork, en los navegadores pedidos (instalados con sus dependencias en el runner), y sube las capturas como
+# artefacto para el agente revisor independiente. Sólo a mano: no es un required check.
 name: wallet-review-tours
 
 on:
@@ -16,9 +16,9 @@ on:
           - wallet
           - recovery
       tour:
-        description: Recorrido (spec de test/browser/stack/review/ sin .spec.ts)
+        description: review/<recorrido> o drills/<simulacro> (spec de test/browser/stack/ sin .spec.ts)
         required: true
-        default: onboarding
+        default: review/onboarding
         type: string
       browsers:
         description: Navegadores separados por comas (chromium, firefox, webkit)
@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.app }}-${{ inputs.tour }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.app }}-${{ inputs.tour }}-${{ inputs.browsers }}
   cancel-in-progress: false
 
 jobs:
@@ -65,7 +65,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: review-${{ inputs.app }}-${{ inputs.tour }}
+          name: review-${{ inputs.app }}-${{ github.run_id }}
           path: ${{ runner.temp }}/review
           if-no-files-found: error
           retention-days: 14

@@ -9,7 +9,7 @@ export const SIGNER_ERRORS = {
   POLICY_VERSION_MISMATCH: { status: 409, retryable: true },
   SESSION_INVALID: { status: 422, retryable: false },
   SIGNATURE_STALE: { status: 422, retryable: false },
-  INTEGRITY_PAUSED: { status: 503, retryable: true },
+  COOPERATION_PAUSED: { status: 503, retryable: true },
   OWNER_SIGNATURE_INVALID: { status: 422, retryable: false },
   OWNER_NOT_ROLE: { status: 422, retryable: false },
   SAFE_NOT_REGISTERED: { status: 422, retryable: false },

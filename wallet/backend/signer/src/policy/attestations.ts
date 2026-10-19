@@ -1,7 +1,7 @@
 // Atestaciones que el signer verifica antes de co-firmar (implementación propia):
 // - ChallengeCompletion (emisor de sesiones) [W-03]/[B-POL-02]: 2FA de alto valor (HIGH_VALUE_TX) y alta de whitelist
 //   (WHITELIST_ADD), ligadas a la Safe, la SafeTx, el nonce y los datos decodificados de la operación;
-// - IntegrityAttestation (integrity monitor) para la pausa por integridad (INTEGRITY_REQUIRED);
+// - IntegrityAttestation (integrity monitor): el formato; la decisión de pausa está en policy/integrity.ts;
 // - SignerKeyAttestation (clave de atestación del propio signer) para rotar S sólo hacia claves de un signer.
 import { z } from 'zod';
 import { isAddress, sameAddress, type Address } from '../crypto/keccak.ts';
@@ -89,39 +89,6 @@ export const IntegrityAttestationSchema = z.object({
   observedAt: z.number().int().positive(),
   expiresAt: z.number().int().positive(),
 });
-
-/** Pausa por integridad: hace falta una IntegrityAttestation OK y vigente de la app que originó la sesión. */
-export async function verifyIntegrity(
-  token: string | undefined,
-  monitorKeys: PinnedKeys,
-  expected: {
-    platformId: string;
-    environment: string;
-    app: 'WALLET' | 'RECOVERY';
-    now: number;
-    clockSkewSeconds: number;
-  },
-): Promise<boolean> {
-  if (token === undefined) return false;
-  let payload: unknown;
-  try {
-    ({ payload } = await verifyJws(token, monitorKeys));
-  } catch (error) {
-    if (error instanceof JwsError) return false;
-    throw error;
-  }
-  const parsed = IntegrityAttestationSchema.safeParse(payload);
-  if (!parsed.success) return false;
-  const a = parsed.data;
-  return (
-    a.platformId === expected.platformId &&
-    a.environment === expected.environment &&
-    a.app === expected.app &&
-    a.status === 'OK' &&
-    a.observedAt <= expected.now + expected.clockSkewSeconds &&
-    a.expiresAt > expected.now
-  );
-}
 
 export const SignerKeyAttestationSchema = z
   .object({

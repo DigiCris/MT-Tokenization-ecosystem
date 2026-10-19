@@ -1,0 +1,12 @@
+{
+  // Build de producción: sólo src/ → dist/ (los imports .ts se reescriben a .js).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true,
+    "declaration": false
+  },
+  "include": ["src"]
+}

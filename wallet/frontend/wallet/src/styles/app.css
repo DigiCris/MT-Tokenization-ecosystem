@@ -273,6 +273,11 @@ code {
   font-size: var(--mtw-font-size-sm);
 }
 
+.banner--danger {
+  background: var(--mtw-color-danger-soft);
+  border-bottom-color: var(--mtw-color-danger);
+}
+
 .form {
   display: grid;
   gap: var(--mtw-space-4);

@@ -9,8 +9,9 @@ const port = Number(process.env.MTW_STACK_PREVIEW_PORT ?? 4174);
 export default defineConfig({
   testDir: 'test/browser/stack',
   testMatch: '**/*.spec.ts',
-  // Recorridos de revisión con capturas para el agente revisor (P17.MAN, P18.MAN): sólo con MTW_REVIEW_DIR.
-  testIgnore: process.env.MTW_REVIEW_DIR ? [] : ['review/**'],
+  // Recorridos de revisión con capturas para el agente revisor (P17.MAN, P18.MAN): sólo con MTW_REVIEW_DIR. Simulacros
+  // con el stack configurado a propósito (P20.MAN): sólo con MTW_DRILL.
+  testIgnore: [...(process.env.MTW_REVIEW_DIR ? [] : ['review/**']), ...(process.env.MTW_DRILL ? [] : ['drills/**'])],
   forbidOnly: process.env.CI !== undefined,
   retries: 0,
   workers: 1,

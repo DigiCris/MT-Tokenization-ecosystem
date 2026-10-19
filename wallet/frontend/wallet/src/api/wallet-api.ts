@@ -38,6 +38,13 @@ export type WalletStatus =
   | 'MIGRATED'
   | 'ABANDONED';
 
+/** Estado de la cooperación de la plataforma (P20.T03): PAUSED si una app no pasa el control de integridad. */
+export interface PlatformStatus {
+  integrity: 'MONITORED' | 'NOT_MONITORED';
+  cooperation: 'ACTIVE' | 'DEGRADED' | 'PAUSED';
+  apps: { app: 'WALLET' | 'RECOVERY'; status: 'OK' | 'MISMATCH' | 'UNREACHABLE' | null; releaseId: string | null }[];
+}
+
 export interface WalletView {
   id: string;
   status: WalletStatus;
@@ -466,6 +473,11 @@ export class WalletApi {
 
   login(input: LoginInput) {
     return this.client.request<{ user: User; csrfToken: string }>('POST', '/auth/login', { body: input });
+  }
+
+  /** Estado público de la cooperación (pausa por integridad de los frontends, P20.T03). */
+  async platformStatus(): Promise<PlatformStatus> {
+    return this.client.request<PlatformStatus>('GET', '/platform/status');
   }
 
   async logout(): Promise<void> {

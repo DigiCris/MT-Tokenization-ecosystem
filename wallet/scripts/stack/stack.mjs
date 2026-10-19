@@ -220,7 +220,7 @@ function ensureInstalled(project) {
   run('pnpm', ['install', '--frozen-lockfile'], { cwd: project, label: `pnpm install en ${project}` });
 }
 
-export async function up({ stateFile, walletOrigin, recoveryOrigin }) {
+export async function up({ stateFile, walletOrigin, recoveryOrigin, integrityMonitor }) {
   const dir = mkdtempSync(join(tmpdir(), 'mtw-stack-'));
   mkdirSync(join(dir, 'logs'), { recursive: true, mode: 0o700 });
   const id = dir
@@ -254,7 +254,7 @@ export async function up({ stateFile, walletOrigin, recoveryOrigin }) {
   mkdirSync(dirname(state.stateFile), { recursive: true });
   saveState(state);
   try {
-    await bringUp(state, { walletOrigin, recoveryOrigin });
+    await bringUp(state, { walletOrigin, recoveryOrigin, integrityMonitor });
     return state;
   } catch (error) {
     log(`falló el arranque; logs en ${join(dir, 'logs')}`);
@@ -263,7 +263,7 @@ export async function up({ stateFile, walletOrigin, recoveryOrigin }) {
   }
 }
 
-async function bringUp(state, { walletOrigin, recoveryOrigin }) {
+async function bringUp(state, { walletOrigin, recoveryOrigin, integrityMonitor }) {
   const { dir, ports } = state;
   const chain = JSON.parse(readFileSync(join(WALLET_ROOT, 'config/chains/base-mainnet.json'), 'utf8'));
   const anvilUrl = `http://127.0.0.1:${String(ports.anvil)}`;
@@ -324,7 +324,9 @@ async function bringUp(state, { walletOrigin, recoveryOrigin }) {
     SIGNER_DATABASE_URL: '',
     SIGNER_PLATFORM_DATABASE_URL: '',
     REDIS_URL: '',
-    INTEGRITY_REQUIRED: 'false',
+    // Sin monitor la integridad no se exige (local); con --integrity-monitor, como en staging y producción.
+    INTEGRITY_REQUIRED: integrityMonitor === undefined ? 'false' : 'true',
+    INTEGRITY_MONITOR_URL: integrityMonitor ?? '',
     // Comparte la key del RPC con los demás jobs de CI (docs/CI.md#presupuesto-del-rpc-del-fork).
     ANVIL_COMPUTE_UNITS_PER_SECOND: '80',
   };
@@ -562,6 +564,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       state: { type: 'string' },
       'wallet-origin': { type: 'string', default: 'http://localhost:5173' },
       'recovery-origin': { type: 'string', default: 'http://localhost:5174' },
+      // Simulacro de integridad (P20.MAN): signer y worker con la integridad exigida y el monitor en esta URL.
+      'integrity-monitor': { type: 'string' },
       'keep-logs': { type: 'boolean', default: false },
     },
   });
@@ -579,6 +583,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         stateFile: values.state,
         walletOrigin: values['wallet-origin'],
         recoveryOrigin: values['recovery-origin'],
+        integrityMonitor: values['integrity-monitor'],
       });
     } else if (command === 'backend-stop') {
       await stopBackend({ stateFile: values.state });

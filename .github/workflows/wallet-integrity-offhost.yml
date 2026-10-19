@@ -1,0 +1,52 @@
+# Chequeo de integridad off-host (P20.T02.a, ADR-023): cada 15 min verifica desde GitHub, fuera del host de producción,
+# que Wallet y Recovery sirvan exactamente su release firmado (manifest, archivos, SRI, headers), con las claves públicas
+# de release del repositorio; ante una discrepancia el job falla y alerta por email y webhook. No pausa al signer (eso
+# lo hace el integrity monitor del host). Con `selftest` corre el simulacro: un `vite preview` de Recovery en el runner
+# con un archivo alterado tiene que detectarse y alertarse.
+name: wallet-integrity-offhost
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      selftest:
+        description: Simulacro con un vite preview alterado en el runner
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  offhost:
+    name: offhost
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: wallet-integrity-offhost
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Toolchain fijada
+        uses: ./wallet/ci/actions/setup-toolchain
+        with:
+          tools: ${{ inputs.selftest && 'node pnpm foundry' || 'node pnpm' }}
+          foundry-rpc-cache: ${{ inputs.selftest && 'true' || 'false' }}
+      - name: Chequeo off-host
+        env:
+          MTW_INTEGRITY_SELFTEST: ${{ inputs.selftest && '1' || '' }}
+          INTEGRITY_OFFHOST_TARGETS: ${{ vars.INTEGRITY_OFFHOST_TARGETS }}
+          BASE_RPC_URL: ${{ secrets.BASE_RPC_URL }}
+          EMAIL_PROVIDER_API_KEY: ${{ secrets.EMAIL_PROVIDER_API_KEY }}
+          EMAIL_PROVIDER_DOMAIN: ${{ secrets.EMAIL_PROVIDER_DOMAIN }}
+          EMAIL_PROVIDER_BASE_URL: ${{ secrets.EMAIL_PROVIDER_BASE_URL }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: bash wallet/ci/scripts/integrity-offhost.sh

@@ -87,7 +87,7 @@ export interface RequestOptions {
   newKeyAttestation?: string;
   pairedSafeTx?: Record<string, unknown>;
   replacesSafeTxHash?: string;
-  integrityAttestation?: string;
+  integrityAttestations?: string[];
   policySnapshotVersion?: number;
   session?: { issuedAt?: number; expiresAt?: number; aud?: string[]; scope?: string };
   submittedAt?: number;
@@ -145,7 +145,7 @@ export async function signRequest(
     ...(o.newKeyAttestation === undefined ? {} : { newKeyAttestation: o.newKeyAttestation }),
     ...(o.pairedSafeTx === undefined ? {} : { pairedSafeTx: o.pairedSafeTx }),
     ...(o.replacesSafeTxHash === undefined ? {} : { replacesSafeTxHash: o.replacesSafeTxHash }),
-    ...(o.integrityAttestation === undefined ? {} : { integrityAttestation: o.integrityAttestation }),
+    ...(o.integrityAttestations === undefined ? {} : { integrityAttestations: o.integrityAttestations }),
     policySnapshotVersion: o.policySnapshotVersion ?? h.runtime.snapshot.snapshot.version,
     execution: {
       accountNonce: (await h.chain.accountNonce(w.S)).toString(),

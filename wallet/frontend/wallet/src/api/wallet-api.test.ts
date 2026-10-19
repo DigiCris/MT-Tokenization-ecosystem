@@ -51,6 +51,12 @@ const kdf = {
 const flags = { drive: true, file: true, qr: false, words: false };
 
 describe('WalletApi', () => {
+  it('estado de la plataforma (P20.T03): GET público', async () => {
+    const client = new RecordingClient();
+    await new WalletApi(client).platformStatus();
+    expect(client.calls).toEqual([{ method: 'GET', path: '/platform/status', options: {} }]);
+  });
+
   it('cuenta, sesiones y PlatformSession: método, path y cuerpo de cada ruta', async () => {
     const client = new RecordingClient();
     const api = new WalletApi(client);

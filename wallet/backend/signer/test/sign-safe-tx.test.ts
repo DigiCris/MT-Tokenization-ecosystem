@@ -378,40 +378,75 @@ describe('alta de whitelist con challenge', () => {
   });
 });
 
-describe('pausa por integridad [B-SIG-02]', () => {
-  it('con INTEGRITY_REQUIRED=true sólo co-firma con una IntegrityAttestation OK y vigente de la app', async () => {
+describe('pausa por integridad [B-SIG-02], P20.T03', () => {
+  it('con INTEGRITY_REQUIRED=true sólo co-firma con atestaciones OK y vigentes de Wallet y Recovery', async () => {
     await h.restart({ INTEGRITY_REQUIRED: 'true' });
     try {
-      await expectRejected(await send(USD(10)), { operationType: 'SEND' }, 'INTEGRITY_PAUSED', 'WALLET');
+      await expectRejected(await send(USD(10)), { operationType: 'SEND' }, 'COOPERATION_PAUSED', 'WALLET:MISSING');
       const now = Math.floor(Date.now() / 1000);
-      const claims = {
+      const claims = (app: 'WALLET' | 'RECOVERY', extra: Record<string, unknown> = {}) => ({
         platformId: 'mtw',
-        app: 'WALLET',
+        app,
         environment: 'local',
-        releaseId: 'wallet-local',
+        releaseId: `${app.toLowerCase()}-local`,
         manifestSha256: `0x${'ab'.repeat(32)}`,
         status: 'OK',
         observedAt: now - 30,
-        expiresAt: now + 600,
-      };
+        expiresAt: now + 270,
+        ...extra,
+      });
+      const recovery = attest(h.keys.monitor, claims('RECOVERY'));
       await expectRejected(
         await send(USD(10)),
-        { operationType: 'SEND', integrityAttestation: attest(h.keys.monitor, { ...claims, status: 'MISMATCH' }) },
-        'INTEGRITY_PAUSED',
+        { operationType: 'SEND', integrityAttestations: [attest(h.keys.monitor, claims('WALLET'))] },
+        'COOPERATION_PAUSED',
+        'RECOVERY:MISSING',
       );
       await expectRejected(
         await send(USD(10)),
-        { operationType: 'SEND', integrityAttestation: attest(h.keys.monitor, { ...claims, expiresAt: now - 1 }) },
-        'INTEGRITY_PAUSED',
+        { operationType: 'SEND', integrityAttestations: [attest(h.keys.issuer, claims('WALLET')), recovery] },
+        'COOPERATION_PAUSED',
+        'WALLET:MISSING',
       );
       await expectRejected(
         await send(USD(10)),
-        { operationType: 'SEND', integrityAttestation: attest(h.keys.issuer, claims) },
-        'INTEGRITY_PAUSED',
+        {
+          operationType: 'SEND',
+          integrityAttestations: [attest(h.keys.monitor, claims('WALLET', { expiresAt: now - 1 })), recovery],
+        },
+        'COOPERATION_PAUSED',
+        'WALLET:STALE',
       );
       await signAndMine(await send(USD(10)), {
         operationType: 'SEND',
-        integrityAttestation: attest(h.keys.monitor, claims),
+        integrityAttestations: [attest(h.keys.monitor, claims('WALLET')), recovery],
+      });
+      // MISMATCH de Recovery: pausa en el acto, y el OK anterior reenviado no la levanta.
+      await expectRejected(
+        await send(USD(10)),
+        {
+          operationType: 'SEND',
+          integrityAttestations: [
+            attest(h.keys.monitor, claims('WALLET')),
+            attest(h.keys.monitor, claims('RECOVERY', { status: 'MISMATCH', observedAt: now - 10 })),
+          ],
+        },
+        'COOPERATION_PAUSED',
+        'RECOVERY:MISMATCH',
+      );
+      await expectRejected(
+        await send(USD(10)),
+        { operationType: 'SEND', integrityAttestations: [attest(h.keys.monitor, claims('WALLET')), recovery] },
+        'COOPERATION_PAUSED',
+        'RECOVERY:MISMATCH',
+      );
+      // El monitor vuelve a atestar OK (posterior al MISMATCH): se reanuda.
+      await signAndMine(await send(USD(10)), {
+        operationType: 'SEND',
+        integrityAttestations: [
+          attest(h.keys.monitor, claims('WALLET', { observedAt: now - 5 })),
+          attest(h.keys.monitor, claims('RECOVERY', { observedAt: now - 5 })),
+        ],
       });
     } finally {
       await h.restart({ INTEGRITY_REQUIRED: 'false' });

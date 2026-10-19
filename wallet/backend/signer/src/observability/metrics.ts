@@ -10,6 +10,7 @@ export interface SignerMetrics {
   ready: Gauge;
   keys: Gauge<'status'>;
   keystoreAlarms: Counter<'alarm'>;
+  cooperationPaused: Counter<'reason'>;
 }
 
 export function createMetrics(options: { defaultMetrics?: boolean } = {}): SignerMetrics {
@@ -51,6 +52,12 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Signe
       name: 'mtw_signer_keystore_alarms_total',
       help: 'Alarmas del keystore (MAC inválido, archivo faltante o sobrante, fingerprint distinto, permisos).',
       labelNames: ['alarm'],
+      registers: [registry],
+    }),
+    cooperationPaused: new Counter({
+      name: 'mtw_signer_cooperation_paused_total',
+      help: 'Co-firmas rechazadas por la pausa de integridad (P20.T03), por app y motivo.',
+      labelNames: ['reason'],
       registers: [registry],
     }),
   };

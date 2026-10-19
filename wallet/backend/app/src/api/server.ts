@@ -22,6 +22,7 @@ import { registerRateLimit } from './plugins/rate-limit.ts';
 import { registerRequestContext } from './plugins/request-context.ts';
 import { registerSecurity } from './plugins/security.ts';
 import { healthRoutes } from './routes/health.ts';
+import { platformRoutes } from './routes/v1/platform.ts';
 import { authRoutes } from './routes/v1/auth.ts';
 import { balanceRoutes } from './routes/v1/balances.ts';
 import { transferRoutes } from './routes/v1/transfers.ts';
@@ -129,6 +130,12 @@ export async function buildListener(client: Client, deps: ApiDeps, extraRoutes?:
     prefix: API_PREFIX,
     version: deps.version,
     readiness: { db: deps.db, redis: deps.redis, rpc: deps.rpc },
+  });
+  await app.register(platformRoutes, {
+    prefix: API_PREFIX,
+    db: deps.db,
+    platformId: deps.config.platformId,
+    monitored: deps.config.integrity.monitorUrl !== undefined,
   });
   const csrfForSession = (sessionId: string) => csrfToken(config.secrets.csrfSecret, { kind: 'session', sessionId });
   const { account } = deps.services;

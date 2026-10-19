@@ -8,10 +8,10 @@ import type { Address } from '../../src/crypto/keccak.ts';
 import { p256Thumbprint, type P256Jwk } from '../../src/crypto/p256.ts';
 import {
   verifyChallengeCompletion,
-  verifyIntegrity,
   verifySignerKeyAttestation,
   type ChallengeExpectation,
 } from '../../src/policy/attestations.ts';
+import { IntegrityGate } from '../../src/policy/integrity.ts';
 import {
   SessionError,
   submissionCanonical,
@@ -203,29 +203,28 @@ describe('ChallengeCompletion', () => {
   });
 });
 
-describe('IntegrityAttestation', () => {
+describe('IntegrityAttestation (vector compartido)', () => {
   const t = tokenOf('IntegrityAttestation');
-  const a = t.claims as { observedAt: number; expiresAt: number };
-  const expected = {
-    platformId: 'mtw',
-    environment: 'staging',
-    app: 'WALLET' as const,
-    now: a.observedAt + 10,
-    clockSkewSeconds: 60,
-  };
-  it('vigente y OK', async () => {
-    expect(await verifyIntegrity(t.jws, keysOf(t), expected)).toBe(true);
+  const a = t.claims as { observedAt: number };
+  const context = { platformId: 'mtw', environment: 'staging', now: a.observedAt + 10, clockSkewSeconds: 60 };
+  it('la del vector vale para WALLET: sólo falta la de RECOVERY', async () => {
+    expect(await new IntegrityGate(keysOf(t)).decide([t.jws], context)).toEqual({
+      cooperate: false,
+      app: 'RECOVERY',
+      reason: 'MISSING',
+      degraded: [],
+    });
   });
-  it('ausente, vencida, de otra app o de otro entorno → pausa', async () => {
-    expect(await verifyIntegrity(undefined, keysOf(t), expected)).toBe(false);
-    expect(await verifyIntegrity(t.jws, keysOf(t), { ...expected, now: a.expiresAt })).toBe(false);
-    expect(await verifyIntegrity(t.jws, keysOf(t), { ...expected, app: 'RECOVERY' })).toBe(false);
-    expect(await verifyIntegrity(t.jws, keysOf(t), { ...expected, environment: 'production' })).toBe(false);
-  });
-  it('status MISMATCH firmado por el monitor → pausa', async () => {
-    const monitor = generateKeyPairSync('ed25519');
-    const mismatch = signJws({ ...t.claims, status: 'MISMATCH' }, monitor.privateKey, ed25519Kid(monitor.publicKey));
-    expect(await verifyIntegrity(mismatch, pinnedKeys(monitor.publicKey), expected)).toBe(false);
+  it('de otro entorno, de otra plataforma o con otra clave fijada no cuenta', async () => {
+    const other = pinnedKeys(generateKeyPairSync('ed25519').publicKey);
+    const cases: [PinnedKeys, typeof context][] = [
+      [keysOf(t), { ...context, environment: 'production' }],
+      [keysOf(t), { ...context, platformId: 'otra' }],
+      [other, context],
+    ];
+    for (const [keys, ctx] of cases) {
+      expect(await new IntegrityGate(keys).decide([t.jws], ctx)).toMatchObject({ app: 'WALLET', reason: 'MISSING' });
+    }
   });
 });
 

@@ -1,0 +1,7 @@
+# Política de supply chain del proyecto (igual que backend/app y backend/signer, docs/VERSIONS.md#supply-chain).
+saveExact: true
+strictPeerDependencies: true
+minimumReleaseAge: 10080
+strictDepBuilds: true
+# Ningún script de instalación de terceros (allowlist explícita y vacía).
+allowBuilds: {}
