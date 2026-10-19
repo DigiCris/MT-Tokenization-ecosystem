@@ -71,7 +71,7 @@ contract SeedLocal is Script {
     }
 
     /// @dev Destino de prueba en la whitelist de la Safe: SafeTx asistida firmada por U y S (las dos claves del seed) y
-    ///      ejecutada por el relayer del seed; después, warp de 24 h para que quede activo. Si ya está, no hace nada.
+    ///      transmitida por S (el Guard sólo acepta al ejecutor); después, warp de 24 h para que quede activo.
     function _whitelist(address safe, address whitelist, address destination, address u, address s) internal {
         if (IDestinationWhitelist(whitelist).isWhitelisted(safe, destination)) return;
         bytes memory data = abi.encodeCall(IDestinationWhitelist.addDestination, (destination));
@@ -81,7 +81,9 @@ contract SeedLocal is Script {
         bytes memory userSig = _sign("seed-user-key", hash);
         bytes memory executorSig = _sign("seed-executor-key", hash);
         bytes memory signatures = u < s ? bytes.concat(userSig, executorSig) : bytes.concat(executorSig, userSig);
-        vm.startBroadcast(LocalKeys.key("seed-relayer"));
+        // El Guard exige que la SafeTx asistida la transmita la S de la Safe ("S ejecuta", WrongExecutor).
+        LocalKeys.fund(s, 1 ether);
+        vm.startBroadcast(LocalKeys.key("seed-executor-key"));
         ISafe(safe)
             .execTransaction(whitelist, 0, data, Operation.Call, 0, 0, 0, address(0), payable(address(0)), signatures);
         vm.stopBroadcast();
