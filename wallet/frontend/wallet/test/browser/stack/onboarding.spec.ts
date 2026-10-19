@@ -1,7 +1,8 @@
 // P17.T05: onboarding de U en orden contra los servicios reales — conectar Drive (consentimiento respondido con un token
 // real de la cuenta de prueba) → step-up ONBOARDING con el código del email → U y Password U → confirmar 2 palabras →
-// sobre cifrado → subir a Drive y verificar (API real de Drive) → backup independiente (archivo y 17 palabras) →
-// registro OPAQUE y alta de U. El archivo descargado abre con la Password U mostrada y contiene la U registrada.
+// sobre cifrado → subir a Drive y verificar (API real de Drive) → backup independiente (archivo y 17 palabras, que
+// cuentan recién al reingresar 3 al azar) → registro OPAQUE y alta de U. El archivo descargado abre con la Password U
+// mostrada y contiene la U registrada.
 import { expect, test } from '@playwright/test';
 import { backupWordsToKey } from '../../../src/crypto/backup-words.ts';
 import { keysForEnvelope, openEnvelope, parseEnvelope, serializeEnvelope } from '../../../src/crypto/envelope.ts';
@@ -9,7 +10,13 @@ import { addressOf } from '../../../src/crypto/keys.ts';
 import { downloadEnvelope } from '../../../src/drive/backup.ts';
 import { answerGoogleConsent, removeEnvelopeBackup, testDrive } from './helpers/drive.ts';
 import { nodeArgon2, testWordlist, verifiedAccount } from './helpers/onboard.ts';
-import { backupToFile, completeStepUp, login, writeDownAndConfirmPassword } from './helpers/ui.ts';
+import {
+  backupToFile,
+  completeStepUp,
+  login,
+  writeDownAndConfirmBackupWords,
+  writeDownAndConfirmPassword,
+} from './helpers/ui.ts';
 
 test('onboarding de U: Drive → step-up → Password U → backups → registro', async ({ page }) => {
   const account = await verifiedAccount('onboarding');
@@ -29,14 +36,8 @@ test('onboarding de U: Drive → step-up → Password U → backups → registro
   await page.getByRole('button', { name: 'Subir a Drive y verificar' }).click();
   await expect(page.getByText('Sobre subido a Drive y verificado.')).toBeVisible();
   const file = await backupToFile(page);
-  await page.getByRole('button', { name: 'Mostrar las 17 palabras' }).click();
-  const backupItems = page.getByRole('list', { name: '17 palabras de la clave' }).locator('.words__word');
-  await expect(backupItems).toHaveCount(17);
-  const backupWords = await backupItems.allTextContents();
-  // Al confirmarlas, las palabras dejan de mostrarse (se muestran una sola vez).
-  await page.getByLabel(/Anoté las 17 palabras/).click();
-  await expect(page.getByText('Palabras anotadas.')).toBeVisible();
-  await expect(page.getByRole('list', { name: '17 palabras de la clave' })).toHaveCount(0);
+  // Al confirmar 3 palabras, las 17 dejan de mostrarse (se muestran sólo en este paso).
+  const backupWords = await writeDownAndConfirmBackupWords(page);
   await page.getByRole('button', { name: 'Continuar' }).click();
   await page.getByRole('button', { name: 'Registrar', exact: true }).click();
   // P18: después del registro sigue la activación de Recovery.
@@ -63,12 +64,14 @@ test('onboarding de U: Drive → step-up → Password U → backups → registro
     await page.getByRole('button', { name: 'Conectar Drive para verificar el backup' }).click();
     await expect(page).toHaveURL(/\/security$/);
     await page.getByRole('button', { name: 'Verificar el backup en Drive' }).click();
-    await expect(page.getByText('El backup en Drive está y coincide con tu sobre.')).toBeVisible();
+    // El estado es el de la última verificación y lleva su fecha y hora.
+    const ok = /^En la última verificación \(.*\d{2}:\d{2}\), el backup en Drive estaba y coincidía con tu sobre\.$/;
+    await expect(page.getByText(ok)).toBeVisible();
     expect(await removeEnvelopeBackup(serializeEnvelope(envelope))).toBe(1);
     await page.getByRole('button', { name: 'Verificar el backup en Drive' }).click();
-    await expect(page.getByText('Falta el backup en Drive: volvé a subirlo.')).toBeVisible();
+    await expect(page.getByText(/faltaba el backup en Drive: volvé a subirlo\.$/)).toBeVisible();
     await page.getByRole('button', { name: 'Volver a subir el sobre' }).click();
-    await expect(page.getByText('El backup en Drive está y coincide con tu sobre.')).toBeVisible();
+    await expect(page.getByText(ok)).toBeVisible();
   } finally {
     await removeEnvelopeBackup(serializeEnvelope(envelope));
   }
@@ -85,6 +88,6 @@ test('sin backup independiente no se puede seguir; Drive solo no alcanza', async
   await expect(page.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   await page.getByRole('button', { name: 'Mostrar QR' }).click();
   await expect(page.getByRole('img', { name: /QR del sobre cifrado/ }).first()).toBeVisible();
-  await page.getByLabel(/Guardé o imprimí el QR/).check();
+  await page.getByLabel(/^Guardé o imprimí (el QR|las \d+ partes del QR) fuera de este dispositivo/).check();
   await expect(page.getByRole('button', { name: 'Continuar' })).toBeEnabled();
 });

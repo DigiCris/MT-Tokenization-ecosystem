@@ -58,7 +58,7 @@ export function AccountPasswordNotice() {
   return (
     <Notice tone="warning">
       <strong>Esta contraseña NO es tu Password U.</strong> La contraseña de cuenta sólo abre tu sesión; la Password U
-      (5 palabras) protege tu clave y nunca sale de este navegador. Restablecer la contraseña de cuenta no recupera la
+      (5 palabras) protege tu clave y nunca se envía a MT Wallet. Restablecer la contraseña de cuenta no recupera la
       Password U.
     </Notice>
   );

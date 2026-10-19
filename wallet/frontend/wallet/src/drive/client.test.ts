@@ -8,6 +8,7 @@ import { utf8 } from '../crypto/bytes.ts';
 import { parseEnvelope, serializeEnvelope } from '../crypto/envelope.ts';
 import {
   backupHealth,
+  backupHealthText,
   checkBackupHealth,
   downloadEnvelope,
   envelopeSha256,
@@ -170,6 +171,25 @@ describe('backup del sobre en Drive [F-DRV-05]', () => {
     await expect(downloadEnvelope(drive.client)).rejects.toThrow();
     forgetBackupHealth();
     expect(backupHealth()).toEqual({ status: 'unknown', checkedAt: null, due: false });
+  });
+
+  it('el estado que ve el usuario es el de la última verificación, con su fecha y hora', () => {
+    const checkedAt = Date.parse('2026-10-19T15:42:00Z');
+    expect(backupHealthText({ status: 'ok', checkedAt, due: false }, 'UTC')).toBe(
+      'En la última verificación (19/10/2026, 15:42), el backup en Drive estaba y coincidía con tu sobre.',
+    );
+    expect(backupHealthText({ status: 'ok', checkedAt, due: true }, 'UTC')).toMatch(
+      /coincidía con tu sobre\. Toca verificarlo de nuevo\.$/,
+    );
+    expect(backupHealthText({ status: 'missing', checkedAt, due: true }, 'UTC')).toBe(
+      'En la última verificación (19/10/2026, 15:42) faltaba el backup en Drive: volvé a subirlo.',
+    );
+    expect(backupHealthText({ status: 'mismatch', checkedAt: null, due: true })).toBe(
+      'En la última verificación, el backup en Drive no coincidía con tu sobre actual: volvé a subirlo.',
+    );
+    expect(backupHealthText({ status: 'unknown', checkedAt: null, due: false })).toBe(
+      'Todavía no se verificó el backup en Drive en este dispositivo.',
+    );
   });
 
   it('sin backup en Drive, downloadEnvelope devuelve null; un archivo que no es UTF-8/JSON no es un sobre', async () => {

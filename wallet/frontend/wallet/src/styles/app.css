@@ -199,8 +199,13 @@ code {
   background: var(--mtw-color-brand-strong);
 }
 
+/* Deshabilitado porque falta una acción del usuario: no se puede usar todavía. Mientras carga (aria-busy), progreso. */
 .button:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.button:disabled[aria-busy='true'] {
   cursor: progress;
 }
 
@@ -412,7 +417,26 @@ textarea.field__input {
 
 .steps__item--done {
   border-color: var(--mtw-color-brand);
+  background: var(--mtw-color-brand-soft);
   color: var(--mtw-color-brand-strong);
+}
+
+/* El paso actual (aria-current="step") se distingue de los completados: relleno y en negrita. */
+.steps__item--current {
+  border-color: var(--mtw-color-brand);
+  background: var(--mtw-color-brand);
+  color: var(--mtw-color-surface);
+  font-weight: var(--mtw-font-weight-bold);
+}
+
+.advanced > summary {
+  cursor: pointer;
+  font-weight: var(--mtw-font-weight-medium);
+  color: var(--mtw-color-brand-strong);
+}
+
+.advanced[open] > summary {
+  margin-bottom: var(--mtw-space-3);
 }
 
 .words {

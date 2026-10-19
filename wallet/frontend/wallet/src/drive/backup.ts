@@ -65,6 +65,31 @@ export function backupHealth(now: number = Date.now()): HealthState {
 }
 
 /**
+ * El estado para el usuario: es el resultado de la última verificación (no de ahora), así que lleva su fecha y hora (en
+ * el huso del dispositivo salvo que se pase otro).
+ */
+export function backupHealthText(health: HealthState, timeZone?: string): string {
+  if (health.status === 'unknown') return 'Todavía no se verificó el backup en Drive en este dispositivo.';
+  const when =
+    health.checkedAt === null
+      ? 'En la última verificación'
+      : `En la última verificación (${new Date(health.checkedAt).toLocaleString('es-AR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hourCycle: 'h23',
+          ...(timeZone === undefined ? {} : { timeZone }),
+        })})`;
+  if (health.status === 'missing') return `${when} faltaba el backup en Drive: volvé a subirlo.`;
+  if (health.status === 'mismatch') {
+    return `${when}, el backup en Drive no coincidía con tu sobre actual: volvé a subirlo.`;
+  }
+  return `${when}, el backup en Drive estaba y coincidía con tu sobre.${health.due ? ' Toca verificarlo de nuevo.' : ''}`;
+}
+
+/**
  * [F-DRV-05]: con Drive conectado, verifica que `U.enc.json` siga ahí y coincida (SHA-256) con el sobre esperado (el
  * del dispositivo o, si se pasa, el desbloqueado). Si falta o no coincide, queda la alerta persistente hasta re-subirlo.
  */

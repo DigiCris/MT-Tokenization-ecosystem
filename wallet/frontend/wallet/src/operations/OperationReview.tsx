@@ -120,7 +120,7 @@ export function OperationReview({
                 required
               />
               {confirmCode.error && <Notice tone="error">{confirmCode.error}</Notice>}
-              <button type="submit" className="button" disabled={confirmCode.pending}>
+              <button type="submit" className="button" disabled={confirmCode.pending} aria-busy={confirmCode.pending}>
                 Confirmar código
               </button>
             </form>
@@ -131,6 +131,7 @@ export function OperationReview({
                 type="button"
                 className="button"
                 disabled={requestCode.pending}
+                aria-busy={requestCode.pending}
                 onClick={() => void requestCode.run()}
               >
                 Pedir el código
@@ -142,7 +143,13 @@ export function OperationReview({
       {!blocked && (!needsTwoFactor || passed) && !done && (
         <>
           {sign.error && <Notice tone="error">{sign.error}</Notice>}
-          <button type="button" className="button" disabled={sign.pending} onClick={() => void sign.run()}>
+          <button
+            type="button"
+            className="button"
+            disabled={sign.pending}
+            aria-busy={sign.pending}
+            onClick={() => void sign.run()}
+          >
             {sign.pending ? 'Firmando y enviando…' : confirmLabel}
           </button>
         </>
@@ -152,6 +159,7 @@ export function OperationReview({
           type="button"
           className="button button--ghost"
           disabled={cancel.pending}
+          aria-busy={cancel.pending}
           onClick={() => void cancel.run()}
         >
           {cancel.pending ? 'Cancelando…' : 'Cancelar'}

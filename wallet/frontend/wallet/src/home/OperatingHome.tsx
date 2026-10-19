@@ -86,7 +86,7 @@ export function OperatingHome({ ctx }: { ctx: OperatingWallet }) {
           <AddressText address={wallet.safe} copy />
         </p>
         <p role="status" className="muted">
-          Wallet desbloqueada (clave U <code>{unlocked.envelope.keyAddress}</code>).
+          Wallet desbloqueada (dirección de tu clave U: <code>{unlocked.envelope.keyAddress}</code>).
         </p>
         <QrCanvas text={wallet.safe} label="QR de la dirección de tu Safe para recibir" size={200} />
         <Notice tone="warning">

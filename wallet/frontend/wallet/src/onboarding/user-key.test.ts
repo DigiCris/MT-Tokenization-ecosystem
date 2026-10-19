@@ -3,7 +3,7 @@
 // la dirección, el KDF público y los backups; AuthSecret_U se borra. Sin backup independiente no se sigue.
 import { describe, expect, it, vi } from 'vitest';
 import wordlistText from '../vendor/mtw-wordlist-v1.txt?raw';
-import { keysForEnvelope, openEnvelope } from '../crypto/envelope.ts';
+import { keysForEnvelope, openEnvelope, parseEnvelope, serializeEnvelope } from '../crypto/envelope.ts';
 import type { Argon2 } from '../crypto/kdf.ts';
 import { addressOf, isValidPrivateKey } from '../crypto/keys.ts';
 import { parseWordlist } from '../crypto/wordlist.ts';
@@ -16,9 +16,11 @@ import { opaqueTestServer } from '../unlock/opaque-server.test-helper.ts';
 import {
   draftUserKey,
   hasIndependentBackup,
+  LOST_U_AND_R_WARNING,
   ONBOARDING_KEY_VERSION,
   registerNewUserKey,
   sealUserKey,
+  userKeyMemoryKiB,
 } from './user-key.ts';
 
 const wordlist = parseWordlist(wordlistText);
@@ -86,6 +88,32 @@ describe('alta de U', () => {
     expect(sealed.authSecret.every((b) => b === 0)).toBe(true);
     const login = await startLogin(secret);
     expect(login.finish(server.startLogin(WALLET, 1, login.startLoginRequest).loginResponse)).not.toBeNull();
+  });
+
+  it('[F-KEY-03] por defecto 64 MiB; con la opción avanzada para computadoras, 128 MiB y el sobre abre igual', async () => {
+    expect(userKeyMemoryKiB(false)).toBe(65_536);
+    expect(userKeyMemoryKiB(true)).toBe(131_072);
+    const draft = draftUserKey(wordlist);
+    const password = draft.passwordWords.join(' ');
+    const sealed = await sealUserKey(
+      draft,
+      password,
+      { platformId: 'mt-test', walletId: WALLET, keyVersion: ONBOARDING_KEY_VERSION },
+      argon2,
+      userKeyMemoryKiB(true),
+    );
+    expect(sealed.envelope.kdf).toMatchObject({ alg: 'argon2id', memoryKiB: 131_072, iterations: 3, parallelism: 4 });
+    // El parámetro viaja en el sobre (y en el registro, que el backend acepta: 64 o 128 MiB).
+    const reopened = parseEnvelope(JSON.parse(serializeEnvelope(sealed.envelope)));
+    const keys = await keysForEnvelope(reopened, password, argon2);
+    expect(addressOf(await openEnvelope(reopened, keys.encryptionKey))).toBe(draft.address);
+  });
+
+  it('el aviso de U y R perdidas a la vez dice la consecuencia y por qué se piden los backups', () => {
+    expect(LOST_U_AND_R_WARNING).toContain('Tu Safe necesita 2 de sus 3 firmas.');
+    expect(LOST_U_AND_R_WARNING).toContain('nadie —tampoco MT Wallet— puede mover tus fondos');
+    expect(LOST_U_AND_R_WARNING).toContain('con la clave de la plataforma sola no alcanza');
+    expect(LOST_U_AND_R_WARNING).toContain('Por eso pedimos backups de las dos.');
   });
 
   it('hace falta un backup independiente de la plataforma (Drive solo no alcanza)', () => {

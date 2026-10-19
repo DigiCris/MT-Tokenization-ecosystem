@@ -140,7 +140,7 @@ function Send({ ctx }: { ctx: OperatingWallet }) {
           </div>
           <Field label="Monto" name="amount" inputMode="decimal" autoComplete="off" placeholder="0,00" required />
           {prepare.error && <Notice tone="error">{prepare.error}</Notice>}
-          <button type="submit" className="button" disabled={prepare.pending}>
+          <button type="submit" className="button" disabled={prepare.pending} aria-busy={prepare.pending}>
             {prepare.pending ? 'Preparando…' : 'Revisar el envío'}
           </button>
           <p className="muted">

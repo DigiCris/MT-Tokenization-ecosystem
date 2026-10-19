@@ -1,5 +1,6 @@
 // [F-KEY-02]: MTW-WORDLIST-V1 se verifica antes de usarse (también cuando se carga del propio origin) y la Password U
-// son 5 palabras uniformes de la lista con confirmación de 2 posiciones al azar.
+// son 5 palabras uniformes de la lista con confirmación de 2 posiciones al azar; las 17 palabras de un backup se
+// confirman con posiciones al azar entre las 17 ([F-KEY-06].4).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import wordlistText from '../vendor/mtw-wordlist-v1.txt?raw';
 import { utf8 } from './bytes.ts';
@@ -10,6 +11,7 @@ import {
   generatePassword,
   normalizePassword,
   PASSWORD_WORDS,
+  randomPositions,
 } from './password.ts';
 import { loadWordlist, parseWordlist, verifyWordlist, WORDLIST_SIZE } from './wordlist.ts';
 
@@ -89,5 +91,29 @@ describe('Password U', () => {
       expect(a).toBeLessThan(b);
       expect(b).toBeLessThan(PASSWORD_WORDS);
     }
+  });
+});
+
+describe('confirmación de las 17 palabras de un backup', () => {
+  it('posiciones distintas, ordenadas y uniformes: descarta los bytes que sesgarían el módulo y las repetidas', () => {
+    // 17 palabras: 256 % 17 = 1, así que el byte 255 se descarta; 18 % 17 = 1 repite la posición 1.
+    const sequence = [Uint8Array.of(255, 1, 18), Uint8Array.of(33, 4, 200)];
+    let call = 0;
+    const positions = randomPositions(17, 3, () => sequence[call++] ?? Uint8Array.of(0, 0, 0));
+    expect(call).toBe(2);
+    expect(positions).toEqual([1, 4, 16]);
+    expect(randomPositions(17, 3, () => Uint8Array.of(16, 0, 5))).toEqual([0, 5, 16]);
+    for (let i = 0; i < 50; i++) {
+      const drawn = randomPositions(17, 3);
+      expect(new Set(drawn).size).toBe(3);
+      expect(drawn).toEqual([...drawn].sort((a, b) => a - b));
+      expect(drawn.every((p) => p >= 0 && p < 17)).toBe(true);
+    }
+  });
+
+  it('rechaza pedidos imposibles', () => {
+    expect(() => randomPositions(17, 0)).toThrow(RangeError);
+    expect(() => randomPositions(3, 4)).toThrow(RangeError);
+    expect(() => randomPositions(257, 1)).toThrow(RangeError);
   });
 });

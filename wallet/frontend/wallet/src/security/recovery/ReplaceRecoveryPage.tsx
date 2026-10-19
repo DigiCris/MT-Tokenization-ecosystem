@@ -33,7 +33,7 @@ function ReplaceRecovery({ ctx }: { ctx: OperatingWallet }) {
       setReview(
         await verifiedOrReleased(api, unlocked.platform, [operation], async () => {
           if (!isAddressEqual(rotation.newKey, confirmed.recoveryKey)) {
-            throw new Error('La plataforma propone otra clave R que la que confirmaste.');
+            throw new Error('La plataforma propone otra dirección de R que la que confirmaste.');
           }
           return verifyPrepared(operation, {
             safe: wallet.safe,
@@ -58,7 +58,8 @@ function ReplaceRecovery({ ctx }: { ctx: OperatingWallet }) {
       <section className="card stack" aria-labelledby="recovery-status-title">
         <h1 id="recovery-status-title">Tu clave de recuperación (R)</h1>
         <p>
-          R vigente en tu Safe (leída del Guard en Base): <AddressText address={state.roles.recoveryKey} />
+          Dirección de la R vigente en tu Safe (leída del Guard en Base):{' '}
+          <AddressText address={state.roles.recoveryKey} />
         </p>
         {!replacing && !proposed && (
           <button
@@ -84,10 +85,16 @@ function ReplaceRecovery({ ctx }: { ctx: OperatingWallet }) {
         <section className="card stack" aria-labelledby="replace-title">
           <h2 id="replace-title">Proponer el reemplazo</h2>
           <p>
-            Nueva clave R confirmada: <AddressText address={confirmed.recoveryKey} />
+            Dirección de tu nueva clave R (confirmada): <AddressText address={confirmed.recoveryKey} />
           </p>
           {propose.error && <Notice tone="error">{propose.error}</Notice>}
-          <button type="button" className="button" disabled={propose.pending} onClick={() => void propose.run()}>
+          <button
+            type="button"
+            className="button"
+            disabled={propose.pending}
+            aria-busy={propose.pending}
+            onClick={() => void propose.run()}
+          >
             Revisar la propuesta
           </button>
         </section>

@@ -1,9 +1,11 @@
-// Activar Recovery (P18.T01 en el onboarding y P18.T09.a para reemplazar R): pide el enrollment, muestra el link y el QR
-// para la app Recovery, espera a que Recovery envíe R y la confirma con el link de regreso (otra pestaña, por
-// BroadcastChannel) o con la comparación manual de la dirección completa (sus 10 grupos). Recién con R confirmada sigue.
-// Si el link de regreso trae otra R que la que informa la plataforma, ese pedido se aborta: no se puede confirmar a mano
-// y hay que generar uno nuevo.
-import { useCallback, useEffect, useState } from 'react';
+// Activar Recovery (P18.T01 en el onboarding y P18.T09.a para reemplazar R): pide el enrollment, muestra el QR (lo
+// recomendado: R en otro dispositivo) y el enlace para la app Recovery, espera a que Recovery informe la dirección de R y
+// la confirma con el enlace de regreso (otra pestaña, por BroadcastChannel) o con la comparación manual de la dirección
+// completa (sus 10 grupos, copiados de la pantalla de Recovery). La dirección que informa el backend no se muestra hasta
+// que coincide: si se mostrara, se la podría copiar de acá y la comparación no detectaría una R sustituida
+// ([F-LNK-02]). La comparación manual tiene 3 intentos; si el enlace de regreso trae otra R o se agotan los intentos,
+// ese pedido se aborta (ya no se confirma por ningún camino) y hay que generar uno nuevo. Recién con R confirmada sigue.
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Address } from 'viem';
 import type { PlatformAuth } from '../api/request-signature.ts';
 import type { CreatedEnrollment, RecoveryEnrollment } from '../api/wallet-api.ts';
@@ -14,9 +16,12 @@ import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { QrCanvas } from '../ui/QrCanvas.tsx';
 import { describeError } from '../ui/errors.ts';
 import {
-  addressGroups,
-  confirmManually,
+  ADDRESS_GROUPS,
+  compareManually,
   confirmWithReturnLink,
+  MANUAL_ABORT_TEXT,
+  MANUAL_MISMATCH_TEXT,
+  manualRetryText,
   RecoveryKeyMismatchError,
   recoveryEnrollLink,
   submittedRecoveryKey,
@@ -26,37 +31,58 @@ import { listenForReturn } from './return-channel.ts';
 export interface ConfirmedRecovery {
   recoveryKey: Address;
   enrollmentId: string;
-  /** null si se confirmó desde el link de regreso en otra pestaña que retomó la creación. */
+  /** null si se confirmó desde el enlace de regreso en otra pestaña que retomó la creación. */
   enrollmentNonce: `0x${string}` | null;
 }
+
+const emptyGroups = () => Array.from({ length: ADDRESS_GROUPS }, () => '');
 
 export function RecoveryActivationStep({
   walletId,
   platform,
   onConfirmed,
   intro,
+  warning,
 }: {
   walletId: string;
   platform: PlatformAuth;
   onConfirmed: (confirmed: ConfirmedRecovery) => void;
   intro: string;
+  /** Aviso destacado debajo de la introducción (p. ej. qué pasa si se pierden U y R). */
+  warning?: string;
 }) {
   const [created, setCreated] = useState<CreatedEnrollment | null>(null);
   const [enrollment, setEnrollment] = useState<RecoveryEnrollment | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
-  const [typed, setTyped] = useState<string[]>(() => Array.from({ length: 10 }, () => ''));
+  const [typed, setTyped] = useState<string[]>(emptyGroups);
   const [linkError, setLinkError] = useState<string | null>(null);
-  const [aborted, setAborted] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [mismatch, setMismatch] = useState<{ groups: number[]; attemptsLeft: number } | null>(null);
+  const [confirmed, setConfirmed] = useState<Address | null>(null);
+  // Pedido abortado: el motivo se muestra y ningún camino (enlace de regreso o comparación manual) lo confirma.
+  const [abortReason, setAbortReason] = useState<string | null>(null);
+  const aborted = useRef(false);
+
+  const abort = useCallback((reason: string) => {
+    aborted.current = true;
+    setAbortReason(reason);
+  }, []);
 
   const create = useAsyncAction(
     useCallback(async () => {
-      // Sin pedido mientras se crea el nuevo: el polling y el link de regreso del anterior se cortan (sus respuestas
+      // Sin pedido mientras se crea el nuevo: el polling y el enlace de regreso del anterior se cortan (sus respuestas
       // tardías se descartan) y no vuelven a poblar el paso con su R.
       setCreated(null);
       setEnrollment(null);
-      setAborted(false);
+      aborted.current = false;
+      setAbortReason(null);
       setLinkError(null);
-      setTyped(Array.from({ length: 10 }, () => ''));
+      setManualError(null);
+      setFailedAttempts(0);
+      setMismatch(null);
+      setConfirmed(null);
+      setTyped(emptyGroups());
       setCreated(await api.createRecoveryEnrollment(platform, walletId));
     }, [platform, walletId]),
   );
@@ -75,7 +101,7 @@ export function RecoveryActivationStep({
     }
   })();
 
-  // Espera a que Recovery envíe R (o a que el pedido venza).
+  // Espera a que Recovery informe R (o a que el pedido venza).
   useEffect(() => {
     if (created === null || reported !== null) return undefined;
     let live = true;
@@ -101,13 +127,13 @@ export function RecoveryActivationStep({
 
   const finish = useCallback(
     (recoveryKey: Address) => {
-      if (!created) return;
+      if (!created || aborted.current) return;
       onConfirmed({ recoveryKey, enrollmentId: created.enrollmentId, enrollmentNonce: created.nonce });
     },
     [created, onConfirmed],
   );
 
-  // Link de regreso abierto en otra pestaña (sólo el del pedido vigente: lo que llega tarde de otro se descarta).
+  // Enlace de regreso abierto en otra pestaña (sólo el del pedido vigente: lo que llega tarde de otro se descarta).
   useEffect(() => {
     if (created === null) return undefined;
     const alive = { current: true };
@@ -123,23 +149,23 @@ export function RecoveryActivationStep({
         })
         .catch((error: unknown) => {
           if (!alive.current) return;
-          if (error instanceof RecoveryKeyMismatchError) setAborted(true);
-          setLinkError(describeError(error));
+          if (error instanceof RecoveryKeyMismatchError) abort(describeError(error));
+          else setLinkError(describeError(error));
         });
     });
     return () => {
       alive.current = false;
       stop();
     };
-  }, [created, finish]);
+  }, [created, finish, abort]);
 
-  const [manualError, setManualError] = useState<string | null>(null);
   const link = created ? recoveryEnrollLink(appConfig.recoveryOrigin, created) : null;
 
   return (
     <article className="card stack" aria-labelledby="recovery-title">
       <h2 id="recovery-title">Activar Recovery</h2>
       <p>{intro}</p>
+      {warning && <Notice tone="warning">{warning}</Notice>}
       {create.error && (
         <>
           <Notice tone="error">{create.error}</Notice>
@@ -148,19 +174,23 @@ export function RecoveryActivationStep({
           </button>
         </>
       )}
-      {link && reported === null && (
+      {link && reported === null && abortReason === null && (
         <div className="stack">
           <p>
-            Abrí este link en la app Recovery (en este dispositivo o en otro, con el QR). El link no viaja a ningún
-            servidor: lleva el pedido en el fragmento.
-          </p>
-          <p>
-            <a href={link} target="_blank" rel="noopener noreferrer" data-recovery-link={link}>
-              Abrir la app Recovery
-            </a>
+            Te recomendamos crear tu clave R en otro dispositivo, como tu celular: escaneá este QR con su cámara y se
+            abre la app Recovery con este pedido. Si no tenés otro dispositivo, abrí el enlace en este.
           </p>
           <QrCanvas text={link} label="QR para abrir la app Recovery con este pedido" />
-          <Notice>Esperando que Recovery envíe tu clave R…</Notice>
+          <p>
+            <a href={link} target="_blank" rel="noopener noreferrer" data-recovery-link={link}>
+              Abrir la app Recovery en este dispositivo
+            </a>
+          </p>
+          <p className="muted">
+            Los datos del pedido van en la parte del enlace que sigue al «#», y el navegador no la envía a ningún
+            servidor. Si mandás el enlace por chat o por email, sí pasa por esos servicios: por eso conviene el QR.
+          </p>
+          <Notice>Esperando que Recovery informe la dirección de tu clave R…</Notice>
           {pollError && <Notice tone="error">{pollError}</Notice>}
           {enrollment?.status === 'EXPIRED' && (
             <button type="button" className="button" onClick={() => void create.run()}>
@@ -169,57 +199,96 @@ export function RecoveryActivationStep({
           )}
         </div>
       )}
-      {reported !== null && aborted && (
+      {abortReason !== null && (
         <div className="stack">
-          <Notice tone="error">{linkError}</Notice>
+          <Notice tone="error">{abortReason}</Notice>
           <button type="button" className="button" onClick={() => void create.run()}>
             Generar un pedido nuevo
           </button>
         </div>
       )}
-      {reported !== null && !aborted && (
+      {reported !== null && abortReason === null && confirmed !== null && (
         <div className="stack">
-          <p>Recovery envió esta clave R:</p>
+          <Notice tone="success">
+            Dirección de tu clave R (confirmada): <AddressText address={confirmed} />
+          </Notice>
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              finish(confirmed);
+            }}
+          >
+            Continuar
+          </button>
+        </div>
+      )}
+      {reported !== null && abortReason === null && confirmed === null && (
+        <div className="stack">
           <p>
-            <AddressText address={reported} />
+            Recovery ya informó la dirección de tu clave R. Si abriste el enlace de regreso de Recovery, se confirma
+            sola.
           </p>
           <p>
-            Si abriste el link de regreso de Recovery se confirma sola. Si no, copiá de la pantalla de Recovery la
-            dirección completa, grupo por grupo (cada grupo son 4 caracteres):
+            Si no, copiá la dirección que muestra la app Recovery, no la de esta pantalla. Sirve para comprobar que
+            nadie la cambió en el camino; da igual mayúsculas o minúsculas. Va en {ADDRESS_GROUPS} grupos de 4
+            caracteres, como la muestra Recovery.
           </p>
           {linkError && <Notice tone="error">{linkError}</Notice>}
           <form
             className="stack"
             onSubmit={(event) => {
               event.preventDefault();
-              if (!enrollment) return;
+              if (!enrollment || aborted.current) return;
               try {
                 setManualError(null);
-                finish(confirmManually(enrollment, typed));
+                const attempt = compareManually(enrollment, typed, failedAttempts);
+                if (attempt.match) {
+                  setMismatch(null);
+                  setConfirmed(attempt.recoveryKey);
+                  return;
+                }
+                setFailedAttempts((failed) => failed + 1);
+                if (attempt.attemptsLeft === 0) {
+                  abort(MANUAL_ABORT_TEXT);
+                  return;
+                }
+                setMismatch({ groups: attempt.mismatchedGroups, attemptsLeft: attempt.attemptsLeft });
               } catch (error) {
                 setManualError(describeError(error));
               }
             }}
           >
-            {addressGroups(reported).map((_, i) => (
+            {typed.map((value, i) => (
               <Field
                 key={i}
-                label={`Grupo ${String(i + 1)} de ${String(addressGroups(reported).length)}`}
+                label={`Grupo ${String(i + 1)} de ${String(ADDRESS_GROUPS)}`}
                 name={`group-${String(i)}`}
                 autoComplete="off"
+                autoCapitalize="none"
                 spellCheck={false}
                 maxLength={4}
                 required
-                value={typed[i] ?? ''}
+                aria-invalid={mismatch?.groups.includes(i) === true ? true : undefined}
+                value={value}
                 onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setTyped((current) => current.map((v, j) => (j === i ? value : v)));
+                  const next = event.currentTarget.value;
+                  setTyped((current) => current.map((v, j) => (j === i ? next : v)));
                 }}
               />
             ))}
+            {mismatch && (
+              <div className="stack" data-mismatch-groups={mismatch.groups.map((g) => g + 1).join(',')}>
+                <Notice tone="error">{MANUAL_MISMATCH_TEXT}</Notice>
+                <p>{manualRetryText(mismatch.groups, mismatch.attemptsLeft)}</p>
+                <button type="button" className="button button--secondary" onClick={() => void create.run()}>
+                  Generar un pedido nuevo
+                </button>
+              </div>
+            )}
             {manualError && <Notice tone="error">{manualError}</Notice>}
             <button type="submit" className="button">
-              Confirmar la clave R
+              Confirmar la dirección de R
             </button>
           </form>
         </div>

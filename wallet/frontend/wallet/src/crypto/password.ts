@@ -1,6 +1,7 @@
 // Password U ([F-KEY-02]): la genera la app como 5 palabras uniformes de MTW-WORDLIST-V1 (16 bits cada una, ≈ 80 bits:
 // la lista tiene exactamente 2^16 palabras, así que cada índice sale directo de 2 bytes aleatorios, sin sesgo). El
-// usuario la anota y la confirma reingresando 2 palabras al azar. Nunca se envía al backend ni se persiste.
+// usuario la anota y la confirma reingresando 2 palabras al azar. Nunca se envía al backend ni se persiste. Las 17
+// palabras de un backup se confirman igual, con posiciones al azar entre las 17.
 import { randomBytes, zeroize } from './bytes.ts';
 import type { Wordlist } from './wordlist.ts';
 
@@ -42,6 +43,29 @@ export function confirmationPositions(random: (length: number) => Uint8Array = r
     const b = y % PASSWORD_WORDS;
     if (a !== b) return a < b ? [a, b] : [b, a];
   }
+}
+
+/**
+ * `count` posiciones distintas (0-based) entre `total` palabras, uniformes y ordenadas, para confirmar las 17 palabras
+ * de un backup ([F-KEY-06].4): se descartan los bytes desde el mayor múltiplo de `total` que entra en un byte.
+ */
+export function randomPositions(
+  total: number,
+  count: number,
+  random: (length: number) => Uint8Array = randomBytes,
+): number[] {
+  if (!Number.isSafeInteger(total) || !Number.isSafeInteger(count) || total > 256 || count < 1 || count > total) {
+    throw new RangeError('posiciones fuera de rango');
+  }
+  const limit = 256 - (256 % total);
+  const chosen = new Set<number>();
+  while (chosen.size < count) {
+    for (const byte of random(count)) {
+      if (byte < limit) chosen.add(byte % total);
+      if (chosen.size === count) break;
+    }
+  }
+  return [...chosen].sort((a, b) => a - b);
 }
 
 export function confirmationMatches(

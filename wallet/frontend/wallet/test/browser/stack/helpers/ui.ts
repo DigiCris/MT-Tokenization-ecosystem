@@ -14,18 +14,55 @@ export async function login(page: Page, email: string, password: string): Promis
   await expect(page).not.toHaveURL(/\/login$/);
 }
 
-/** Lee las 5 palabras de la Password U que muestra la app y confirma las 2 que pide. */
-export async function writeDownAndConfirmPassword(page: Page): Promise<string[]> {
+/**
+ * Lee las 5 palabras de la Password U que muestra la app y confirma las 2 que pide (`onConfirmScreen` corre con la
+ * pantalla de confirmación a la vista, antes de completarla).
+ */
+export async function writeDownAndConfirmPassword(
+  page: Page,
+  onConfirmScreen?: () => Promise<void>,
+): Promise<string[]> {
   const shown = page.locator('ol[aria-label="Password U"] .words__word');
   await expect(shown).toHaveCount(5, { timeout: 60_000 });
   const words = await shown.allTextContents();
   await page.getByLabel(/Anoté las 5 palabras/).check();
   await page.getByRole('button', { name: 'Ya las anoté' }).click();
+  await expect(page.getByRole('heading', { name: 'Confirmá tu Password U' })).toBeVisible();
+  await onConfirmScreen?.();
   for (const label of await page.getByLabel(/^Palabra \d$/).all()) {
     const position = Number((await label.getAttribute('name'))?.replace('word-', ''));
     await label.fill(words[position] ?? '');
   }
   await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
+  return words;
+}
+
+/**
+ * Las 17 palabras del paso de backups: las muestra, las "anota" (las lee de la pantalla), confirma las 3 que pide la app
+ * y devuelve las 17. Los hooks corren con las palabras a la vista y con la confirmación a la vista, antes de completarla.
+ */
+export async function writeDownAndConfirmBackupWords(
+  page: Page,
+  hooks: { onShown?: () => Promise<void>; onConfirmScreen?: () => Promise<void> } = {},
+): Promise<string[]> {
+  await page.getByRole('button', { name: 'Mostrar las 17 palabras' }).click();
+  const list = page.getByRole('list', { name: '17 palabras de la clave' });
+  await expect(list.locator('.words__word')).toHaveCount(17);
+  const words = await list.locator('.words__word').allTextContents();
+  await hooks.onShown?.();
+  await page.getByLabel(/Anoté las 17 palabras/).check();
+  await page.getByRole('button', { name: 'Ya las anoté' }).click();
+  const fields = page.getByLabel(/^Palabra \d+ de 17$/);
+  await expect(fields).toHaveCount(3);
+  await hooks.onConfirmScreen?.();
+  for (const field of await fields.all()) {
+    const position = Number((await field.getAttribute('name'))?.replace('backup-word-', ''));
+    await field.fill(words[position] ?? '');
+  }
+  await page.getByRole('button', { name: 'Confirmar las palabras' }).click();
+  await expect(page.getByText('Palabras anotadas y confirmadas.')).toBeVisible();
+  // Confirmadas, dejan de mostrarse (y de estar en memoria).
+  await expect(list).toHaveCount(0);
   return words;
 }
 

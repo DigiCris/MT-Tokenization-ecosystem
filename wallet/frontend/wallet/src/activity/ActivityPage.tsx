@@ -61,6 +61,7 @@ function Activity({ ctx }: { ctx: OperatingWallet }) {
           type="button"
           className="button button--secondary"
           disabled={more.pending}
+          aria-busy={more.pending}
           onClick={() => void more.run()}
         >
           Ver más

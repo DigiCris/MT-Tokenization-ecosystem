@@ -19,8 +19,13 @@ export function ForgotPasswordPage() {
     <section className="stack narrow" aria-labelledby="forgot-title">
       <h1 id="forgot-title">Olvidé mi contraseña de cuenta</h1>
       <Notice tone="warning">
-        Esto restablece sólo la contraseña de cuenta. <strong>No recupera tu Password U</strong>: si la perdiste, usá
-        &quot;Perdí mi Password U&quot; desde Seguridad.
+        Esto restablece sólo la contraseña de cuenta. <strong>No recupera tu Password U</strong>. Si la perdiste y tenés
+        las 17 palabras de tu clave,{' '}
+        <Link to="/restore" reloadDocument>
+          restaurá tu clave
+        </Link>{' '}
+        con ellas y elegí una Password U nueva. Si no las tenés, usá «Perdí mi Password U» desde Seguridad: para eso
+        necesitás tu clave R.
       </Notice>
       {sent ? (
         <Notice tone="success">
@@ -40,7 +45,7 @@ export function ForgotPasswordPage() {
               {submit.error}
             </p>
           )}
-          <button type="submit" className="button" disabled={submit.pending}>
+          <button type="submit" className="button" disabled={submit.pending} aria-busy={submit.pending}>
             Mandarme el enlace
           </button>
         </form>
@@ -120,7 +125,7 @@ export function ResetPasswordPage() {
               {submit.error}
             </p>
           )}
-          <button type="submit" className="button" disabled={submit.pending}>
+          <button type="submit" className="button" disabled={submit.pending} aria-busy={submit.pending}>
             Guardar contraseña
           </button>
         </form>
@@ -164,6 +169,7 @@ export function AccountUnlockPage() {
           type="button"
           className="button button--ghost"
           disabled={request.pending}
+          aria-busy={request.pending}
           onClick={(event) => {
             const form = event.currentTarget.form;
             if (form) void request.run(formValue(form, 'email').trim());
@@ -187,7 +193,7 @@ export function AccountUnlockPage() {
             {unlock.error}
           </p>
         )}
-        <button type="submit" className="button" disabled={unlock.pending}>
+        <button type="submit" className="button" disabled={unlock.pending} aria-busy={unlock.pending}>
           Desbloquear
         </button>
       </form>

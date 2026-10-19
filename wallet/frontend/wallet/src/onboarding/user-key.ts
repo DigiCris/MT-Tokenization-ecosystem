@@ -1,7 +1,8 @@
 // Alta de U en el onboarding ([F-KEY-01..06], P17.T05): U nueva (CSPRNG, escalar válido), Password U de 5 palabras,
-// sobre cifrado con AAD de la wallet y, una vez hechos los backups, registro OPAQUE (la entrada es AuthSecret_U, nunca la
-// Password U) y alta de U en el backend (PENDING hasta que la Safe quede ACTIVE). U y la Password U nunca salen del
-// navegador; el backend recibe la dirección, los parámetros públicos del KDF, qué backups se confirmaron y el registro.
+// sobre cifrado con AAD de la wallet (Argon2id de 64 MiB o, como opción avanzada para computadoras, 128 MiB) y, una vez
+// hechos los backups, registro OPAQUE (la entrada es AuthSecret_U, nunca la Password U) y alta de U en el backend
+// (PENDING hasta que la Safe quede ACTIVE). U y la Password U nunca salen del navegador; el backend recibe la dirección,
+// los parámetros públicos del KDF, qué backups se confirmaron y el registro.
 import type { Address } from 'viem';
 import { randomBytes, toBase64Url, zeroize } from '../crypto/bytes.ts';
 import { sealKey, type KeyEnvelope } from '../crypto/envelope.ts';
@@ -12,9 +13,25 @@ import type { Wordlist } from '../crypto/wordlist.ts';
 import type { PlatformAuth } from '../api/request-signature.ts';
 import type { StorageFlags, WalletApi } from '../api/wallet-api.ts';
 import { registerOpaque } from '../unlock/opaque.ts';
+import { ARGON2_BASELINE, ARGON2_DESKTOP_MEMORY_KIB } from '../workers/argon2-protocol.ts';
 
 /** Versión de U en el onboarding (la primera de la wallet). */
 export const ONBOARDING_KEY_VERSION = 1;
+
+/**
+ * Qué pasa si se pierden U y R a la vez (RR-14): la Safe es 2-de-3 y S sola nunca alcanza el umbral. Se muestra donde se
+ * piden los backups y al activar Recovery.
+ */
+export const LOST_U_AND_R_WARNING =
+  'Tu Safe necesita 2 de sus 3 firmas. Si perdés tu clave U (Password U y backups) y también tu clave R, nadie —tampoco MT Wallet— puede mover tus fondos: con la clave de la plataforma sola no alcanza. Por eso pedimos backups de las dos.';
+
+/**
+ * Memoria de Argon2id del sobre de U ([F-KEY-03]): el baseline de 64 MiB o, con la opción avanzada para computadoras
+ * (desactivada por defecto), 128 MiB. Un sobre de 128 MiB puede no abrir en celulares.
+ */
+export function userKeyMemoryKiB(desktopOption: boolean): number {
+  return desktopOption ? ARGON2_DESKTOP_MEMORY_KIB : ARGON2_BASELINE.memoryKiB;
+}
 
 export interface DraftKey {
   key: Uint8Array;

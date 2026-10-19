@@ -1,8 +1,9 @@
 // Onboarding (P17.T05 y P18.T01/T02), en este orden: conectar Drive (la redirección recarga la app, por eso va antes
 // de generar nada) → step-up ONBOARDING y wallet en creación → generar U → mostrar la Password U → confirmar 2 palabras
-// → sobre cifrado → subir a Drive y verificar → backup independiente obligatorio → registro OPAQUE y alta de U →
-// activar Recovery y confirmar R → crear la Safe con la verificación propia. Si la pestaña se recargó con U ya
-// registrada, se retoma abriendo el sobre con la Password U (U sólo se descifra para firmar la autorización).
+// → sobre cifrado (64 MiB, o 128 MiB como opción avanzada para computadoras, [F-KEY-03]) → subir a Drive y verificar →
+// backup independiente obligatorio → registro OPAQUE y alta de U → activar Recovery y confirmar R → crear la Safe con
+// la verificación propia. Si la pestaña se recargó con U ya registrada, se retoma abriendo el sobre con la Password U
+// (U sólo se descifra para firmar la autorización). El indicador de pasos marca el actual con aria-current.
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { isAddressEqual, type Address } from 'viem';
@@ -28,15 +29,20 @@ import { BackupStep } from './BackupStep.tsx';
 import { ConfirmPasswordWords, ShowPasswordWords } from './PasswordWords.tsx';
 import {
   draftUserKey,
+  LOST_U_AND_R_WARNING,
   ONBOARDING_KEY_VERSION,
   registerNewUserKey,
   sealUserKey,
+  userKeyMemoryKiB,
   type DraftKey,
   type SealedKey,
 } from './user-key.ts';
 
 type Step =
   'drive' | 'step-up' | 'key' | 'confirm' | 'seal' | 'backups' | 'register' | 'resume' | 'recovery' | 'safe' | 'done';
+
+// "Recovery" es el nombre de la app; "Backups", el término que usa toda la app.
+const STEP_LABELS = ['Drive', 'Identidad', 'Password U', 'Backups', 'Registro', 'Recovery', 'Safe'] as const;
 
 /** U ya registrada: sobre y K_U (no exportable) en memoria; U se descifra sólo para firmar. */
 interface UserKeyInMemory {
@@ -59,6 +65,9 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
   const [draft, setDraft] = useState<DraftKey | null>(null);
   const [sealed, setSealed] = useState<SealedKey | null>(null);
   const [remember, setRemember] = useState(true);
+  // [F-KEY-03]: opción avanzada de 128 MiB, desactivada por defecto y ofrecida sólo en computadoras (puntero fino).
+  const [desktop] = useState(() => window.matchMedia('(pointer: fine)').matches);
+  const [desktopKdf, setDesktopKdf] = useState(false);
   const [flags, setFlags] = useState<StorageFlags | null>(null);
 
   useEffect(
@@ -90,11 +99,12 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
         draft.passwordWords.join(' '),
         { platformId: appConfig.platformId, walletId: current.id, keyVersion: ONBOARDING_KEY_VERSION },
         argon2,
+        userKeyMemoryKiB(desktopKdf),
       );
       if (remember) await rememberEnvelope(result.envelope);
       setSealed(result);
       setStep('backups');
-    }, [current, draft, remember]),
+    }, [current, draft, remember, desktopKdf]),
   );
 
   const register = useAsyncAction(
@@ -175,12 +185,23 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
     );
   }
 
+  const currentStep = stepIndex(step);
   return (
     <section className="stack narrow" aria-labelledby="onboarding-title">
       <h1 id="onboarding-title">Crear tu wallet</h1>
       <ol className="steps" aria-label="Pasos">
-        {(['Drive', 'Identidad', 'Password U', 'Backups', 'Registro', 'Recovery', 'Safe'] as const).map((label, i) => (
-          <li key={label} className={stepIndex(step) >= i ? 'steps__item steps__item--done' : 'steps__item'}>
+        {STEP_LABELS.map((label, i) => (
+          <li
+            key={label}
+            className={
+              i < currentStep
+                ? 'steps__item steps__item--done'
+                : i === currentStep
+                  ? 'steps__item steps__item--current'
+                  : 'steps__item'
+            }
+            aria-current={i === currentStep ? 'step' : undefined}
+          >
             {label}
           </li>
         ))}
@@ -190,9 +211,11 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
         <article className="card stack" aria-labelledby="drive-title">
           <h2 id="drive-title">Conectá Google Drive</h2>
           <p>
-            El sobre cifrado de tu clave se guarda en la carpeta privada de MT Wallet en tu Drive (backup adicional). Se
-            conecta primero porque la autorización de Google recarga la página.
+            El sobre cifrado de tu clave se guarda en una carpeta privada de MT Wallet en tu Drive. Esa carpeta no
+            aparece entre tus archivos de Drive y se borra si desconectás MT Wallet de tu Drive o borrás sus datos
+            ocultos: por eso es un backup adicional y después te pedimos otro que no dependa de Drive.
           </p>
+          <p>Se conecta primero porque la autorización de Google recarga la página.</p>
           {connectError && <Notice tone="error">{connectError.message}</Notice>}
           <button
             type="button"
@@ -213,6 +236,10 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
           >
             Seguir sin Drive
           </button>
+          <p className="muted">
+            Sin Drive seguís igual: en el paso de backups guardás el archivo cifrado, el QR o las 17 palabras, y más
+            adelante podés subir el sobre a Drive desde Seguridad.
+          </p>
         </article>
       )}
 
@@ -261,10 +288,38 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
                 setRemember(event.currentTarget.checked);
               }}
             />
-            Recordar el sobre cifrado en este dispositivo (nunca la clave ni la Password U)
+            Recordar el sobre cifrado en este dispositivo (nunca la clave ni la Password U). Si la computadora es
+            compartida, desmarcalo.
           </label>
+          {desktop && (
+            <details className="advanced">
+              <summary>Opciones avanzadas</summary>
+              <div className="stack">
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={desktopKdf}
+                    onChange={(event) => {
+                      setDesktopKdf(event.currentTarget.checked);
+                    }}
+                  />
+                  Cifrado reforzado para computadoras: 128 MiB de memoria en lugar de 64 MiB
+                </label>
+                <Notice tone="warning">
+                  Un sobre cifrado con 128 MiB puede no abrir en celulares: si alguna vez vas a usar tu wallet en un
+                  celular, dejá esta opción desmarcada.
+                </Notice>
+              </div>
+            </details>
+          )}
           {seal.error && <Notice tone="error">{seal.error}</Notice>}
-          <button type="button" className="button" disabled={seal.pending} onClick={() => void seal.run()}>
+          <button
+            type="button"
+            className="button"
+            disabled={seal.pending}
+            aria-busy={seal.pending}
+            onClick={() => void seal.run()}
+          >
             {seal.pending ? 'Cifrando…' : 'Cifrar'}
           </button>
         </article>
@@ -283,8 +338,8 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
         <article className="card stack" aria-labelledby="register-key-title">
           <h2 id="register-key-title">Registrar tu clave</h2>
           <p>
-            La plataforma recibe sólo la dirección de tu clave, los parámetros públicos del cifrado y qué backups
-            hiciste.
+            La plataforma recibe sólo la dirección de tu clave, los parámetros públicos del cifrado, qué backups hiciste
+            y un registro que le permite comprobar tu Password U sin conocerla.
           </p>
           {stepUp && isLive(stepUp.session) ? (
             <>
@@ -293,6 +348,7 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
                 type="button"
                 className="button"
                 disabled={register.pending}
+                aria-busy={register.pending}
                 onClick={() => void register.run(stepUp, flags)}
               >
                 {register.pending ? 'Registrando…' : 'Registrar'}
@@ -327,7 +383,7 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
             >
               <Field label="Password U" name="passwordU" type="password" autoComplete="off" required />
               {resume.error && <Notice tone="error">{resume.error}</Notice>}
-              <button type="submit" className="button" disabled={resume.pending}>
+              <button type="submit" className="button" disabled={resume.pending} aria-busy={resume.pending}>
                 {resume.pending ? 'Abriendo el sobre…' : 'Abrir el sobre'}
               </button>
             </form>
@@ -340,19 +396,20 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
         (live ? (
           returned ? (
             <article className="card stack" aria-labelledby="return-title">
-              <h2 id="return-title">Confirmar tu clave R</h2>
+              <h2 id="return-title">Confirmar la dirección de tu clave R</h2>
               <p>
-                Volviste desde la app Recovery: se confirma la clave R de ese pedido contra la que informa la
-                plataforma.
+                Volviste desde la app Recovery: se compara la dirección de la clave R que trae el enlace con la que
+                recibió la plataforma para ese pedido.
               </p>
               {fromReturn.error && <Notice tone="error">{fromReturn.error}</Notice>}
               <button
                 type="button"
                 className="button"
                 disabled={fromReturn.pending}
+                aria-busy={fromReturn.pending}
                 onClick={() => void fromReturn.run()}
               >
-                Confirmar la clave R
+                Confirmar la dirección de R
               </button>
             </article>
           ) : (
@@ -360,6 +417,7 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
               walletId={wallet.id}
               platform={stepUp.platform}
               intro="Tu clave de recuperación (R) vive en la app Recovery, separada de esta. Con U y R podés recuperar tu wallet sin la plataforma."
+              warning={LOST_U_AND_R_WARNING}
               onConfirmed={(confirmed) => {
                 setRecovery(confirmed);
                 setStep('safe');
@@ -393,7 +451,8 @@ export function OnboardingPage({ returned }: { returned?: { enrollmentId: string
         <article className="card stack" aria-labelledby="done-title">
           <h2 id="done-title">Tu Safe está operativa</h2>
           <Notice tone="success">
-            Tu Safe quedó creada y verificada por esta app en Base, con tus claves U y R y la de la plataforma (S).
+            Tu Safe quedó creada en Base y esta app la verificó. Sus firmantes son tus claves U y R, más la de la
+            plataforma (S).
           </Notice>
           <p>
             <Link to="/">Ir al inicio</Link>

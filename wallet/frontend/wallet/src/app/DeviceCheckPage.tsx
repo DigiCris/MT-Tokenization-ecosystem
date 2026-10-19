@@ -61,7 +61,13 @@ export function DeviceCheckPage() {
           {ARGON2_BASELINE.memoryKiB / 1024} MiB, {ARGON2_BASELINE.iterations} pasadas, paralelismo{' '}
           {ARGON2_BASELINE.parallelism}).
         </p>
-        <button type="button" className="button" onClick={measure} disabled={measurement.state === 'running'}>
+        <button
+          type="button"
+          className="button"
+          onClick={measure}
+          disabled={measurement.state === 'running'}
+          aria-busy={measurement.state === 'running'}
+        >
           {measurement.state === 'running' ? 'Midiendo…' : 'Medir derivación'}
         </button>
         <p

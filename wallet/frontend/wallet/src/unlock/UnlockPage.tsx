@@ -97,7 +97,7 @@ export function UnlockPage() {
               {unlock.error}
             </p>
           )}
-          <button type="submit" className="button" disabled={unlock.pending}>
+          <button type="submit" className="button" disabled={unlock.pending} aria-busy={unlock.pending}>
             {unlock.pending ? 'Desbloqueando…' : 'Desbloquear'}
           </button>
           <button

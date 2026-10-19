@@ -240,6 +240,7 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
             type="button"
             className="button"
             disabled={attested !== 'ok' || proposeExecutor.pending}
+            aria-busy={proposeExecutor.pending}
             onClick={() => void proposeExecutor.run()}
           >
             Revisar y firmar la propuesta
@@ -302,6 +303,7 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
                       type="button"
                       className="button button--secondary"
                       disabled={cancel.pending}
+                      aria-busy={cancel.pending}
                       onClick={() => void cancel.run(p, 'relay')}
                     >
                       Cancelar con mi firma
@@ -310,6 +312,7 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
                       type="button"
                       className="button button--ghost"
                       disabled={cancel.pending}
+                      aria-busy={cancel.pending}
                       onClick={() => void cancel.run(p, 'export')}
                     >
                       Exportar la firma de cancelación
@@ -319,6 +322,7 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
                         type="button"
                         className="button"
                         disabled={execute.pending}
+                        aria-busy={execute.pending}
                         onClick={() => void execute.run(p)}
                       >
                         Ejecutar

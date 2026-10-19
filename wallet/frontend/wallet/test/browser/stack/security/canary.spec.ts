@@ -10,7 +10,14 @@ import { deriveKeys } from '../../../../src/crypto/kdf.ts';
 import { answerGoogleConsent, driveTestToken, removeEnvelopeBackup } from '../helpers/drive.ts';
 import { activeWallet, nodeArgon2, testWordlist, verifiedAccount } from '../helpers/onboard.ts';
 import { serializeEnvelope } from '../../../../src/crypto/envelope.ts';
-import { backupToFile, completeStepUp, login, unlockWithFile, writeDownAndConfirmPassword } from '../helpers/ui.ts';
+import {
+  backupToFile,
+  completeStepUp,
+  login,
+  unlockWithFile,
+  writeDownAndConfirmBackupWords,
+  writeDownAndConfirmPassword,
+} from '../helpers/ui.ts';
 
 interface Captured {
   url: string;
@@ -118,13 +125,8 @@ test('onboarding con Drive: U, Password U, AuthSecret_U y las 17 palabras no sal
   await page.getByRole('button', { name: 'Subir a Drive y verificar' }).click();
   await expect(page.getByText('Sobre subido a Drive y verificado.')).toBeVisible();
   const file = await backupToFile(page);
-  await page.getByRole('button', { name: 'Mostrar las 17 palabras' }).click();
-  const backupItems = page.getByRole('list', { name: '17 palabras de la clave' }).locator('.words__word');
-  await expect(backupItems).toHaveCount(17);
-  const backupWords = await backupItems.allTextContents();
-  // Al confirmarlas, las palabras dejan de mostrarse (se muestran una sola vez).
-  await page.getByLabel(/Anoté las 17 palabras/).click();
-  await expect(page.getByText('Palabras anotadas.')).toBeVisible();
+  // Al confirmar 3 de ellas (tipeadas en la página), las palabras dejan de mostrarse y tampoco salen del navegador.
+  const backupWords = await writeDownAndConfirmBackupWords(page);
   await page.getByRole('button', { name: 'Continuar' }).click();
   await page.getByRole('button', { name: 'Registrar', exact: true }).click();
   // Registrada la clave, el onboarding sigue con la activación de Recovery (P18).

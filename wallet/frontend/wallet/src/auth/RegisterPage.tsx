@@ -66,7 +66,7 @@ export function RegisterPage() {
             {submit.error}
           </p>
         )}
-        <button type="submit" className="button" disabled={submit.pending}>
+        <button type="submit" className="button" disabled={submit.pending} aria-busy={submit.pending}>
           {submit.pending ? 'Creando…' : 'Crear cuenta'}
         </button>
       </form>

@@ -57,3 +57,17 @@ export async function finishStepUp(api: WalletApi, pending: PendingStepUp, codes
 export function isLive(session: PlatformSessionView, now: number = Date.now()): boolean {
   return Date.parse(session.expiresAt) - now > 30_000;
 }
+
+/**
+ * Cuándo vence el código del step-up: la hora que informa el backend en `expiresAt` (el plazo lo fija el backend, no la
+ * app), en el huso del dispositivo salvo que se pase otro.
+ */
+export function codeExpiryText(expiresAt: string, timeZone?: string): string {
+  const time = new Date(expiresAt).toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    ...(timeZone === undefined ? {} : { timeZone }),
+  });
+  return `Vence a las ${time}.`;
+}

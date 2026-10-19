@@ -1,7 +1,8 @@
 // Crear la Safe (P18.T02): con U registrada y R confirmada, la plataforma asigna S y propone la Safe; la app verifica
 // todo por su cuenta (atestación de S, dirección calculada con sus contratos fijados, typed data exacto), U firma la
 // autorización propia, se despliega y la Safe se muestra operativa sólo si la verificación propia por el RPC del
-// frontend da todo bien.
+// frontend da todo bien. Antes de firmar se muestran las direcciones de la Safe, U, R y S, qué autoriza la firma (2 de 3
+// firmas para mover fondos, el gas lo paga la plataforma) y que no se manden fondos hasta que figure operativa.
 import { useCallback, useState } from 'react';
 import type { Address } from 'viem';
 import type { PlatformAuth } from '../api/request-signature.ts';
@@ -28,7 +29,7 @@ const PROGRESS_TEXT: Record<Progress, string> = {
   idle: '',
   signing: 'Firmando la autorización con tu clave U…',
   deploying: 'Desplegando tu Safe en Base…',
-  verifying: 'Verificando tu Safe por tu cuenta (V9 §16)…',
+  verifying: 'Verificando tu Safe en Base desde esta app…',
   active: 'Tu Safe está operativa.',
 };
 
@@ -107,7 +108,13 @@ export function SafeCreationStep({
             antes de que firmes.
           </p>
           {prepare.error && <Notice tone="error">{prepare.error}</Notice>}
-          <button type="button" className="button" disabled={prepare.pending} onClick={() => void prepare.run()}>
+          <button
+            type="button"
+            className="button"
+            disabled={prepare.pending}
+            aria-busy={prepare.pending}
+            onClick={() => void prepare.run()}
+          >
             {prepare.pending ? 'Preparando…' : 'Preparar la Safe'}
           </button>
         </>
@@ -119,19 +126,30 @@ export function SafeCreationStep({
             <dd>
               <AddressText address={plan.expectedSafe} />
             </dd>
-            <dt>Tu clave U</dt>
+            <dt>Dirección de tu clave U</dt>
             <dd>
               <AddressText address={plan.keys.userKey} />
             </dd>
-            <dt>Tu clave R (confirmada)</dt>
+            <dt>Dirección de tu clave R (confirmada)</dt>
             <dd>
               <AddressText address={plan.keys.recoveryKey} />
             </dd>
-            <dt>Clave de la plataforma S (atestada por el signer, shard {plan.shardId})</dt>
+            <dt>Dirección de la clave de la plataforma (S, verificada por esta app)</dt>
             <dd>
               <AddressText address={plan.keys.executor} />
             </dd>
           </dl>
+          <p>
+            Tu Safe va a tener tres firmantes: tus claves U y R, más la de la plataforma (S). Para mover fondos hacen
+            falta 2 de esas 3 firmas.
+          </p>
+          <p>
+            Al firmar, tu clave U autoriza crear esta Safe con exactamente estas direcciones. El gas del despliegue lo
+            paga la plataforma.
+          </p>
+          <Notice tone="warning">
+            No mandes fondos a la dirección de tu Safe hasta que esta app la muestre como operativa.
+          </Notice>
           {progress !== 'idle' && (
             <p role="status" data-progress={progress}>
               {PROGRESS_TEXT[progress]}
@@ -150,7 +168,13 @@ export function SafeCreationStep({
           )}
           {create.error && <Notice tone="error">{create.error}</Notice>}
           {progress !== 'active' && (
-            <button type="button" className="button" disabled={create.pending} onClick={() => void create.run()}>
+            <button
+              type="button"
+              className="button"
+              disabled={create.pending}
+              aria-busy={create.pending}
+              onClick={() => void create.run()}
+            >
               {create.pending ? 'Creando…' : 'Firmar y crear la Safe'}
             </button>
           )}

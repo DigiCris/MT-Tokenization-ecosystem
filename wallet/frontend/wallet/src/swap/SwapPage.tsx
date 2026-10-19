@@ -144,7 +144,12 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
           ))}
         </fieldset>
         {quoteAction.error && <Notice tone="error">{quoteAction.error}</Notice>}
-        <button type="submit" className="button button--secondary" disabled={quoteAction.pending}>
+        <button
+          type="submit"
+          className="button button--secondary"
+          disabled={quoteAction.pending}
+          aria-busy={quoteAction.pending}
+        >
           Cotizar
         </button>
       </form>
@@ -163,7 +168,13 @@ function Swap({ ctx }: { ctx: OperatingWallet }) {
             <dd>{formatAmount(minOutFor(quote.own, quote.slippageBps), 6)}</dd>
           </dl>
           {prepare.error && <Notice tone="error">{prepare.error}</Notice>}
-          <button type="button" className="button" disabled={prepare.pending} onClick={() => void prepare.run()}>
+          <button
+            type="button"
+            className="button"
+            disabled={prepare.pending}
+            aria-busy={prepare.pending}
+            onClick={() => void prepare.run()}
+          >
             {prepare.pending ? 'Preparando…' : 'Preparar el swap'}
           </button>
         </div>

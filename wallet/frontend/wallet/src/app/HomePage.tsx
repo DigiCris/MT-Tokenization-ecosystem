@@ -71,9 +71,9 @@ export function HomePage() {
         <p className="eyebrow">Base · USDC · USDT</p>
         <h1 id="home-title">Tu wallet en Base, con tu clave en tu dispositivo</h1>
         <p className="lead">
-          MT Wallet es una Safe con tres firmantes: tu clave de usuario (U), que nunca sale de este navegador; tu clave
-          de recuperación (R), que vive en la app Recovery; y la clave de la plataforma (S), que sólo coopera dentro de
-          las reglas on-chain. Ninguna parte puede mover tus fondos sola.
+          MT Wallet es una Safe con tres firmantes: tu clave de usuario (U), que nunca se envía a la plataforma; tu
+          clave de recuperación (R), que vive en la app Recovery; y la clave de la plataforma (S), que sólo coopera
+          dentro de las reglas on-chain. Ninguna parte puede mover tus fondos sola.
         </p>
         <ul className="facts">
           <li>U se cifra en tu dispositivo con tu Password U y sólo se descifra para firmar.</li>

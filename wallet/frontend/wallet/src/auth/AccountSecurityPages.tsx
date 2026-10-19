@@ -73,6 +73,7 @@ export function SessionsPage() {
                 type="button"
                 className="button button--ghost"
                 disabled={revoke.pending}
+                aria-busy={revoke.pending}
                 onClick={() => void revoke.run(session)}
               >
                 {session.current ? 'Cerrar esta sesión' : 'Revocar'}
@@ -81,7 +82,13 @@ export function SessionsPage() {
           ))}
         </ul>
       )}
-      <button type="button" className="button" disabled={revokeOthers.pending} onClick={() => void revokeOthers.run()}>
+      <button
+        type="button"
+        className="button"
+        disabled={revokeOthers.pending}
+        aria-busy={revokeOthers.pending}
+        onClick={() => void revokeOthers.run()}
+      >
         Cerrar todas las demás sesiones
       </button>
       {revokeOthers.error && <Notice tone="error">{revokeOthers.error}</Notice>}
@@ -181,7 +188,12 @@ export function TotpPage() {
               {disable.error}
             </p>
           )}
-          <button type="submit" className="button button--danger" disabled={disable.pending}>
+          <button
+            type="submit"
+            className="button button--danger"
+            disabled={disable.pending}
+            aria-busy={disable.pending}
+          >
             Desactivar verificación en dos pasos
           </button>
         </form>
@@ -192,7 +204,13 @@ export function TotpPage() {
             autenticación al iniciar sesión y en los pasos sensibles.
           </p>
           {start.error && <Notice tone="error">{start.error}</Notice>}
-          <button type="button" className="button" disabled={start.pending} onClick={() => void start.run()}>
+          <button
+            type="button"
+            className="button"
+            disabled={start.pending}
+            aria-busy={start.pending}
+            onClick={() => void start.run()}
+          >
             Configurar
           </button>
         </article>
@@ -223,7 +241,7 @@ export function TotpPage() {
               {enable.error}
             </p>
           )}
-          <button type="submit" className="button" disabled={enable.pending}>
+          <button type="submit" className="button" disabled={enable.pending} aria-busy={enable.pending}>
             Activar
           </button>
         </form>

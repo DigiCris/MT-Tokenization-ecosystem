@@ -5,7 +5,14 @@ import type { StepUpScope } from '../api/wallet-api.ts';
 import { api } from '../app/services.ts';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { useSession } from './context.tsx';
-import { finishStepUp, startStepUp, type PendingStepUp, type StepUpCodes, type StepUpSession } from './step-up.ts';
+import {
+  codeExpiryText,
+  finishStepUp,
+  startStepUp,
+  type PendingStepUp,
+  type StepUpCodes,
+  type StepUpSession,
+} from './step-up.ts';
 
 const PURPOSE: Record<StepUpScope, string> = {
   ONBOARDING: 'crear tu wallet',
@@ -50,11 +57,21 @@ export function StepUpForm({
   return (
     <article className="card stack" aria-labelledby={`step-up-${scope}`}>
       <h2 id={`step-up-${scope}`}>Confirmá que sos vos</h2>
-      <p>Para {PURPOSE[scope]} te mandamos un código de 8 dígitos a tu email.</p>
+      <p>
+        {pending === null
+          ? `Para ${PURPOSE[scope]} te vamos a mandar un código de 8 dígitos a tu email.`
+          : `Para ${PURPOSE[scope]} ingresá el código de 8 dígitos que te mandamos a tu email.`}
+      </p>
       {pending === null ? (
         <>
           {request.error && <Notice tone="error">{request.error}</Notice>}
-          <button type="button" className="button" disabled={request.pending} onClick={() => void request.run()}>
+          <button
+            type="button"
+            className="button"
+            disabled={request.pending}
+            aria-busy={request.pending}
+            onClick={() => void request.run()}
+          >
             {request.pending ? 'Enviando…' : 'Mandarme el código'}
           </button>
         </>
@@ -66,7 +83,7 @@ export function StepUpForm({
             void complete.run(event.currentTarget);
           }}
         >
-          <Notice>Te mandamos el código. Vence en 15 minutos.</Notice>
+          <Notice>Te mandamos el código. {codeExpiryText(pending.expiresAt)}</Notice>
           <Field
             label="Código del email"
             name="code"
@@ -90,13 +107,14 @@ export function StepUpForm({
               {complete.error}
             </p>
           )}
-          <button type="submit" className="button" disabled={complete.pending}>
+          <button type="submit" className="button" disabled={complete.pending} aria-busy={complete.pending}>
             {complete.pending ? 'Confirmando…' : 'Confirmar'}
           </button>
           <button
             type="button"
             className="button button--ghost"
             disabled={request.pending}
+            aria-busy={request.pending}
             onClick={() => void request.run()}
           >
             Mandarme otro código

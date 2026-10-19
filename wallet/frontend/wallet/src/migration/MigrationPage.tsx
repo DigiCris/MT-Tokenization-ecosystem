@@ -122,7 +122,7 @@ export function MigrationPage() {
               >
                 <Field label="Password U" name="passwordU" type="password" autoComplete="off" required />
                 {unlock.error && <Notice tone="error">{unlock.error}</Notice>}
-                <button type="submit" className="button" disabled={unlock.pending}>
+                <button type="submit" className="button" disabled={unlock.pending} aria-busy={unlock.pending}>
                   Desbloquear la wallet que se migra
                 </button>
               </form>
@@ -132,7 +132,13 @@ export function MigrationPage() {
         {old && !plan && !done && (
           <div className="stack">
             {prepare.error && <Notice tone="error">{prepare.error}</Notice>}
-            <button type="button" className="button" disabled={prepare.pending} onClick={() => void prepare.run()}>
+            <button
+              type="button"
+              className="button"
+              disabled={prepare.pending}
+              aria-busy={prepare.pending}
+              onClick={() => void prepare.run()}
+            >
               {prepare.pending ? 'Verificando la Safe destino…' : 'Preparar y verificar la migración'}
             </button>
           </div>

@@ -1,6 +1,7 @@
 // Cambio de Password U [F-KEY-08] y "perdí mi Password U" (P17.T07). El cambio exige la wallet desbloqueada (OPERATIONS):
 // Password U nueva → sobre nuevo de la misma U → Drive y archivo → registro OPAQUE nuevo (el anterior se retira). Si se
-// perdió la Password U: step-up U_REPLACEMENT → U' con su Password U' y backups → KeyAcceptance → handoff a Recovery.
+// perdió la Password U: con las 17 palabras se restaura la misma U en /restore ([F-KEY-10](c), sin R ni timelock); si
+// no, step-up U_REPLACEMENT → U' con su Password U' y backups → KeyAcceptance → handoff a Recovery (necesita R).
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { StorageFlags } from '../../api/wallet-api.ts';
@@ -199,12 +200,22 @@ export function LostPasswordUPage() {
       {step === 'intro' && (
         <article className="card stack">
           <p>
-            Sin la Password U no se puede usar tu clave actual. Vas a crear una clave U nueva (con su Password U y sus
-            backups) y tu clave de recuperación R va a proponer el reemplazo desde la app Recovery. El cambio se ejecuta
-            después de 48 horas y durante ese tiempo se puede cancelar.
+            Si tenés las 17 palabras de tu clave, no necesitás esto:{' '}
+            <Link to="/restore" reloadDocument>
+              restaurá tu clave con las 17 palabras
+            </Link>{' '}
+            y elegí una Password U nueva, sin usar tu clave R y sin esperar 48 horas.
+          </p>
+          <p>
+            Si no las tenés, sin la Password U tu clave actual no se puede usar. Vas a crear una clave U nueva (con su
+            Password U y sus backups) y tu clave de recuperación R va a proponer el reemplazo desde la app Recovery. El
+            cambio se ejecuta después de 48 horas: te avisamos por email y en la app, y si no fuiste vos, cancelalo en{' '}
+            <Link to="/security/rotations">Seguridad → Rotaciones</Link>.
           </p>
           <Notice tone="warning">
-            Hacé esto sólo si de verdad perdiste la Password U: si la recordás, cambiala desde Seguridad.
+            Hacé esto sólo si de verdad perdiste la Password U: si la recordás, cambiala desde Seguridad. Y necesitás tu
+            clave R: si también la perdiste, nadie puede reemplazar U, porque tu Safe necesita 2 de sus 3 firmas y con
+            la clave de la plataforma sola no alcanza.
           </Notice>
           <DriveFirst returnTo="/security/lost-password-u" />
           <button

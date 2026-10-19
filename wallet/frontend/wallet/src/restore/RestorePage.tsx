@@ -123,14 +123,14 @@ function RestoreFromEnvelope() {
             setRemember(event.currentTarget.checked);
           }}
         />
-        Recordar el sobre cifrado en este dispositivo
+        Recordar el sobre cifrado en este dispositivo. Si la computadora es compartida, desmarcalo.
       </label>
       {unlock.error && (
         <p className="form__error" role="alert">
           {unlock.error}
         </p>
       )}
-      <button type="submit" className="button" disabled={unlock.pending}>
+      <button type="submit" className="button" disabled={unlock.pending} aria-busy={unlock.pending}>
         {unlock.pending ? 'Desbloqueando…' : 'Restaurar y desbloquear'}
       </button>
     </form>
@@ -234,7 +234,7 @@ function RestoreFromWords({
               {check.error}
             </p>
           )}
-          <button type="submit" className="button" disabled={check.pending}>
+          <button type="submit" className="button" disabled={check.pending} aria-busy={check.pending}>
             {check.pending ? 'Verificando…' : 'Verificar palabras'}
           </button>
         </form>

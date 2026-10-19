@@ -188,7 +188,7 @@ export function SovereignPage() {
             >
               <Field label="Password U" name="passwordU" type="password" autoComplete="off" required />
               {openKey.error && <Notice tone="error">{openKey.error}</Notice>}
-              <button type="submit" className="button" disabled={openKey.pending}>
+              <button type="submit" className="button" disabled={openKey.pending} aria-busy={openKey.pending}>
                 {openKey.pending ? 'Abriendo…' : 'Abrir mi clave U en este navegador'}
               </button>
             </form>
@@ -225,7 +225,13 @@ export function SovereignPage() {
           ) : (
             <>
               {sign.error && <Notice tone="error">{sign.error}</Notice>}
-              <button type="button" className="button" disabled={sign.pending} onClick={() => void sign.run()}>
+              <button
+                type="button"
+                className="button"
+                disabled={sign.pending}
+                aria-busy={sign.pending}
+                onClick={() => void sign.run()}
+              >
                 Firmar con tu clave U
               </button>
             </>

@@ -133,6 +133,7 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
                 type="button"
                 className="button button--link"
                 disabled={remove.pending}
+                aria-busy={remove.pending}
                 onClick={() => void remove.run(d.address)}
               >
                 Quitar
@@ -157,7 +158,7 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
               <Field label="Dirección en Base" name="destination" autoComplete="off" spellCheck={false} required />
               <Field label="Nombre (para reconocerlo)" name="label" maxLength={64} required />
               {requestAdd.error && <Notice tone="error">{requestAdd.error}</Notice>}
-              <button type="submit" className="button" disabled={requestAdd.pending}>
+              <button type="submit" className="button" disabled={requestAdd.pending} aria-busy={requestAdd.pending}>
                 Pedir el código por email
               </button>
             </form>
@@ -182,7 +183,7 @@ function Whitelist({ ctx }: { ctx: OperatingWallet }) {
                 required
               />
               {confirmAdd.error && <Notice tone="error">{confirmAdd.error}</Notice>}
-              <button type="submit" className="button" disabled={confirmAdd.pending}>
+              <button type="submit" className="button" disabled={confirmAdd.pending} aria-busy={confirmAdd.pending}>
                 Confirmar el código
               </button>
             </form>

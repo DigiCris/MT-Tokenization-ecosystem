@@ -6,7 +6,7 @@ import { ApiError } from '../api/problem.ts';
 import { generateSessionKey } from '../api/session-key.ts';
 import type { PlatformSessionView, User, WalletApi, WalletView } from '../api/wallet-api.ts';
 import type { UnlockedWallet } from '../unlock/unlock.ts';
-import { finishStepUp, isLive, startStepUp } from './step-up.ts';
+import { codeExpiryText, finishStepUp, isLive, startStepUp } from './step-up.ts';
 import { INACTIVITY_LOCK_MS, SessionStore } from './store.ts';
 
 const user: User = {
@@ -146,5 +146,11 @@ describe('step-up', () => {
     const now = Date.now();
     expect(isLive({ expiresAt: new Date(now + 60_000).toISOString() } as PlatformSessionView, now)).toBe(true);
     expect(isLive({ expiresAt: new Date(now + 10_000).toISOString() } as PlatformSessionView, now)).toBe(false);
+  });
+
+  it('el vencimiento del código sale del expiresAt del backend (no de un plazo fijo de la app)', () => {
+    expect(codeExpiryText('2026-10-19T15:42:00Z', 'UTC')).toBe('Vence a las 15:42.');
+    expect(codeExpiryText('2026-10-19T03:07:30Z', 'America/Argentina/Buenos_Aires')).toBe('Vence a las 00:07.');
+    expect(codeExpiryText('2026-10-19T15:52:00Z', 'UTC')).not.toBe(codeExpiryText('2026-10-19T15:42:00Z', 'UTC'));
   });
 });

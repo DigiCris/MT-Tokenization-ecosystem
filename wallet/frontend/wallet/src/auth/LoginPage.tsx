@@ -114,7 +114,7 @@ export function LoginPage() {
             </Link>
           </p>
         )}
-        <button type="submit" className="button" disabled={login.pending}>
+        <button type="submit" className="button" disabled={login.pending} aria-busy={login.pending}>
           {login.pending ? 'Ingresando…' : 'Iniciar sesión'}
         </button>
       </form>

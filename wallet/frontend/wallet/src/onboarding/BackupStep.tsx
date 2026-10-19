@@ -1,20 +1,26 @@
 // Backups del sobre de U ([F-KEY-06]): Drive (adicional, verificado byte a byte después de subir), archivo cifrado,
-// QR del sobre (canvas) y las 17 palabras (una sola vez, con confirmación y opción de imprimir sin otros datos). Hace
-// falta al menos un backup que no dependa de la plataforma (archivo, QR o palabras) para seguir.
+// QR del sobre (canvas; si son varias partes hacen falta todas) y las 17 palabras (sólo en este paso, con opción de
+// imprimir sin otros datos). Las 17 palabras cuentan como backup recién cuando el usuario reingresa 3 al azar: hasta
+// entonces puede volver a verlas, y después se borran de la memoria. Hace falta al menos un backup que no dependa de la
+// plataforma (archivo, QR o palabras) para seguir.
 import { useCallback, useEffect, useState } from 'react';
 import type { StorageFlags } from '../api/wallet-api.ts';
 import { drive } from '../app/services.ts';
-import { keyToBackupWords } from '../crypto/backup-words.ts';
+import { BACKUP_WORDS, keyToBackupWords } from '../crypto/backup-words.ts';
 import { serializeEnvelope, type KeyEnvelope } from '../crypto/envelope.ts';
+import { confirmationMatches, randomPositions } from '../crypto/password.ts';
 import { loadWordlist } from '../crypto/wordlist.ts';
 import { uploadEnvelope } from '../drive/backup.ts';
 import { hasDriveToken } from '../drive/token.ts';
 import { encodeFrames } from '../qr/frames.ts';
 import { downloadText, envelopeFileName } from '../ui/download.ts';
-import { Notice, useAsyncAction } from '../ui/forms.tsx';
+import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { printSection } from '../ui/print.ts';
-import { QrCanvas } from '../ui/QrCanvas.tsx';
-import { hasIndependentBackup } from './user-key.ts';
+import { EnvelopeQr } from './EnvelopeQr.tsx';
+import { hasIndependentBackup, LOST_U_AND_R_WARNING } from './user-key.ts';
+
+/** Palabras que se reingresan para confirmar el backup de 17 (como las 2 de la Password U). */
+const WORDS_TO_CONFIRM = 3;
 
 export function BackupStep({
   envelope,
@@ -40,8 +46,6 @@ export function BackupStep({
   });
   const [downloaded, setDownloaded] = useState(false);
   const [frames, setFrames] = useState<string[] | null>(null);
-  const [words, setWords] = useState<string[] | null>(null);
-  const [wordsShown, setWordsShown] = useState(false);
   const driveConnected = hasDriveToken();
 
   const upload = useAsyncAction(
@@ -50,33 +54,21 @@ export function BackupStep({
       setFlags((f) => ({ ...f, drive: true }));
     }, [envelope]),
   );
-  const showWords = useAsyncAction(
-    useCallback(async () => {
-      if (!wordsKey) return;
-      setWords(await keyToBackupWords('U', wordsKey, await loadWordlist()));
-      setWordsShown(true);
-    }, [wordsKey]),
-  );
   const showQr = useAsyncAction(
     useCallback(async () => {
       setFrames(await encodeFrames(JSON.stringify(envelope)));
     }, [envelope]),
   );
-  useEffect(
-    () => () => {
-      setWords(null);
-    },
-    [],
-  );
 
   const check = (name: keyof StorageFlags) => (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.currentTarget.checked;
     setFlags((f) => ({ ...f, [name]: value }));
-    if (name === 'words' && value) setWords(null);
   };
 
   return (
     <div className="stack" aria-label="Backups de la clave">
+      <Notice tone="warning">{LOST_U_AND_R_WARNING}</Notice>
+
       <article className="card stack" aria-labelledby="backup-drive">
         <h2 id="backup-drive">Google Drive</h2>
         <p>
@@ -88,7 +80,13 @@ export function BackupStep({
           ) : (
             <>
               {upload.error && <Notice tone="error">{upload.error}</Notice>}
-              <button type="button" className="button" disabled={upload.pending} onClick={() => void upload.run()}>
+              <button
+                type="button"
+                className="button"
+                disabled={upload.pending}
+                aria-busy={upload.pending}
+                onClick={() => void upload.run()}
+              >
                 {upload.pending ? 'Subiendo y verificando…' : 'Subir a Drive y verificar'}
               </button>
             </>
@@ -99,8 +97,9 @@ export function BackupStep({
       </article>
 
       <Notice tone="warning">
-        Además necesitás al menos un backup que no dependa de MT Wallet (archivo, QR o las 17 palabras): si la
-        plataforma o tu acceso a Drive desaparecen, con él igual recuperás tu clave.
+        Necesitás al menos un backup que no dependa de MT Wallet (archivo, QR o las 17 palabras): si la plataforma o tu
+        acceso a Drive desaparecen, con él igual recuperás tu clave U. El archivo y el QR sólo se abren con tu Password
+        U; las 17 palabras no la necesitan. Sin la plataforma, para mover tus fondos también vas a necesitar tu clave R.
       </Notice>
       {initialFlags?.words === true && !wordsKey && (
         <Notice tone="success">Tus 17 palabras siguen siendo un backup válido de esta misma clave.</Notice>
@@ -131,89 +130,32 @@ export function BackupStep({
             type="button"
             className="button button--ghost"
             disabled={showQr.pending}
+            aria-busy={showQr.pending}
             onClick={() => void showQr.run()}
           >
             Mostrar QR
           </button>
         ) : (
-          <div className="stack" id="qr-print">
-            {frames.map((frame, i) => (
-              <figure key={frame} className="qr-frame">
-                <QrCanvas
-                  text={frame}
-                  size={360}
-                  label={`QR del sobre cifrado, parte ${String(i + 1)} de ${String(frames.length)}`}
-                />
-                {frames.length > 1 && (
-                  <figcaption>
-                    Parte {i + 1} de {frames.length}
-                  </figcaption>
-                )}
-              </figure>
-            ))}
-            <button
-              type="button"
-              className="button button--ghost"
-              onClick={() => {
-                printSection('qr-print');
-              }}
-            >
-              Imprimir QR
-            </button>
+          <>
+            <EnvelopeQr frames={frames} printId="qr-print" />
             <label className="check">
               <input type="checkbox" checked={flags.qr} onChange={check('qr')} />
-              Guardé o imprimí el QR fuera de este dispositivo.
+              {frames.length > 1
+                ? `Guardé o imprimí las ${String(frames.length)} partes del QR fuera de este dispositivo (sin la Password U al lado).`
+                : 'Guardé o imprimí el QR fuera de este dispositivo (sin la Password U al lado).'}
             </label>
-          </div>
+          </>
         )}
+        {showQr.error && <Notice tone="error">{showQr.error}</Notice>}
       </article>
 
       {wordsKey && (
-        <article className="card stack" aria-labelledby="backup-words">
-          <h2 id="backup-words">17 palabras de la clave</h2>
-          <Notice tone="warning">
-            Las 17 palabras son la clave misma: quien las tenga controla la clave sin necesitar la Password U. Se
-            muestran una sola vez; anotalas en papel y guardalas aparte.
-          </Notice>
-          {words !== null ? (
-            <div className="stack" id="words-print">
-              <ol className="words words--17" aria-label="17 palabras de la clave">
-                {words.map((word, i) => (
-                  <li key={`${String(i)}-${word}`} className="words__item">
-                    <span className="words__index">{i + 1}</span> <span className="words__word">{word}</span>
-                  </li>
-                ))}
-              </ol>
-              <button
-                type="button"
-                className="button button--ghost"
-                onClick={() => {
-                  printSection('words-print');
-                }}
-              >
-                Imprimir sólo las palabras
-              </button>
-              <label className="check">
-                <input type="checkbox" checked={flags.words} onChange={check('words')} />
-                Anoté las 17 palabras en orden y las guardo fuera de este dispositivo.
-              </label>
-            </div>
-          ) : wordsShown ? (
-            <Notice tone={flags.words ? 'success' : 'info'}>
-              {flags.words ? 'Palabras anotadas.' : 'Las palabras ya se mostraron.'}
-            </Notice>
-          ) : (
-            <button
-              type="button"
-              className="button button--ghost"
-              disabled={showWords.pending}
-              onClick={() => void showWords.run()}
-            >
-              Mostrar las 17 palabras
-            </button>
-          )}
-          {showWords.error && <Notice tone="error">{showWords.error}</Notice>}
-        </article>
+        <BackupWords
+          wordsKey={wordsKey}
+          onConfirmed={() => {
+            setFlags((f) => ({ ...f, words: true }));
+          }}
+        />
       )}
 
       <button
@@ -227,5 +169,156 @@ export function BackupStep({
         {continueLabel}
       </button>
     </div>
+  );
+}
+
+type WordsStep = 'hidden' | 'shown' | 'confirm' | 'confirmed';
+
+/**
+ * Las 17 palabras ([F-KEY-06].4): se muestran sólo en este paso y quedan como backup recién cuando el usuario reingresa
+ * 3 palabras al azar (un clic de más no las pierde: hasta confirmar se pueden volver a ver). Al confirmar se borran de
+ * la memoria.
+ */
+function BackupWords({ wordsKey, onConfirmed }: { wordsKey: Uint8Array; onConfirmed: () => void }) {
+  const [step, setStep] = useState<WordsStep>('hidden');
+  const [words, setWords] = useState<string[] | null>(null);
+  const [written, setWritten] = useState(false);
+  // Posiciones nuevas cada vez que se pasa a confirmar.
+  const [positions, setPositions] = useState<number[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const show = useAsyncAction(
+    useCallback(async () => {
+      setWords(await keyToBackupWords('U', wordsKey, await loadWordlist()));
+      setStep('shown');
+    }, [wordsKey]),
+  );
+  useEffect(
+    () => () => {
+      setWords(null);
+    },
+    [],
+  );
+
+  return (
+    <article className="card stack" aria-labelledby="backup-words">
+      <h2 id="backup-words">17 palabras de la clave</h2>
+      <Notice tone="warning">
+        Las 17 palabras son la clave misma: quien las tenga controla la clave sin necesitar la Password U. Se muestran
+        sólo en este paso: anotalas en papel, en orden, y guardalas aparte. Están en inglés: copialas letra por letra,
+        sin traducir ni corregir.
+      </Notice>
+      {step === 'hidden' && (
+        <button
+          type="button"
+          className="button button--ghost"
+          disabled={show.pending}
+          aria-busy={show.pending}
+          onClick={() => void show.run()}
+        >
+          Mostrar las 17 palabras
+        </button>
+      )}
+      {step === 'shown' && words !== null && (
+        <>
+          <div className="stack" id="words-print">
+            <ol className="words words--17" aria-label="17 palabras de la clave">
+              {words.map((word, i) => (
+                <li key={`${String(i)}-${word}`} className="words__item">
+                  <span className="words__index">{i + 1}</span> <span className="words__word">{word}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={() => {
+              printSection('words-print');
+            }}
+          >
+            Imprimir sólo las palabras
+          </button>
+          <p className="muted">Si las imprimís, usá una impresora de confianza y no guardes el PDF.</p>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={written}
+              onChange={(event) => {
+                setWritten(event.currentTarget.checked);
+              }}
+            />
+            Anoté las 17 palabras en orden y las guardo fuera de este dispositivo.
+          </label>
+          <button
+            type="button"
+            className="button"
+            disabled={!written}
+            onClick={() => {
+              setError(null);
+              setPositions(randomPositions(BACKUP_WORDS, WORDS_TO_CONFIRM));
+              setStep('confirm');
+            }}
+          >
+            Ya las anoté
+          </button>
+        </>
+      )}
+      {step === 'confirm' && words !== null && (
+        <form
+          className="form"
+          aria-labelledby="confirm-backup-words"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const answers = positions.map((p) => {
+              const input = form.elements.namedItem(`backup-word-${String(p)}`);
+              return input instanceof HTMLInputElement ? input.value : '';
+            });
+            if (!confirmationMatches(words, positions, answers)) {
+              setError('Alguna palabra no coincide: revisá lo que anotaste.');
+              return;
+            }
+            setWords(null);
+            setStep('confirmed');
+            onConfirmed();
+          }}
+        >
+          <p id="confirm-backup-words">
+            Para comprobar que las anotaste bien, escribí estas {WORDS_TO_CONFIRM} palabras de tu papel.
+          </p>
+          {positions.map((p) => (
+            <Field
+              key={p}
+              label={`Palabra ${String(p + 1)} de ${String(BACKUP_WORDS)}`}
+              name={`backup-word-${String(p)}`}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+            />
+          ))}
+          {error && (
+            <p className="form__error" role="alert">
+              {error}
+            </p>
+          )}
+          <button type="submit" className="button">
+            Confirmar las palabras
+          </button>
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={() => {
+              setStep('shown');
+            }}
+          >
+            Volver a ver las palabras
+          </button>
+        </form>
+      )}
+      {step === 'confirmed' && <Notice tone="success">Palabras anotadas y confirmadas.</Notice>}
+      {show.error && <Notice tone="error">{show.error}</Notice>}
+    </article>
   );
 }

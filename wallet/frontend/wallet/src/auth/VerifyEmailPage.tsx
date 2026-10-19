@@ -62,13 +62,14 @@ export function VerifyEmailPage() {
             {verify.error}
           </p>
         )}
-        <button type="submit" className="button" disabled={verify.pending}>
+        <button type="submit" className="button" disabled={verify.pending} aria-busy={verify.pending}>
           {verify.pending ? 'Verificando…' : 'Verificar'}
         </button>
         <button
           type="button"
           className="button button--ghost"
           disabled={resend.pending}
+          aria-busy={resend.pending}
           onClick={(event) => {
             const form = event.currentTarget.form;
             if (form) void resend.run(formValue(form, 'email').trim());

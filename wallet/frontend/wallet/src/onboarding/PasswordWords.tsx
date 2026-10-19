@@ -10,8 +10,9 @@ export function ShowPasswordWords({ words, onWritten }: { words: readonly string
     <article className="card stack" aria-labelledby="password-words-title">
       <h2 id="password-words-title">Tu Password U</h2>
       <Notice tone="warning">
-        Anotá estas 5 palabras en papel, en este orden. Son la Password U: protegen tu clave y desbloquean la wallet. MT
-        Wallet no las guarda ni puede recuperarlas, y no son la contraseña de tu cuenta.
+        Anotá estas 5 palabras en papel, en este orden. Están en inglés: copialas letra por letra, sin traducir ni
+        corregir. Son la Password U: protegen tu clave y desbloquean la wallet. MT Wallet no las guarda ni puede
+        recuperarlas, y no son la contraseña de tu cuenta.
       </Notice>
       <ol className="words" aria-label="Password U">
         {words.map((word, i) => (

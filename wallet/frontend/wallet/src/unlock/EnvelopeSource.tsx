@@ -123,7 +123,13 @@ export function EnvelopeSource({
         (hasDriveToken() ? (
           <div className="stack">
             {fromDrive.error && <Notice tone="error">{fromDrive.error}</Notice>}
-            <button type="button" className="button" disabled={fromDrive.pending} onClick={() => void fromDrive.run()}>
+            <button
+              type="button"
+              className="button"
+              disabled={fromDrive.pending}
+              aria-busy={fromDrive.pending}
+              onClick={() => void fromDrive.run()}
+            >
               {fromDrive.pending ? 'Leyendo Drive…' : 'Traer el sobre de Drive'}
             </button>
           </div>
