@@ -3,7 +3,7 @@
 # de Anvil (P21.SEC). Idempotente: dos corridas sobre el mismo fork dan las mismas direcciones y saldos.
 #  1. Material de LOCAL_SEED (scripts/lib/seed-material.mjs): walletId determinístico y credenciales de prueba.
 #  2. contracts/script/SeedLocal.s.sol: Safe del seed con el saltNonce del producto, USDC/USDT reales del fork y el
-#     destino de prueba agregado a la whitelist (U+S) y activado con un warp de 24 h.
+#     destino de prueba agregado a la whitelist (U+S); acá se activa después del broadcast (warp hasta activatesAt).
 #  3. Signer de desarrollo: la S del seed importada en el shard local con su SignerKeyAttestation.
 #  4. Sobres de prueba U.enc.json y R.enc.json en .secrets/seed/ (con el módulo crypto de cada app).
 #  5. Backend: usuario verificado, wallet ACTIVE tras la verificación normal, claves, OPAQUE y destino activo.
@@ -37,6 +37,23 @@ forge script script/SeedLocal.s.sol --rpc-url "$DEPLOY_RPC" --broadcast --slow
 read_json() { node -e 'const v=process.argv[2].split(".").reduce((o,k)=>o[k],require(process.argv[1]));console.log(v)' "$WALLET_ROOT/contracts/deployments/local.json" "$1"; }
 chain_json() { node -e 'const v=process.argv[2].split(".").reduce((o,k)=>o[k],require(process.argv[1]));console.log(v)' "$WALLET_ROOT/config/chains/base-mainnet.json" "$1"; }
 safe="$(read_json seed.safe)"
+
+# Activación del destino de prueba después del broadcast (los vm.rpc de un forge script corren durante la simulación,
+# antes de transmitir): si sigue pendiente, el reloj de Anvil avanza hasta su activatesAt y se mina un bloque, como el
+# helper de los E2E. Idempotente: un destino ya activo no mueve el reloj.
+whitelist="$(read_json contracts.DestinationWhitelist.address)"
+destination="$(read_json seed.destination)"
+mapfile -t info < <(cast call "$whitelist" 'destinationInfo(address,address)(bool,uint64,bool)' "$safe" "$destination" --rpc-url "$DEPLOY_RPC" | awk '{print $1}')
+[ "${info[0]:-}" = true ] || { echo "seed-local: el destino de prueba no quedó agregado a la whitelist" >&2; exit 1; }
+if [ "${info[2]:-}" != true ]; then
+  now="$(cast block latest --field timestamp --rpc-url "$DEPLOY_RPC")"
+  wait_seconds=$(( info[1] - now + 1 ))
+  [ "$wait_seconds" -ge 1 ] || wait_seconds=1
+  cast rpc evm_increaseTime --raw "[$wait_seconds]" --rpc-url "$DEPLOY_RPC" >/dev/null
+  cast rpc evm_mine --rpc-url "$DEPLOY_RPC" >/dev/null
+fi
+[ "$(cast call "$whitelist" 'isWhitelisted(address,address)(bool)' "$safe" "$destination" --rpc-url "$DEPLOY_RPC")" = true ] \
+  || { echo "seed-local: el destino de prueba no quedó activo en la whitelist" >&2; exit 1; }
 
 pnpm --dir "$WALLET_ROOT/backend/signer" -s seed:executor --wallet "$SEED_WALLET_ID" > "$SEED_DIR/executor.json"
 

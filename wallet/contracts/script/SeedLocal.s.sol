@@ -16,14 +16,13 @@ import {ISafe, Operation} from "../src/interfaces/ISafe.sol";
 ///         de `LOCAL_SEED`, su Safe creada por la `WalletFactory` del deploy local con el saltNonce del producto
 ///         (`keccak256(abi.encode("MTW_SALT_V1", PLATFORM_ID, SEED_WALLET_ID))`, el id de wallet determinístico que
 ///         calcula `scripts/seed-local`), fondeo con USDC y USDT **reales** del fork (holders reales impersonados en Anvil,
-///         sólo en este script) y un destino de prueba agregado a la whitelist con una SafeTx firmada por U y S y
-///         activado con un warp de 24 h. Idempotente. Escribe el resultado en `deployments/local.json` (`.seed`).
+///         sólo en este script) y un destino de prueba agregado a la whitelist con una SafeTx firmada por U y S (lo activa
+///         `scripts/seed-local` después del broadcast). Idempotente. Escribe el resultado en `deployments/local.json` (`.seed`).
 /// @dev Uso: `pnpm seed-local` (`scripts/seed-local`), después de `pnpm deploy-local`.
 contract SeedLocal is Script {
     /// @notice Saldos objetivo de la Safe de prueba.
     uint256 internal constant SEED_USDC = 10_000e6;
     uint256 internal constant SEED_USDT = 5000e6;
-    uint256 internal constant ACTIVATION_DELAY = 24 hours;
     /// @notice Holders reales en el bloque de fork (Morpho Blue para USDC y un hot wallet de exchange para USDT).
     address internal constant USDC_HOLDER = 0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb;
     address internal constant USDT_HOLDER = 0x0D0707963952f2fBA59dD06f2b425ace40b492Fe;
@@ -59,7 +58,6 @@ contract SeedLocal is Script {
         address whitelist = vm.parseJsonAddress(json, ".contracts.DestinationWhitelist.address");
         address destination = LocalKeys.addr("seed-destination");
         _whitelist(safe, whitelist, destination, u, s);
-        vm.rpc("evm_mine", "[]");
 
         vm.serializeJson("local-deployment", json);
         string memory seedJson = _seedJson(safe, u, r, s, saltNonce, walletId, destination);
@@ -71,9 +69,12 @@ contract SeedLocal is Script {
     }
 
     /// @dev Destino de prueba en la whitelist de la Safe: SafeTx asistida firmada por U y S (las dos claves del seed) y
-    ///      transmitida por S (el Guard sólo acepta al ejecutor); después, warp de 24 h para que quede activo.
+    ///      transmitida por S (el Guard sólo acepta al ejecutor). La activación (warp hasta `activatesAt`) la hace
+    ///      `scripts/seed-local` después del broadcast: los `vm.rpc` de un script corren durante la simulación, antes de
+    ///      transmitir, y moverían el reloj antes del alta. Si el destino ya existe (activo o pendiente) no hace nada.
     function _whitelist(address safe, address whitelist, address destination, address u, address s) internal {
-        if (IDestinationWhitelist(whitelist).isWhitelisted(safe, destination)) return;
+        (bool exists,,) = IDestinationWhitelist(whitelist).destinationInfo(safe, destination);
+        if (exists) return;
         bytes memory data = abi.encodeCall(IDestinationWhitelist.addDestination, (destination));
         uint256 safeNonce = ISafe(safe).nonce();
         bytes32 hash = ISafe(safe)
@@ -87,7 +88,6 @@ contract SeedLocal is Script {
         ISafe(safe)
             .execTransaction(whitelist, 0, data, Operation.Call, 0, 0, 0, address(0), payable(address(0)), signatures);
         vm.stopBroadcast();
-        vm.rpc("evm_increaseTime", string.concat("[", vm.toString(ACTIVATION_DELAY + 1), "]"));
     }
 
     function _sign(string memory label, bytes32 hash) internal returns (bytes memory) {
