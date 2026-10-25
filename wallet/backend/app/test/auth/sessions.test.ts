@@ -87,7 +87,9 @@ describe('login', () => {
 
     const notice = await waitForMessage(account.email, (m) => m.subject.includes('Nuevo inicio de sesión'));
     expect(notice.text).toContain('Acción: Inicio de sesión');
-    expect(notice.text).toContain('Firefox/140.0');
+    // El user-agent lo elige quien inicia la sesión: el email nombra navegador y sistema, nunca el texto crudo.
+    expect(notice.text).toContain('Firefox en Linux');
+    expect(notice.text).not.toContain('Mozilla/5.0');
     expect(notice.text).toContain('Si no fuiste vos:');
 
     const row = await env.db.app
