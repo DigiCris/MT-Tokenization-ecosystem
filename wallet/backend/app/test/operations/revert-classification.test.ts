@@ -2,6 +2,7 @@
 // `eth_call` en CallExecutionError, también un error interno del nodo —p. ej. un fork que no logró traer estado del RPC
 // remoto—; eso es una falla del RPC (se propaga y la reintenta el quórum), no un revert. Errores reales de viem contra un
 // Anvil con el sistema desplegado, con el proxy de inyección de fallas delante.
+import { setTimeout as sleep } from 'node:timers/promises';
 import { createPublicClient, getAddress, http, type Address, type Hex } from 'viem';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isExecutionRevert } from '../../src/operations/chain-context.ts';
@@ -18,6 +19,11 @@ beforeAll(async () => {
   registry = getAddress(chain.system.contracts.PolicyRegistry ?? '');
   anvil = await startAnvil({ loadState: chain.statePath });
   proxy = await startFaultProxy(anvil.url);
+  // El fork trae del RPC remoto, en el primer acceso, el estado que toca un eth_call (los predeploys de Base del fee de
+  // L1): se precalienta con reintentos para que los tests midan la clasificación y no la latencia del proveedor.
+  for (let attempt = 1; attempt < 6 && !isExecutionRevert(await callError('0xdeadbeef')); attempt++) {
+    await sleep(attempt * 2_000);
+  }
 }, 300_000);
 
 afterAll(async () => {
