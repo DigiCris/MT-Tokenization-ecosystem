@@ -79,6 +79,21 @@ async function deployChain(): Promise<{ chain: DeployedChain; cleanup: () => voi
   }
 }
 
+// Fallas de red del fork (Anvil copiando estado del RPC de Base, o forge esperando a Anvil): no son del código. Igual
+// que scripts/stack/stack.mjs, el deploy se reintenta una sola vez con un Anvil nuevo; cualquier otra falla corta.
+const TRANSIENT_FORK_ERROR =
+  /operation timed out|error sending request|failed to get (?:account|storage|block)|\b429\b|rate limit|connection (?:reset|refused|closed)/i;
+
+async function deployChainWithRetry(): Promise<{ chain: DeployedChain; cleanup: () => void }> {
+  try {
+    return await deployChain();
+  } catch (error) {
+    if (!(error instanceof Error && TRANSIENT_FORK_ERROR.test(error.message))) throw error;
+    process.stderr.write('global setup: falla de red del fork en el deploy; se reintenta una vez con un Anvil nuevo\n');
+    return deployChain();
+  }
+}
+
 const secret = () => randomBytes(24).toString('hex');
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
@@ -93,7 +108,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
 
   // El deploy (minutos) corre en paralelo con los contenedores; sólo hace falta si corre algo más que `live`.
   const needsChain = project.vitest.projects.some((p) => p.name !== 'live');
-  const chainPromise = needsChain ? deployChain() : Promise.resolve(null);
+  const chainPromise = needsChain ? deployChainWithRetry() : Promise.resolve(null);
   // Si los contenedores fallan, el deploy igual se espera (y limpia) antes de propagar el error.
   chainPromise.catch(() => undefined);
 
