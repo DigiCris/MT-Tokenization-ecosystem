@@ -1,4 +1,5 @@
-// Seguridad de la cuenta ([B-AUTH-05], [B-AUTH-06]): sesiones abiertas (listar, revocar una o todas las demás) y
+// Seguridad de la cuenta ([B-AUTH-05], [B-AUTH-06]): sesiones abiertas (listar, revocar una o todas las demás; el
+// dispositivo y la IP se muestran con nombres de la app, nunca el user-agent crudo: ver auth/device.ts) y
 // verificación en dos pasos (TOTP con QR propio en canvas, 10 códigos de recuperación que se muestran una sola vez,
 // desactivar con la contraseña de cuenta y un código). Activar o desactivar TOTP rota la sesión: el cliente toma el
 // CSRF nuevo de la respuesta.
@@ -10,8 +11,14 @@ import { useSession, useSessionStore } from '../session/context.tsx';
 import { downloadText } from '../ui/download.ts';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { QrCanvas } from '../ui/QrCanvas.tsx';
+import { deviceText, readableIpPrefix } from './device.ts';
 
 const dateTime = new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' });
+
+function ipText(prefix: string | null): string {
+  const readable = readableIpPrefix(prefix);
+  return readable === null ? 'IP no disponible' : `IP ${readable}`;
+}
 
 export function SessionsPage() {
   const store = useSessionStore();
@@ -62,7 +69,7 @@ export function SessionsPage() {
                 <strong>{session.client === 'WALLET' ? 'Wallet' : 'Recovery'}</strong>
                 {session.current && <span className="tag">Esta sesión</span>}
                 <p className="muted">
-                  {session.userAgent ?? 'Dispositivo desconocido'} · {session.ipPrefix ?? 'IP no disponible'}
+                  {deviceText(session.userAgent)} · {ipText(session.ipPrefix)}
                 </p>
                 <p className="muted">
                   Última actividad: {dateTime.format(new Date(session.lastSeenAt))} · Vence:{' '}

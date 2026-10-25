@@ -12,7 +12,7 @@ import { pinnedChain } from '../config/chain.ts';
 import type { OperatingWallet } from '../safe/SafeGate.tsx';
 import { groupAddress } from '../ui/AddressText.tsx';
 import { byText, click, render, settle, type Mounted } from '../ui/dom.test-helper.ts';
-import { readableIpPrefix } from '../notifications/NotificationsPanel.tsx';
+import { readableIpPrefix } from '../auth/device.ts';
 import { OperatingHome } from './OperatingHome.tsx';
 
 const m = vi.hoisted(() => ({
@@ -183,7 +183,7 @@ describe('inicio operativo', () => {
     expect(item?.querySelector('time')).toBeNull();
     expect(item?.getAttribute('data-tone')).toBe('info');
     expect(readableIpPrefix('2001:db8:1::/48')).toBe('2001:db8:1:…');
-    expect(readableIpPrefix('algo')).toBe('algo');
+    expect(readableIpPrefix('algo')).toBeNull();
   });
 
   it('la clave U desbloqueada se muestra completa y agrupada', async () => {

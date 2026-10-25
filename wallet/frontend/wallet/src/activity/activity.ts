@@ -4,9 +4,10 @@
 // transfers de su transacción si los hay (en un swap, lo que salió y lo que entró) y, si no llegó a la cadena, con la
 // intención guardada al prepararla ("Envío: 1,00 USDC a …", sin un "de" que se lea como origen). La hora de una
 // operación es la de su inclusión en un bloque (como la de un transfer indexado); sólo las que no llegaron a la red
-// muestran la de preparación. El tipo y el rol vienen del backend: uno que esta app no conoce va con un texto genérico.
+// muestran la de preparación. El tipo, el rol y el token vienen del backend: uno que esta app no conoce va con un texto
+// genérico (un símbolo de token desconocido no se muestra como monto).
 import type { Address } from 'viem';
-import type { DecodedOperation, OperationStatus, OperationType, Transfer } from '../api/wallet-api.ts';
+import type { DecodedOperation, OperationStatus, OperationType, TokenSymbol, Transfer } from '../api/wallet-api.ts';
 import type { PinnedChain } from '../config/chain.ts';
 import { roleText, tokenAmount, type DescriptionPart } from '../operations/describe.ts';
 import type { NameOf } from '../operations/names.ts';
@@ -90,12 +91,28 @@ export function mergeActivity(operations: readonly OperationStatus[], transfers:
 const units = (value: string | undefined): bigint | null =>
   value !== undefined && /^\d+$/.test(value) ? BigInt(value) : null;
 
+/** Los tokens que maneja la app. */
+const KNOWN_TOKENS: ReadonlySet<string> = new Set<TokenSymbol>(['USDC', 'USDT']);
+
+/** Un monto con un token que no es de los de la app, o con un formato que no es el del backend. */
+export const UNKNOWN_AMOUNT_TEXT = 'un monto en un token que esta app no reconoce';
+
+const isKnownToken = (token: string | undefined): token is TokenSymbol =>
+  token !== undefined && KNOWN_TOKENS.has(token);
+
+/** El monto de un transfer indexado; con otro token o un monto mal formado, el texto genérico (nunca el símbolo). */
+function transferAmount(transfer: Transfer): string {
+  const value = units(transfer.amount);
+  return value === null || !isKnownToken(transfer.token) ? UNKNOWN_AMOUNT_TEXT : tokenAmount(value, transfer.token);
+}
+
 /** Qué hizo la operación según su intención guardada (cuando no hay transfers de su transacción). */
 function intentParts(type: OperationStatus['operationType'], decoded: DecodedOperation, nameOf: NameOf) {
   const text = (value: string): DescriptionPart => ({ kind: 'text', text: value });
   const amount = (value: string | undefined, token: string | undefined): DescriptionPart | null => {
     const parsed = units(value);
-    return parsed === null || token === undefined ? null : { kind: 'amount', text: tokenAmount(parsed, token) };
+    if (parsed === null || token === undefined) return null;
+    return { kind: 'amount', text: isKnownToken(token) ? tokenAmount(parsed, token) : UNKNOWN_AMOUNT_TEXT };
   };
   const party = (address: Address | undefined): DescriptionPart | null =>
     address === undefined ? null : { kind: 'address', address, name: nameOf(address) };
@@ -114,9 +131,9 @@ function intentParts(type: OperationStatus['operationType'], decoded: DecodedOpe
     case 'SWAP_APPROVE':
       return parts(amount(decoded.amount, decoded.token), text(' para el contrato de swap de la plataforma'));
     case 'APPROVE_REVOKE':
-      return decoded.token === undefined
-        ? null
-        : [text(`el del contrato de swap de la plataforma sobre tus ${decoded.token}`)];
+      return isKnownToken(decoded.token)
+        ? [text(`el del contrato de swap de la plataforma sobre tus ${decoded.token}`)]
+        : null;
     case 'WHITELIST_ADD':
     case 'WHITELIST_REMOVE':
       return parts(party(decoded.destination));
@@ -147,9 +164,9 @@ export function operationDetail(
   if (operation.operationType === 'SWAP' && sold && bought) {
     return [
       text('cambiaste '),
-      { kind: 'amount', text: tokenAmount(BigInt(sold.amount), sold.token) },
+      { kind: 'amount', text: transferAmount(sold) },
       text(' por '),
-      { kind: 'amount', text: tokenAmount(BigInt(bought.amount), bought.token) },
+      { kind: 'amount', text: transferAmount(bought) },
       text(' con '),
       { kind: 'address', address: sold.counterparty, name: nameOf(sold.counterparty) },
     ];
@@ -157,7 +174,7 @@ export function operationDetail(
   if (out.length > 0) {
     return out.flatMap((t, i) => [
       text(i === 0 ? 'enviaste ' : '; enviaste '),
-      { kind: 'amount' as const, text: tokenAmount(BigInt(t.amount), t.token) },
+      { kind: 'amount' as const, text: transferAmount(t) },
       text(' a '),
       { kind: 'address' as const, address: t.counterparty, name: nameOf(t.counterparty) },
     ]);
@@ -169,7 +186,7 @@ export function operationDetail(
 export function transferDetail(transfer: Transfer, nameOf: NameOf): { title: string; parts: DescriptionPart[] } {
   const incoming = transfer.direction === 'IN';
   return {
-    title: `${incoming ? 'Recibiste' : 'Enviaste'} ${tokenAmount(BigInt(transfer.amount), transfer.token)}`,
+    title: `${incoming ? 'Recibiste' : 'Enviaste'} ${transferAmount(transfer)}`,
     parts: [
       { kind: 'text', text: incoming ? 'de ' : 'a ' },
       { kind: 'address', address: transfer.counterparty, name: nameOf(transfer.counterparty) },

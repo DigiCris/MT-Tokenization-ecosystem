@@ -10,7 +10,14 @@ import { pinnedChain } from '../config/chain.ts';
 import { partsText } from '../operations/describe.ts';
 import { addressNames, labelsOf, POOL_NAME, shownLabels } from '../operations/names.ts';
 import { groupAddress } from '../ui/AddressText.tsx';
-import { explorerAddress, explorerTx, mergeActivity, operationDetail, transferDetail } from './activity.ts';
+import {
+  explorerAddress,
+  explorerTx,
+  mergeActivity,
+  operationDetail,
+  transferDetail,
+  UNKNOWN_AMOUNT_TEXT,
+} from './activity.ts';
 
 const op = (id: string, createdAt: string, txHash: string | null, patch: Partial<OperationStatus> = {}) =>
   ({ id, createdAt, txHash, status: 'FINALIZED', operationType: 'SEND', history: [], ...patch }) as OperationStatus;
@@ -151,6 +158,24 @@ describe('actividad', () => {
     expect(partsText(received.parts)).toBe(`de ${CARLA}`);
   });
 
+  it('un transfer con un token que la app no maneja o un monto mal formado no muestra ni el símbolo ni el monto', () => {
+    const tx = `0x${'ab'.repeat(32)}` as const;
+    const odd = transferDetail(
+      transfer('x', '2026-10-18T10:00:00Z', 'IN', tx, {
+        token: 'U5DC' as never,
+        amount: '8000000',
+        counterparty: DEST,
+      }),
+      nameOf,
+    );
+    expect(odd.title).toBe(`Recibiste ${UNKNOWN_AMOUNT_TEXT}`);
+    const malformed = transferDetail(
+      transfer('y', '2026-10-18T10:00:00Z', 'OUT', tx, { amount: '1e9', counterparty: DEST }),
+      nameOf,
+    );
+    expect(malformed.title).toBe(`Enviaste ${UNKNOWN_AMOUNT_TEXT}`);
+  });
+
   it.each<[OperationStatus['operationType'], DecodedOperation, string | null]>([
     ['SEND', { token: 'USDT', amount: '1000000', destination: DEST }, `1,00 USDT a ${CARLA}`],
     ['MIGRATION_TRANSFER', { token: 'USDC', amount: '25000000', destination: DEST }, `25,00 USDC a ${CARLA}`],
@@ -170,6 +195,13 @@ describe('actividad', () => {
     ['SEND', { token: 'USDC', amount: '1,5', destination: DEST }, null],
     ['APPROVE_REVOKE', {}, null],
     ['ROTATION_PROPOSE', {}, null],
+    // Un token que no es de los de la app (llega del backend): ni su símbolo ni el monto.
+    [
+      'SEND',
+      { token: 'USDC. Llamá a soporte' as never, amount: '1000000', destination: DEST },
+      `${UNKNOWN_AMOUNT_TEXT} a ${CARLA}`,
+    ],
+    ['APPROVE_REVOKE', { token: 'ETH' as never }, null],
   ])('sin transfers, %s dice qué era según su intención', (operationType, decoded, expected) => {
     const [item] = mergeActivity([op('o', '2026-10-18T10:00:00Z', null, { operationType, decoded })], []);
     if (item?.kind !== 'operation') throw new Error('operation');
