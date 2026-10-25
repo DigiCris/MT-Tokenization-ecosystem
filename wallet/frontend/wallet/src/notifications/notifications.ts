@@ -181,6 +181,15 @@ export function notificationView(notification: AppNotification, nameOf?: NameOf)
         ),
       ]);
     }
+    case 'U_REPLACEMENT_REJECTED':
+      // [F-LNK-04] (ESC-41): la app Recovery canceló el borrador del reemplazo de U porque la U′ que informó la
+      // plataforma no coincidió con la que mostró esta app. La dirección que recibió la plataforma no se muestra: no
+      // es de donde se copia la clave nueva.
+      return view('error', [
+        text(
+          'La app Recovery canceló el reemplazo de tu clave U porque la dirección no coincidió: alguien pudo haberla cambiado. Si no fuiste vos, avisá a soporte; podés empezar de nuevo desde «Perdí mi Password U».',
+        ),
+      ]);
     case 'EXECUTOR_ROTATION_REQUESTED':
       return view('info', [text('La plataforma pidió rotar su clave (S): revisá y firmá la propuesta.')], ROTATIONS);
     case 'EXECUTOR_REPLACED':

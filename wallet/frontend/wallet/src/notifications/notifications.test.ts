@@ -140,6 +140,26 @@ describe('avisos in-app', () => {
     expect(partsText(otherR.parts)).toContain('porque el enlace de regreso de la app Recovery traía otra dirección');
   });
 
+  it('reemplazo de U cancelado por la app Recovery (ESC-41): por qué, qué hacer y sin la dirección que recibió la plataforma', () => {
+    const view = notificationView(
+      notification('U_REPLACEMENT_REJECTED', {
+        rotationId: 'r1',
+        reason: 'MANUAL_COMPARISON_FAILED',
+        newKey: KEY,
+        safe: DEST,
+        occurredAt: '2026-10-25T10:00:00.000Z',
+      }),
+    );
+    expect(view.tone).toBe('error');
+    expect(partsText(view.parts)).toBe(
+      'La app Recovery canceló el reemplazo de tu clave U porque la dirección no coincidió: alguien pudo haberla cambiado. Si no fuiste vos, avisá a soporte; podés empezar de nuevo desde «Perdí mi Password U».',
+    );
+    // La U′ del borrador (posiblemente cambiada) no aparece: la clave nueva se copia sólo de «Perdí mi Password U».
+    expect(view.parts.some((part) => part.kind === 'address')).toBe(false);
+    expect(partsText(view.parts)).not.toContain(groupAddress(KEY));
+    expect(view.link).toBeNull();
+  });
+
   it('payload incompleto o inválido: no inventa direcciones ni montos; un tipo desconocido queda genérico', () => {
     const broken = notificationView(notification('WHITELIST_ACTIVATED', { destination: 'no-es-una-direccion' }));
     expect(partsText(broken.parts)).toBe('El destino (dirección no informada) ya está activo: le podés enviar.');

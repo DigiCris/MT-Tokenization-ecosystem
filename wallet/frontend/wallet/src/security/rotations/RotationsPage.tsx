@@ -2,11 +2,18 @@
 // cancelación con la firma EIP-712 de U (al relay de la plataforma o exportada para `cancelWithSignature` desde
 // cualquier wallet), ejecución de las maduras y el pedido de rotación de S de la plataforma (motivo, S′ con su
 // atestación verificada con la clave fijada, propuesta firmada por U y, tras proponer, S′ leída del timelock). El rol,
-// el estado y el motivo que informa el backend llegan validados (wallet-api.ts): uno que esta app no conoce se muestra
-// con un texto genérico, nunca con el código.
+// el estado y los motivos que informa el backend llegan validados (wallet-api.ts): uno que esta app no conoce se muestra
+// con un texto genérico, nunca con el código. Un borrador del reemplazo de U que canceló la app Recovery ([F-LNK-04])
+// queda en el historial con por qué.
 import { useCallback, useEffect, useState } from 'react';
 import { encodeFunctionData, isAddressEqual } from 'viem';
-import type { ExecutorRotationReason, Rotation, RotationRole, UnknownCode } from '../../api/wallet-api.ts';
+import type {
+  ExecutorRotationReason,
+  Rotation,
+  RotationRole,
+  UnknownCode,
+  UReplacementRejectionReason,
+} from '../../api/wallet-api.ts';
 import { api } from '../../app/services.ts';
 import { iSafeAbi } from '../../chain/abis/ISafe.ts';
 import { rotationTimelockAbi } from '../../chain/abis/RotationTimelock.ts';
@@ -60,7 +67,13 @@ const STATUS_TEXT: Readonly<Record<Rotation['status'], string>> = {
   EXECUTED: 'Ejecutada',
   CANCELLED: 'Cancelada',
   FAILED: 'Falló',
+  REJECTED: 'Cancelada en la app Recovery',
   UNKNOWN: 'Estado que esta versión de la app no reconoce',
+};
+/** Por qué la app Recovery canceló el borrador del reemplazo de U. */
+const REJECTION_TEXT: Readonly<Record<UReplacementRejectionReason | UnknownCode, string>> = {
+  MANUAL_COMPARISON_FAILED: 'la dirección de la clave nueva no coincidió con la que mostraba esta app',
+  UNKNOWN: 'motivo que esta versión de la app no reconoce',
 };
 
 function Rotations({ ctx }: { ctx: OperatingWallet }) {
@@ -353,7 +366,11 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
           <ul className="rotations">
             {history.map((r) => (
               <li key={r.id} data-rotation={r.id} data-status={r.status}>
-                {ROLE_LABEL[r.role]}: {STATUS_TEXT[r.status]} · {new Date(r.createdAt).toLocaleString('es-AR')}
+                {ROLE_LABEL[r.role]}: {STATUS_TEXT[r.status]}
+                {r.status === 'REJECTED' && r.rejectionReason !== null
+                  ? ` (${REJECTION_TEXT[r.rejectionReason]})`
+                  : ''}{' '}
+                · {new Date(r.createdAt).toLocaleString('es-AR')}
               </li>
             ))}
           </ul>

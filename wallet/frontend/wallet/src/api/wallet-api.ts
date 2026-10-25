@@ -1,6 +1,6 @@
 // Rutas del listener de Wallet que usa la app (contrato: OpenAPI del backend, `GET /docs/openapi.json`). Cada método
 // es un request tipado sobre ApiClient; los críticos llevan la PlatformSession que exige su scope ([W-07]). Los códigos
-// de las rotaciones que se muestran con texto propio (rol, estado, motivo) se validan al recibirlos (knownRotation).
+// de las rotaciones que se muestran con texto propio (rol, estado, motivos) se validan al recibirlos (knownRotation).
 import type { Address } from 'viem';
 import type { KdfParams } from '../crypto/kdf.ts';
 import { newIdempotencyKey, type ApiClient } from './client.ts';
@@ -92,6 +92,9 @@ export const ROTATION_ROLES = ['U', 'R', 'S', 'GUARD', 'MODULE_GUARD'] as const;
 export type RotationRole = (typeof ROTATION_ROLES)[number];
 export const EXECUTOR_ROTATION_REASONS = ['SHARD_MIGRATION', 'HSM_MIGRATION', 'KEY_COMPROMISE', 'MAINTENANCE'] as const;
 export type ExecutorRotationReason = (typeof EXECUTOR_ROTATION_REASONS)[number];
+/** Por qué la app Recovery canceló un borrador del reemplazo de U: la U′ no coincidió con la de esta app ([F-LNK-04]). */
+export const U_REPLACEMENT_REJECTION_REASONS = ['MANUAL_COMPARISON_FAILED'] as const;
+export type UReplacementRejectionReason = (typeof U_REPLACEMENT_REJECTION_REASONS)[number];
 export const ROTATION_STATUSES = [
   'DRAFT',
   'AWAITING_SIGNATURE',
@@ -102,6 +105,7 @@ export const ROTATION_STATUSES = [
   'EXECUTED',
   'CANCELLED',
   'FAILED',
+  'REJECTED',
 ] as const;
 export type RotationStatus = (typeof ROTATION_STATUSES)[number];
 
@@ -124,7 +128,7 @@ export interface CancelRotationTypedData {
   message: { proposalId: `0x${string}`; safe: Address };
 }
 
-/** Rotación del backend: el rol, el estado y el motivo llegan validados (knownRotation). */
+/** Rotación del backend: el rol, el estado y los motivos llegan validados (knownRotation). */
 export interface Rotation {
   id: string;
   walletId: string;
@@ -148,16 +152,23 @@ export interface Rotation {
   requestReason: ExecutorRotationReason | UnknownCode | null;
   /** Rotación de S: SignerKeyAttestation de la S nueva. */
   newKeyAttestation: string | null;
+  /** Sólo con REJECTED: por qué la app Recovery canceló el borrador del reemplazo de U (un backend anterior no lo manda). */
+  rejectionReason: UReplacementRejectionReason | UnknownCode | null;
 }
 
-/** Una rotación del backend con el rol, el estado y el motivo validados: los que esta app no conoce quedan UNKNOWN. */
+/** Un código opcional: null si no viene; si viene, uno conocido o UNKNOWN. */
+function optionalCode<T extends string>(known: readonly T[], value: unknown): T | UnknownCode | null {
+  return value === null || value === undefined ? null : knownCode(known, value);
+}
+
+/** Una rotación del backend con el rol, el estado y los motivos validados: los que esta app no conoce quedan UNKNOWN. */
 export function knownRotation(rotation: Rotation): Rotation {
-  const reason: unknown = rotation.requestReason;
   return {
     ...rotation,
     role: knownCode(ROTATION_ROLES, rotation.role),
     status: knownCode(ROTATION_STATUSES, rotation.status),
-    requestReason: reason === null || reason === undefined ? null : knownCode(EXECUTOR_ROTATION_REASONS, reason),
+    requestReason: optionalCode(EXECUTOR_ROTATION_REASONS, rotation.requestReason),
+    rejectionReason: optionalCode(U_REPLACEMENT_REJECTION_REASONS, rotation.rejectionReason),
   };
 }
 

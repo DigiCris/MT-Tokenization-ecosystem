@@ -1,7 +1,7 @@
 // P17.T01: cada método de WalletApi arma el request del contrato del backend (OpenAPI del listener de Wallet): método,
 // path con /api/v1 y parámetros codificados, cuerpo exacto, Idempotency-Key en las rutas idempotentes y firma con la
 // PlatformSession en las críticas; logout y reset descartan el token CSRF de la sesión. Las rotaciones llegan con el
-// rol, el estado y el motivo validados: un código que esta app no conoce queda UNKNOWN (revisión de ADR-033).
+// rol, el estado y los motivos validados: un código que esta app no conoce queda UNKNOWN (revisión de ADR-033).
 import { describe, expect, it } from 'vitest';
 import { ApiClient, type HttpMethod, type RequestOptions } from './client.ts';
 import { generateSessionKey } from './session-key.ts';
@@ -32,6 +32,7 @@ const ROTATION = {
   cancelTypedData: null,
   requestReason: 'MAINTENANCE',
   newKeyAttestation: null,
+  rejectionReason: null,
 } as const satisfies Rotation;
 
 /** La respuesta de prueba de cada ruta: la lista o la rotación donde las hay; si no, un objeto vacío. */
@@ -324,9 +325,21 @@ describe('WalletApi', () => {
     } as unknown as Rotation;
     expect(knownRotation(raw)).toEqual({ ...ROTATION, role: 'UNKNOWN', status: 'UNKNOWN', requestReason: 'UNKNOWN' });
     expect(knownRotation({ ...ROTATION, requestReason: null }).requestReason).toBeNull();
-    // Un backend anterior que no manda el motivo: no es un pedido de la plataforma.
-    const { requestReason: _omitted, ...withoutReason } = ROTATION;
-    expect(knownRotation(withoutReason as unknown as Rotation).requestReason).toBeNull();
+    // Un backend anterior que no manda los motivos: no es un pedido de la plataforma ni un borrador rechazado.
+    const { requestReason: _omitted, rejectionReason: _rejection, ...withoutReason } = ROTATION;
+    expect(knownRotation(withoutReason as unknown as Rotation)).toMatchObject({
+      requestReason: null,
+      rejectionReason: null,
+    });
+    // El borrador del reemplazo de U que canceló la app Recovery ([F-LNK-04]): estado y motivo conocidos o UNKNOWN.
+    const rejected = { ...ROTATION, role: 'U', requestReason: null, status: 'REJECTED' } as const;
+    expect(knownRotation({ ...rejected, rejectionReason: 'MANUAL_COMPARISON_FAILED' })).toMatchObject({
+      status: 'REJECTED',
+      rejectionReason: 'MANUAL_COMPARISON_FAILED',
+    });
+    expect(
+      knownRotation({ ...rejected, rejectionReason: 'Mirá evil.example' } as unknown as Rotation).rejectionReason,
+    ).toBe('UNKNOWN');
     expect(knownCode(['A', 'B'], 'B')).toBe('B');
     expect(knownCode(['A', 'B'], 7)).toBe('UNKNOWN');
   });
