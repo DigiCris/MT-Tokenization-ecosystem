@@ -168,39 +168,78 @@ describe('fuerza bruta por cuenta', () => {
   });
 });
 
+/** El intento se procesó con la espera ya vencida (Valkey la vence por TTL): no prueba nada. */
+class TooSlow extends Error {
+  override name = 'TooSlow';
+}
+
+/**
+ * Un intento que tenía que caer dentro de la espera de `penalty` segundos desde que empezó el fallo anterior: 429, o
+ * TooSlow si para cuando respondió ya había pasado la espera (con la máquina cargada, el pedido pudo procesarse tarde).
+ */
+function expectWaiting(response: LightMyRequestResponse, failureStart: number, penalty: number): void {
+  if (response.statusCode === 429) return;
+  if ((performance.now() - failureStart) / 1000 >= penalty) {
+    throw new TooSlow(
+      `el intento respondió ${String(response.statusCode)} con la espera de ${String(penalty)} s vencida`,
+    );
+  }
+  expect(response.statusCode).toBe(429);
+}
+
+/** La IP atacante (en `network`.0/24) falla contra muchas cuentas; cada paso que depende de la espera la verifica. */
+async function ipScenario(network: string): Promise<void> {
+  const accounts: TestAccount[] = [];
+  for (let i = 0; i < THROTTLE.distinctAccountsPerIp; i++) accounts.push(await createVerifiedUser(env.wallet, env.db));
+  const attacker = `${network}.200`;
+  let failureStart = performance.now();
+  for (let i = 0; i < THROTTLE.freeFailures; i++) {
+    failureStart = performance.now();
+    expect((await login(accounts[i]?.email ?? '', randomPassword(), attacker)).statusCode).toBe(401);
+  }
+  // La IP espera aunque la próxima cuenta sea otra y la contraseña sea la correcta…
+  const next = accounts[THROTTLE.freeFailures];
+  const blocked = await login(next?.email ?? '', next?.password ?? '', attacker);
+  expectWaiting(blocked, failureStart, 1);
+  expect(retryAfter(blocked)).toBe(1);
+  // …mientras el dueño de esa cuenta, desde su IP, entra sin problema.
+  expect((await login(next?.email ?? '', next?.password ?? '')).statusCode).toBe(200);
+
+  let lastBlocked = blocked;
+  for (let i: number = THROTTLE.freeFailures; i < THROTTLE.distinctAccountsPerIp; i++) {
+    await waitPenalty(lastBlocked);
+    failureStart = performance.now();
+    expect((await login(accounts[i]?.email ?? '', randomPassword(), attacker)).statusCode).toBe(401);
+    lastBlocked = await login(accounts[i]?.email ?? '', randomPassword(), attacker);
+    // Fallo número i + 1: espera de 2^(i + 1 - freeFailures) s.
+    if (i < THROTTLE.distinctAccountsPerIp - 1)
+      expectWaiting(lastBlocked, failureStart, 2 ** (i + 1 - THROTTLE.freeFailures));
+  }
+
+  const signals = await auditEvents('AUTH_RISK_SIGNAL');
+  const manyAccounts = signals.filter((s) => (s.payload as { signal: string }).signal === 'IP_MANY_ACCOUNTS');
+  expect(manyAccounts).toHaveLength(1);
+  expect(manyAccounts[0]?.ip_prefix).toBe(`${network}.0/24`);
+  expect(manyAccounts[0]?.payload).toMatchObject({ ipFailures: THROTTLE.distinctAccountsPerIp });
+  const metric = await env.wallet.metrics.registry.getSingleMetricAsString('mtw_auth_risk_signals_total');
+  expect(metric).toContain('signal="IP_MANY_ACCOUNTS"} 1');
+}
+
 describe('fuerza bruta por IP y credential stuffing', () => {
   it('una IP que falla contra muchas cuentas espera igual y dispara la señal IP_MANY_ACCOUNTS', async () => {
-    const accounts: TestAccount[] = [];
-    for (let i = 0; i < THROTTLE.distinctAccountsPerIp; i++)
-      accounts.push(await createVerifiedUser(env.wallet, env.db));
-    const attacker = '192.0.2.200';
-    for (let i = 0; i < THROTTLE.freeFailures; i++) {
-      expect((await login(accounts[i]?.email ?? '', randomPassword(), attacker)).statusCode).toBe(401);
+    // Si un paso que tenía que caer dentro de la espera se procesó tarde, ese escenario no prueba nada (y ya sumó
+    // fallos que cambian los conteos): se repite completo desde otra red de documentación (RFC 5737), con cuentas
+    // nuevas. Un escenario abortado nunca llega a la señal, que se dispara recién con la última cuenta.
+    const networks = ['192.0.2', '198.51.100', '203.0.113'];
+    for (const [index, network] of networks.entries()) {
+      try {
+        await ipScenario(network);
+        return;
+      } catch (error) {
+        if (!(error instanceof TooSlow) || index === networks.length - 1) throw error;
+      }
     }
-    // La IP espera aunque la próxima cuenta sea otra y la contraseña sea la correcta…
-    const next = accounts[THROTTLE.freeFailures];
-    const blocked = await login(next?.email ?? '', next?.password ?? '', attacker);
-    expect(blocked.statusCode).toBe(429);
-    expect(retryAfter(blocked)).toBe(1);
-    // …mientras el dueño de esa cuenta, desde su IP, entra sin problema.
-    expect((await login(next?.email ?? '', next?.password ?? '')).statusCode).toBe(200);
-
-    let lastBlocked = blocked;
-    for (let i: number = THROTTLE.freeFailures; i < THROTTLE.distinctAccountsPerIp; i++) {
-      await waitPenalty(lastBlocked);
-      expect((await login(accounts[i]?.email ?? '', randomPassword(), attacker)).statusCode).toBe(401);
-      lastBlocked = await login(accounts[i]?.email ?? '', randomPassword(), attacker);
-      if (i < THROTTLE.distinctAccountsPerIp - 1) expect(lastBlocked.statusCode).toBe(429);
-    }
-
-    const signals = await auditEvents('AUTH_RISK_SIGNAL');
-    const manyAccounts = signals.filter((s) => (s.payload as { signal: string }).signal === 'IP_MANY_ACCOUNTS');
-    expect(manyAccounts).toHaveLength(1);
-    expect(manyAccounts[0]?.ip_prefix).toBe('192.0.2.0/24');
-    expect(manyAccounts[0]?.payload).toMatchObject({ ipFailures: THROTTLE.distinctAccountsPerIp });
-    const metric = await env.wallet.metrics.registry.getSingleMetricAsString('mtw_auth_risk_signals_total');
-    expect(metric).toContain('signal="IP_MANY_ACCOUNTS"} 1');
-  }, 120_000);
+  }, 420_000);
 
   it('un pico de fallos de la plataforma en un minuto dispara FAILURE_SPIKE una sola vez', async () => {
     // Listener con su propio Valkey y un umbral bajo: el contador de la plataforma no se mezcla con los demás tests.
