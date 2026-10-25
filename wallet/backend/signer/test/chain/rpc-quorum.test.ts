@@ -61,15 +61,14 @@ beforeAll(async () => {
   // El fork trae del RPC remoto el estado que tocan la simulación y la estimación (las cuentas y los predeploys de Base
   // del fee de L1) recién en el primer acceso: se precalienta acá, sin el timeout de lectura del cliente, para que los
   // tests midan el quórum y no la latencia del proveedor.
+  // Primero A y después B: B forkea de A, así lo encuentra ya en A y no compiten por el RPC remoto.
   const warm = { from: devAccount, to: recipient, data: '0x', value: '0x1' };
-  await Promise.all(
-    [anvilA, anvilB].map(async (anvil) => {
-      await anvil.rpc('eth_call', [warm, 'latest']);
-      await anvil.rpc('eth_estimateGas', [warm, 'latest']);
-    }),
-  );
+  for (const anvil of [anvilA, anvilB]) {
+    await anvil.rpc('eth_call', [warm, 'latest'], 180_000);
+    await anvil.rpc('eth_estimateGas', [warm, 'latest'], 180_000);
+  }
   [proxyA, proxyB] = await Promise.all([startFaultProxy(anvilA.url), startFaultProxy(anvilB.url)]);
-}, 180_000);
+}, 600_000);
 
 afterAll(async () => {
   for (const proxy of [proxyA, proxyB] as (FaultProxy | undefined)[]) await proxy?.close();

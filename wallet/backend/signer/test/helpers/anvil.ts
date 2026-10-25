@@ -22,7 +22,8 @@ export async function freePort(): Promise<number> {
 
 export interface AnvilInstance {
   url: string;
-  rpc: <T = unknown>(method: string, params?: unknown[]) => Promise<T>;
+  /** Pedido JSON-RPC; espera hasta `timeoutMs` (60 s por defecto). */
+  rpc: <T = unknown>(method: string, params?: unknown[], timeoutMs?: number) => Promise<T>;
   stop: () => Promise<void>;
 }
 
@@ -68,7 +69,20 @@ async function launchAnvil(options: AnvilOptions): Promise<AnvilInstance> {
     '--silent',
   ];
   if (options.upstream !== undefined) {
-    args.push('--fork-url', options.upstream.url, '--fork-block-number', String(options.upstream.blockNumber));
+    args.push(
+      '--fork-url',
+      options.upstream.url,
+      '--fork-block-number',
+      String(options.upstream.blockNumber),
+      // El upstream es otro Anvil que, si no tiene el estado, lo trae del RPC remoto con sus propios reintentos: se
+      // lo espera más que a un pedido de ese Anvil (60 s) en lugar del timeout por defecto.
+      '--retries',
+      '10',
+      '--fork-retry-backoff',
+      '2000',
+      '--timeout',
+      '180000',
+    );
   } else if (options.fork !== false) {
     args.push(
       '--fork-url',
@@ -116,7 +130,7 @@ async function launchAnvil(options: AnvilOptions): Promise<AnvilInstance> {
   }
   return {
     url,
-    rpc: <T>(method: string, params: unknown[] = []) => jsonRpc<T>(url, method, params, 60_000),
+    rpc: <T>(method: string, params: unknown[] = [], timeoutMs = 60_000) => jsonRpc<T>(url, method, params, timeoutMs),
     stop: async () => {
       if (child.exitCode === null) {
         child.kill('SIGTERM');
