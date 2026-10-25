@@ -1,6 +1,8 @@
 // Pasos comunes de la UI de Recovery en los tests: login con la misma cuenta que en Wallet, step-up con el código real
-// del email y desbloqueo de R desde el archivo cifrado con la Password R.
+// del email, desbloqueo de R desde el archivo cifrado con la Password R y la copia de una dirección de la otra app en
+// los 10 grupos de una comparación.
 import { expect, type Page } from '@playwright/test';
+import { getAddress } from 'viem';
 import { nextCode } from './mailpit.ts';
 import { ACCOUNT_PASSWORD } from './api.ts';
 import type { SealedRecovery } from './envelope.ts';
@@ -70,4 +72,19 @@ export async function writeDownPasswordR(page: Page, generateLabel: string, conf
   }
   await page.getByRole('button', { name: confirmLabel }).click();
   return words;
+}
+
+/** Los 10 grupos de 4 caracteres de una dirección, como los muestra la otra app (sin el 0x). */
+export function addressGroupsOf(address: string): string[] {
+  return getAddress(address).slice(2).match(/.{4}/g) ?? [];
+}
+
+/**
+ * Copia en los 10 grupos de la comparación una dirección leída en la otra app: en el test, el dato del test (nunca lo
+ * que muestra la pantalla de Recovery).
+ */
+export async function typeAddressGroups(page: Page, groups: readonly string[]): Promise<void> {
+  for (const [i, group] of groups.entries()) {
+    await page.getByLabel(`Grupo ${String(i + 1)} de 10`, { exact: true }).fill(group);
+  }
 }

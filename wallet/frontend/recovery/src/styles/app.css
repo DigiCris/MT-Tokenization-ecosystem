@@ -387,6 +387,30 @@ legend {
   letter-spacing: 0.02em;
 }
 
+/* Comparación de una dirección copiada de la otra app: sus 10 grupos de 4 caracteres, con el 0x fijo antes del primero. */
+.address-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: var(--mtw-space-3);
+}
+
+.address-group {
+  display: flex;
+  align-items: center;
+  gap: var(--mtw-space-2);
+}
+
+.address-group__prefix {
+  font-family: var(--mtw-font-mono);
+  color: var(--mtw-color-text-muted);
+}
+
+.address-group__input {
+  min-width: 0;
+  font-family: var(--mtw-font-mono);
+  letter-spacing: 0.04em;
+}
+
 .words {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));

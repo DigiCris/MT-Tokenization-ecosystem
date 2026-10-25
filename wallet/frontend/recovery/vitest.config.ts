@@ -50,6 +50,7 @@ export default defineConfig({
         'src/chain/**': { lines: 90 },
         'src/signer/**': { lines: 90 },
         'src/operations/**': { lines: 90 },
+        'src/recover-u/**': { lines: 90 },
         'src/enroll/**': { lines: 90 },
         'src/restore/**': { lines: 90 },
         'src/sovereign/**': { lines: 90 },

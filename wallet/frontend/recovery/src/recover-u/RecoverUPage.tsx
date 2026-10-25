@@ -1,9 +1,10 @@
 // `/recover-u` (P19.T04): reemplazar U perdida por U′. La Wallet registró U′ (con su KeyAcceptance) y dejó la rotación
-// en borrador para que R la proponga. Acá: U′ pendiente (para compararla con la que muestra la Wallet), R firma la
-// propuesta que arma la app (R + S, timelock de 48 h), cuenta regresiva con la hora de la cadena y, al madurar, R firma
-// la ejecución (swapOwner con el owner anterior leído de la cadena).
+// en borrador para que R la proponga. Acá: U′ pendiente, que se confirma comparándola con la que muestra la Wallet
+// antes de firmar nada (ConfirmNewUserKey: la del backend no se muestra hasta que coincide, [F-LNK-04]); R firma la
+// propuesta que arma la app con la U′ confirmada (R + S, timelock de 48 h), cuenta regresiva con la hora de la cadena y,
+// al madurar, R firma la ejecución (swapOwner con el owner anterior leído de la cadena).
 import { useCallback, useEffect, useState } from 'react';
-import { isAddressEqual } from 'viem';
+import { isAddress, isAddressEqual, type Address } from 'viem';
 import type { Rotation } from '../api/recovery-api.ts';
 import { api, pinned, reader } from '../app/services.ts';
 import {
@@ -23,6 +24,14 @@ import { RecoveryGate, type RecoveryContext } from '../session/RecoveryGate.tsx'
 import { AddressText } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
 import { Notice, useAsyncAction } from '../ui/forms.tsx';
+import { sameDraft, type UserKeyDraft } from './compare.ts';
+import { ConfirmNewUserKey } from './ConfirmNewUserKey.tsx';
+
+/** El borrador de la rotación de U que dejó la Wallet con «Perdí mi Password U» (lo propone R). */
+function userKeyDraft(rotations: readonly Rotation[] | null): UserKeyDraft | null {
+  const draft = rotations?.find((r) => r.role === 'U' && r.status === 'DRAFT' && r.initiatedBy === 'R');
+  return draft ? { id: draft.id, newKey: draft.newKey } : null;
+}
 
 function RecoverU({ ctx }: { ctx: RecoveryContext }) {
   const { platform, signer, walletId, safe, checked } = ctx;
@@ -31,6 +40,7 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
   const [pending, setPending] = useState<PendingProposal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<{ title: string; item: VerifiedOperation } | null>(null);
+  const [confirmed, setConfirmed] = useState<UserKeyDraft | null>(null);
   const [reload, setReload] = useState(0);
   const now = useChainNow(reader);
 
@@ -50,27 +60,37 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
     };
   }, [walletId, safe, timelock, reload]);
 
-  const draft = rotations?.find((r) => r.role === 'U' && r.status === 'DRAFT' && r.initiatedBy === 'R') ?? null;
+  const draft = userKeyDraft(rotations);
+  // La U′ confirmada vale sólo para ese mismo borrador: si la Wallet registró otra, hay que volver a comparar.
+  const confirmedKey: Address | null =
+    confirmed !== null && draft !== null && sameDraft(confirmed, draft) ? confirmed.newKey : null;
   const live =
     rotations?.find((r) => r.role === 'U' && ['PENDING_TIMELOCK', 'READY_TO_EXECUTE'].includes(r.status)) ?? null;
 
+  const reread = useCallback(async () => {
+    const { items } = await api.rotations(walletId);
+    setRotations(items);
+    return userKeyDraft(items);
+  }, [walletId]);
+
   const propose = useAsyncAction(
     useCallback(async () => {
-      if (!draft) return;
+      if (confirmedKey === null) return;
       await releasePrepared(api, platform);
       const { rotation, operation } = await api.proposeRotation(platform.auth, walletId, 'U');
       const item = await verifiedOrReleased(api, platform, [operation], async () => {
-        if (!isAddressEqual(rotation.newKey, draft.newKey))
-          throw new Error('La plataforma propone otra U′ que la registrada.');
+        // La propuesta va hacia la U′ que confirmó el usuario, nunca hacia la que diga el backend ahora (ni su texto).
+        if (!isAddress(rotation.newKey, { strict: false }) || !isAddressEqual(rotation.newKey, confirmedKey))
+          throw new Error('La plataforma propone otra clave U nueva que la que confirmaste.');
         return verifyPrepared(operation, {
           safe,
           chainId: 8453,
           onchainNonce: await safeNonce(reader, safe),
-          build: (n) => proposeCall(timelock, 'U', checked.roles.userKey, draft.newKey, n),
+          build: (n) => proposeCall(timelock, 'U', checked.roles.userKey, confirmedKey, n),
         });
       });
       setReview({ title: 'Revisá la propuesta de reemplazo de tu clave de usuario (U)', item });
-    }, [draft, platform, walletId, safe, timelock, checked.roles.userKey]),
+    }, [confirmedKey, platform, walletId, safe, timelock, checked.roles.userKey]),
   );
 
   const execute = useAsyncAction(
@@ -145,17 +165,21 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
         </div>
       ) : draft ? (
         <div className="stack" data-draft-u={draft.id}>
-          <p>
-            La app Wallet registró una clave U′ para reemplazar la tuya. Compará su dirección completa con la que
-            muestra la Wallet:
-          </p>
-          <p>
-            <AddressText address={draft.newKey} />
-          </p>
-          {propose.error && <Notice tone="error">{propose.error}</Notice>}
-          <button type="button" className="button" disabled={propose.pending} onClick={() => void propose.run()}>
-            Coincide: revisar y firmar la propuesta
-          </button>
+          {confirmedKey === null ? (
+            <ConfirmNewUserKey draft={draft} reread={reread} onConfirmed={setConfirmed} />
+          ) : (
+            <>
+              <Notice tone="success">
+                <span data-u-confirmed="">
+                  Dirección de tu clave U nueva (confirmada): <AddressText address={confirmedKey} />
+                </span>
+              </Notice>
+              {propose.error && <Notice tone="error">{propose.error}</Notice>}
+              <button type="button" className="button" disabled={propose.pending} onClick={() => void propose.run()}>
+                Revisar y firmar la propuesta
+              </button>
+            </>
+          )}
         </div>
       ) : (
         rotations !== null && (
