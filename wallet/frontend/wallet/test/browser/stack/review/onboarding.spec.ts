@@ -6,10 +6,12 @@
 // con la Password R y su confirmación, backups de R (archivo, QR estático y 17 palabras con su confirmación), envío y la
 // pantalla final con la dirección en grupos. En la Wallet, la confirmación manual (la R no se muestra antes de
 // confirmar; ningún grupo coincide, un error de tipeo y, al agotar los intentos, el pedido se cancela y se genera otro
-// que obliga a crear otra R), la dirección confirmada a mano, la creación retomada en una pestaña recargada y el camino
-// del enlace de regreso con k desde la pantalla de Recovery. Después, la creación de la Safe con sus mensajes de
-// progreso, Seguridad (con el QR re-exportado) y "perdí mi Password U". Corre en cada navegador de MTW_BROWSERS y sólo
-// con MTW_REVIEW_DIR (capturas en <dir>/onboarding/<navegador>/).
+// que obliga a crear otra R), la dirección confirmada a mano, la creación retomada en una pestaña recargada (avisa que
+// Recovery va a crear otra R, y el primer pedido también) y el camino del enlace de regreso con k desde la pantalla de
+// Recovery. Tercera revisión: el primer enrollment recuerda el sobre de R en ese dispositivo (la casilla viene marcada)
+// y el último no, así las dos pantallas finales de Recovery muestran cada texto. Después, la creación de la Safe con sus
+// mensajes de progreso, Seguridad (con el QR re-exportado) y "perdí mi Password U". Corre en cada navegador de
+// MTW_BROWSERS y sólo con MTW_REVIEW_DIR (capturas en <dir>/onboarding/<navegador>/).
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { serializeEnvelope, parseEnvelope } from '../../../../src/crypto/envelope.ts';
 import {
@@ -17,6 +19,7 @@ import {
   MANUAL_ABORT_TEXT,
   MANUAL_MISMATCH_TEXT,
   NEW_REQUEST_TEXT,
+  RESUME_NEW_REQUEST_TEXT,
 } from '../../../../src/recovery-activation/activation.ts';
 import { recoveryRequest, typeRecoveryGroups, waitForManualConfirmation } from '../helpers/activation.ts';
 import { answerGoogleConsent, removeEnvelopeBackup } from '../helpers/drive.ts';
@@ -143,7 +146,13 @@ test('onboarding completo con capturas para la revisión de textos', async ({ pa
     // Lo que se tipeó no coincide en ningún grupo con lo que recibió la plataforma (R cambiada en el camino).
     await typeRecoveryGroups(page, everyGroupDifferent(sentFirst.recoveryKey));
     await expect(page.getByText(MANUAL_MISMATCH_TEXT)).toBeVisible();
-    await expect(page.getByText(/^No coincide ningún grupo: no parece un error de tipeo\./)).toBeVisible();
+    // Con los intentos que quedan, y generar un pedido nuevo como acción principal.
+    await expect(
+      page.getByText(/^No coincide ningún grupo: no parece un error de tipeo \(te quedan 2 intentos\)\./),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-mismatch-groups]').getByRole('button', { name: 'Generar un pedido nuevo' }),
+    ).toHaveClass('button');
     await snap('confirmar-r-no-coincide');
     // Un error de tipeo en dos grupos: cuáles revisar.
     const typo = addressGroups(sentFirst.recoveryKey).map((g, i) =>
@@ -173,10 +182,12 @@ test('onboarding completo con capturas para la revisión de textos', async ({ pa
     await expect(page.getByText('Dirección de tu clave R (confirmada):')).toBeVisible();
     await snap('confirmar-r-confirmada');
 
-    // La pestaña se recarga antes de seguir: se retoma con el sobre y la Password U, y Activar Recovery pide otro.
+    // La pestaña se recarga antes de seguir: se retoma con el sobre y la Password U, y Activar Recovery pide otro. Como
+    // ya hubo pedidos (la pestaña lo sabe y la plataforma tiene la R del pedido 2), avisa que Recovery va a crear otra R.
     advanceRateLimitWindows();
     await page.goto('/onboarding');
     await expect(page.getByRole('heading', { name: 'Seguir con la creación' })).toBeVisible();
+    await expect(page.getByText(RESUME_NEW_REQUEST_TEXT)).toBeVisible();
     await snap('seguir-con-la-creacion');
     await page.getByRole('button', { name: 'Desde un archivo' }).click();
     await page.getByLabel(/Archivo del sobre cifrado/).setInputFiles({
@@ -189,12 +200,16 @@ test('onboarding completo con capturas para la revisión de textos', async ({ pa
     await expect(page.getByRole('heading', { name: 'Confirmá que sos vos' })).toBeVisible({ timeout: 60_000 });
     await completeStepUp(page, account.email);
     await expect(page.locator('[data-recovery-link]')).toBeVisible();
+    // El primer pedido después de recargar también avisa que Recovery va a crear otra R.
+    await expect(page.getByText(NEW_REQUEST_TEXT)).toBeVisible();
+    await snap('activar-recovery-tras-recargar');
 
     // Pedido 3, el camino del enlace de regreso: «Volver a la Wallet» en Recovery abre la Wallet en esa pestaña, que le
-    // pasa el pedido, la R y el k a la pestaña del pedido; ésta comprueba el k y la R, y sigue sola.
+    // pasa el pedido, la R y el k a la pestaña del pedido; ésta comprueba el k y la R, y sigue sola. Esta vez sin
+    // recordar el sobre en el dispositivo: la pantalla final de Recovery lo dice.
     advanceRateLimitWindows();
     const third = await recoveryRequest(page);
-    const sentThird = await enrollInRecovery(recovery, account, third.link);
+    const sentThird = await enrollInRecovery(recovery, account, third.link, { remember: false });
     expect(new URLSearchParams(sentThird.returnLink.hash.slice(1)).get('k')).toBe(third.secret);
     await snap('recovery-regreso-direccion-enviada', recovery);
     await recovery.getByRole('link', { name: 'Volver a la Wallet' }).click();

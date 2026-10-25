@@ -55,7 +55,12 @@ export async function finishStepUp(api: WalletApi, pending: PendingStepUp, codes
 
 /** Sesión vigente (con margen de 30 s para no empezar un request crítico a punto de vencer). */
 export function isLive(session: PlatformSessionView, now: number = Date.now()): boolean {
-  return Date.parse(session.expiresAt) - now > 30_000;
+  return liveUntil(session.expiresAt, now);
+}
+
+/** Lo mismo con sólo el vencimiento (ISO 8601) de la sesión. */
+export function liveUntil(expiresAt: string, now: number = Date.now()): boolean {
+  return Date.parse(expiresAt) - now > 30_000;
 }
 
 /**

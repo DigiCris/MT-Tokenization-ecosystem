@@ -1,9 +1,12 @@
 // P17.T07: cambio de Password U [F-KEY-08] con la wallet desbloqueada (sobre nuevo de la misma U, registro OPAQUE nuevo
 // con OPERATIONS, el anterior retirado) y "perdí mi Password U" (step-up U_REPLACEMENT → U' con Password U' y backups →
-// KeyAcceptance → borrador de rotación para que R la proponga → handoff a Recovery con link y QR).
+// KeyAcceptance → borrador de rotación para que R la proponga → handoff a Recovery con link y QR, y la dirección de U'
+// que generó la app a la vista, en grupos, para copiarla en Recovery).
 import { expect, test } from '@playwright/test';
 import { keysForEnvelope, openEnvelope, parseEnvelope, serializeEnvelope } from '../../../src/crypto/envelope.ts';
 import { addressOf } from '../../../src/crypto/keys.ts';
+import { addressGroups } from '../../../src/recovery-activation/activation.ts';
+import { NEW_USER_KEY_COMPARE_TEXT } from '../../../src/security/password-u/lost.ts';
 import { unlockWallet } from '../../../src/unlock/unlock.ts';
 import { activeWallet, nodeArgon2 } from './helpers/onboard.ts';
 import { backupToFile, completeStepUp, login, unlockWithFile, writeDownAndConfirmPassword } from './helpers/ui.ts';
@@ -63,6 +66,13 @@ test("perdí mi Password U: U' registrada con KeyAcceptance y handoff a Recovery
     (await keysForEnvelope(envelope, words.join(' '), nodeArgon2)).encryptionKey,
   );
   expect(addressOf(key)).toBe(envelope.keyAddress);
+  // La dirección de U' que generó la app (la del sobre), agrupada, con qué hacer con ella en Recovery.
+  const shown = page.locator(`[data-new-user-key="${envelope.keyAddress}"]`);
+  await expect(shown.getByRole('heading', { name: 'Dirección de tu clave U nueva' })).toBeVisible();
+  await expect(shown.locator(`[data-address="${envelope.keyAddress}"]`)).toHaveText(
+    `0x ${addressGroups(envelope.keyAddress).join(' ')}`,
+  );
+  await expect(shown.getByText(NEW_USER_KEY_COMPARE_TEXT)).toBeVisible();
   const handoff = new URL((await page.getByTestId('recovery-handoff').getAttribute('href')) ?? '');
   expect(handoff.origin + handoff.pathname).toBe('http://localhost:5174/recover-u');
   const params = new URLSearchParams(handoff.hash.slice(1));

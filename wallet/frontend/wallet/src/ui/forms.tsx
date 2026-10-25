@@ -7,24 +7,43 @@ export function Field({
   label,
   hint,
   error,
+  prefix,
   ...input
-}: { label: string; hint?: ReactNode; error?: string | null } & InputHTMLAttributes<HTMLInputElement>) {
+}: {
+  label: string;
+  hint?: ReactNode;
+  error?: string | null;
+  /** Texto fijo antes del campo, que no se tipea (p. ej. el «0x» de una dirección). */
+  prefix?: string;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'prefix'>) {
   const id = useId();
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
   const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
+  const field = (
+    <input
+      id={id}
+      className="field__input"
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describedBy}
+      {...input}
+    />
+  );
   return (
     <div className="field">
       <label htmlFor={id} className="field__label">
         {label}
       </label>
-      <input
-        id={id}
-        className="field__input"
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy}
-        {...input}
-      />
+      {prefix === undefined ? (
+        field
+      ) : (
+        <div className="field__affixed">
+          <span className="field__prefix" data-prefix={prefix}>
+            {prefix}
+          </span>
+          {field}
+        </div>
+      )}
       {hint && (
         <p id={hintId} className="field__hint">
           {hint}

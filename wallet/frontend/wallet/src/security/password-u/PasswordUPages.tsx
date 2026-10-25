@@ -1,9 +1,11 @@
 // Cambio de Password U [F-KEY-08] y "perdí mi Password U" (P17.T07). El cambio exige la wallet desbloqueada (OPERATIONS):
 // Password U nueva → sobre nuevo de la misma U → Drive y archivo → registro OPAQUE nuevo (el anterior se retira). Si se
 // perdió la Password U: con las 17 palabras se restaura la misma U en /restore ([F-KEY-10](c), sin R ni timelock); si
-// no, step-up U_REPLACEMENT → U' con su Password U' y backups → KeyAcceptance → handoff a Recovery (necesita R).
+// no, step-up U_REPLACEMENT → U' con su Password U' y backups → KeyAcceptance → handoff a Recovery (necesita R), con la
+// dirección de U' que generó esta app a la vista: en Recovery se tipean sus 10 grupos para compararlos con la del backend.
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
+import type { Address } from 'viem';
 import type { StorageFlags } from '../../api/wallet-api.ts';
 import { api, argon2, driveOAuth, walletFactory } from '../../app/services.ts';
 import { appConfig } from '../../config/index.ts';
@@ -19,10 +21,17 @@ import { useSession, useSessionStore, useSensitiveScreen } from '../../session/c
 import type { StepUpSession } from '../../session/step-up.ts';
 import { StepUpForm } from '../../session/StepUpForm.tsx';
 import { rememberedEnvelope, rememberEnvelope } from '../../storage/envelope-cache.ts';
+import { AddressText } from '../../ui/AddressText.tsx';
 import { Notice, useAsyncAction } from '../../ui/forms.tsx';
 import { QrCanvas } from '../../ui/QrCanvas.tsx';
 import { commitNewPassword, resealWithNewPassword, type ResealedKey } from './change.ts';
-import { prepareReplacement, recoveryHandoffUrl, registerReplacement, type PreparedReplacement } from './lost.ts';
+import {
+  NEW_USER_KEY_COMPARE_TEXT,
+  prepareReplacement,
+  recoveryHandoffUrl,
+  registerReplacement,
+  type PreparedReplacement,
+} from './lost.ts';
 
 function DriveFirst({ returnTo }: { returnTo: string }) {
   if (hasDriveToken()) return <Notice tone="success">Google Drive conectado: el sobre nuevo se va a subir ahí.</Notice>;
@@ -163,7 +172,8 @@ export function LostPasswordUPage() {
   const [stepUp, setStepUp] = useState<StepUpSession | null>(null);
   const [draft, setDraft] = useState<DraftKey | null>(null);
   const [prepared, setPrepared] = useState<PreparedReplacement | null>(null);
-  const [handoff, setHandoff] = useState<string | null>(null);
+  // El enlace a Recovery y la dirección de U' que generó esta app (la que el usuario copia en Recovery).
+  const [handoff, setHandoff] = useState<{ url: string; newKey: Address } | null>(null);
 
   useEffect(
     () => () => {
@@ -187,7 +197,11 @@ export function LostPasswordUPage() {
         if (!stepUp || !draft || !prepared) return;
         const result = await registerReplacement(api, stepUp, draft, prepared, flags, walletFactory);
         zeroize(draft.key);
-        setHandoff(recoveryHandoffUrl(appConfig.recoveryOrigin, result.rotationId, result.userKey));
+        // La U' local (registerReplacement ya comprobó que la plataforma informa la misma), nunca la del backend.
+        setHandoff({
+          url: recoveryHandoffUrl(appConfig.recoveryOrigin, result.rotationId, draft.address),
+          newKey: draft.address,
+        });
         setStep('done');
       },
       [draft, prepared, stepUp],
@@ -209,13 +223,13 @@ export function LostPasswordUPage() {
           <p>
             Si no las tenés, sin la Password U tu clave actual no se puede usar. Vas a crear una clave U nueva (con su
             Password U y sus backups), y tu clave de recuperación R va a proponer el reemplazo desde la app Recovery. El
-            cambio se ejecuta después de 48 horas: te avisamos por email y en la app, y si no fuiste vos, cancelalo en{' '}
-            <Link to="/security/rotations">Seguridad → Rotaciones</Link>.
+            cambio se puede ejecutar recién después de 48 horas, desde la app Recovery: te avisamos por email y en la
+            app, y si no fuiste vos, cancelalo en <Link to="/security/rotations">Seguridad → Rotaciones</Link>.
           </p>
           <Notice tone="warning">
             Hacé esto sólo si de verdad perdiste la Password U: si la recordás, cambiala desde Seguridad. Y necesitás tu
-            clave R: si también la perdiste, nadie puede reemplazar U, porque tu Safe necesita 2 de sus 3 firmas y con
-            la clave de la plataforma sola no alcanza.
+            clave R (uno de sus backups y, para el archivo o el QR, la Password R): si también la perdiste, nadie puede
+            reemplazar U, porque tu Safe necesita 2 de sus 3 firmas y con la clave de la plataforma sola no alcanza.
           </Notice>
           <DriveFirst returnTo="/security/lost-password-u" />
           <button
@@ -278,10 +292,17 @@ export function LostPasswordUPage() {
       {step === 'done' && handoff && (
         <article className="card stack" aria-labelledby="handoff-title">
           <h2 id="handoff-title">Seguí en la app Recovery</h2>
+          <section className="stack" aria-labelledby="new-user-key-title" data-new-user-key={handoff.newKey}>
+            <h3 id="new-user-key-title">Dirección de tu clave U nueva</h3>
+            <p>
+              <AddressText address={handoff.newKey} copy />
+            </p>
+            <Notice tone="warning">{NEW_USER_KEY_COMPARE_TEXT}</Notice>
+          </section>
           <p>Abrí este enlace (o escaneá el QR) en el dispositivo donde tenés tu clave de recuperación.</p>
-          <QrCanvas text={handoff} label="QR para continuar en Recovery" />
+          <QrCanvas text={handoff.url} label="QR para continuar en Recovery" />
           <p>
-            <a href={handoff} rel="noopener" data-testid="recovery-handoff">
+            <a href={handoff.url} rel="noopener" data-testid="recovery-handoff">
               Continuar en Recovery
             </a>
           </p>

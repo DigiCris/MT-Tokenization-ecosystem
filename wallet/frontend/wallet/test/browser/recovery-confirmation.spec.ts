@@ -13,7 +13,11 @@
 // pestaña sin el pedido, la explicación sale enseguida y, sin k, el aviso va con la sesión del propósito del pedido. Un
 // pedido cancelado o reemplazado desde otra pestaña lo ve la del pedido (también al comparar), y dejar el pedido después
 // de una comparación que no coincidió lo aborta e informa (al salir de la pantalla y al recargar la pestaña). El k nunca
-// viaja a la API: ni en las rutas, ni en los cuerpos (también los de los rechazos), ni en los headers.
+// viaja a la API: ni en las rutas, ni en los cuerpos (también los de los rechazos), ni en los headers. Tercera revisión
+// de P17.MAN: el «0x» va fijo antes del Grupo 1 y uno tipeado ahí se ignora; sin casi ningún grupo coincidente se dicen
+// los intentos que quedan y generar otro pedido es la acción principal; retomar la creación después de un pedido (en
+// la misma pestaña o con una R ya enviada según la plataforma) avisa que Recovery va a crear otra R, y el primer pedido
+// lo repite; y si la verificación venció, «Generar un pedido nuevo» pide el step-up ahí mismo en lugar de fallar.
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import type { Address } from 'viem';
 import { serializeEnvelope } from '../../src/crypto/envelope.ts';
@@ -27,8 +31,10 @@ import {
   NEW_REQUEST_TEXT,
   POLL_ERROR_TEXT,
   RecoveryKeyMismatchError,
+  RESUME_NEW_REQUEST_TEXT,
   RETURN_LINK_ELSEWHERE_TEXT,
   ReturnLinkUnverifiedError,
+  SESSION_EXPIRED_TEXT,
 } from '../../src/recovery-activation/activation.ts';
 import { deriveArgon2id } from '../../src/workers/argon2-protocol.ts';
 import {
@@ -71,6 +77,10 @@ interface Scenario {
   view: Map<string, MockResponse>;
   /** Respuesta forzada del alta de un pedido. */
   create: MockResponse | null;
+  /** La R que informa `GET /wallets/{id}/deployment` (la de un pedido anterior ya enviado), o null. */
+  deployedR: Address | null;
+  /** Cuánto dura la PlatformSession del próximo step-up. */
+  sessionMs: number;
 }
 
 /** Recovery envía la R de ese pedido (la plataforma empieza a informarla). */
@@ -97,14 +107,20 @@ async function scenario(context: BrowserContext, baseURL: string | undefined, us
     released: new Set(),
     view: new Map(),
     create: null,
+    deployedR: null,
+    sessionMs: 15 * 60_000,
   };
   state.calls = await mockApi(context, new URL(baseURL ?? '').origin, [
     ...accountRoutes(() => creatingWallet()),
-    ...onboardingStepUpRoutes('2030-01-01T15:10:00.000Z', () => WALLET_ID),
+    ...onboardingStepUpRoutes(
+      '2030-01-01T15:10:00.000Z',
+      () => WALLET_ID,
+      () => state.sessionMs,
+    ),
     {
       method: 'GET',
       path: /^\/wallets\/[^/]+\/deployment$/,
-      handle: () => ({ body: { walletId: WALLET_ID, status: 'CREATING', U: userKey } }),
+      handle: () => ({ body: { walletId: WALLET_ID, status: 'CREATING', U: userKey, R: state.deployedR } }),
     },
     {
       method: 'POST',
@@ -268,10 +284,12 @@ test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto s
     ),
   ).toBeVisible();
   await expect(step(page).getByText('Esperando que Recovery informe la dirección de tu clave R…')).toBeVisible();
-  // El enlace de ida lleva el secreto del pedido; es el primero, así que todavía no hay aviso de "otra R".
+  // El enlace de ida lleva el secreto del pedido; es el primero (ni esta pestaña ni la plataforma saben de otro), así
+  // que no hay aviso de "otra R".
   const first = await shownRequest(page);
   expect(first.secret).toMatch(/^[A-Za-z0-9_-]{22}$/);
   await expect(page.getByText(NEW_REQUEST_TEXT)).toHaveCount(0);
+  await expect(page.getByText(RESUME_NEW_REQUEST_TEXT)).toHaveCount(0);
 
   // Recovery informa R: la Wallet pide copiarla de Recovery y no la muestra (N3).
   const firstR = release(s, first.enrollmentId);
@@ -283,16 +301,30 @@ test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto s
     ),
   ).toBeVisible();
   await expectNotShown(page, firstR);
+  // Los 10 grupos son los que siguen al «0x», que va fijo antes del Grupo 1 (hallazgo 5).
+  await expect(
+    step(page).getByText(/Copiá los 10 grupos de 4 caracteres que siguen al «0x», uno en cada campo/),
+  ).toBeVisible();
+  const prefix = step(page).locator('[data-prefix="0x"]');
+  await expect(prefix).toHaveText('0x');
+  await expect(prefix).toHaveCount(1);
+  const prefixBox = await prefix.boundingBox();
+  const groupOneBox = await page.getByLabel('Grupo 1 de 10', { exact: true }).boundingBox();
+  expect(prefixBox && groupOneBox && prefixBox.x + prefixBox.width <= groupOneBox.x).toBe(true);
 
   // 1) Recovery muestra otra dirección (la R cambió en el camino): ningún grupo coincide, no parece un error de tipeo.
+  // Se dicen los intentos que quedan y generar un pedido nuevo pasa a ser la acción principal (hallazgo 6).
   await typeGroups(page, everyGroupDifferent(firstR));
   await expect(page.getByText(MANUAL_MISMATCH_TEXT)).toBeVisible();
   await expect(
     page.getByText(
-      'No coincide ningún grupo: no parece un error de tipeo. No sigas con este pedido: generá uno nuevo.',
+      'No coincide ningún grupo: no parece un error de tipeo (te quedan 2 intentos). No sigas con este pedido: generá uno nuevo.',
     ),
   ).toBeVisible();
   await expect(page.getByText(BEFORE_NEW_REQUEST_TEXT)).toBeVisible();
+  const startOver = page.locator('[data-mismatch-groups]').getByRole('button', { name: 'Generar un pedido nuevo' });
+  await expect(startOver).toHaveClass('button');
+  await expect(confirmButton(page)).toHaveClass('button button--secondary');
   await expect(page.getByRole('button', { name: 'Continuar' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Crear tu Safe' })).toHaveCount(0);
   await expectNotShown(page, firstR);
@@ -303,6 +335,9 @@ test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto s
   await expect(
     page.getByText('Si te equivocaste al copiar, revisá los grupos 2 y 5, y volvé a confirmar (te queda 1 intento).'),
   ).toBeVisible();
+  // Con un error de tipeo, lo principal vuelve a ser revisar y confirmar.
+  await expect(startOver).toHaveClass('button button--secondary');
+  await expect(confirmButton(page)).toHaveClass('button');
   await expect(page.getByLabel('Grupo 2 de 10', { exact: true })).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByLabel('Grupo 3 de 10', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByRole('button', { name: 'Continuar' })).toHaveCount(0);
@@ -340,6 +375,11 @@ test('manual: la R no se muestra; ningún grupo, tipeo y 3 intentos; el aborto s
   expect(s.enrollments).toHaveLength(2);
   await expectNotShown(page, secondR);
   const firstGroup = page.getByLabel('Grupo 1 de 10', { exact: true });
+  // Un «0x» tipeado al principio del Grupo 1 se ignora: no corre los grupos (hallazgo 5).
+  const secondGroups = addressGroups(secondR);
+  await firstGroup.pressSequentially(`0x${secondGroups[0] ?? ''}`);
+  await expect(firstGroup).toHaveValue(secondGroups[0] ?? '');
+  await firstGroup.fill('');
   await firstGroup.focus();
   await firstGroup.evaluate((input, text) => {
     const data = new DataTransfer();
@@ -538,9 +578,12 @@ test('un enlace de un pedido anterior, o de antes de recargar la pestaña del pe
   expect(s.rejected).toEqual([{ enrollmentId: first.enrollmentId, reason: 'RETURN_LINK_UNVERIFIED' }]);
 
   // La pestaña del pedido se recarga: el k del pedido 2 se perdió con ella y se pide el 3. El enlace del 2 ya no lo
-  // confirma nadie.
+  // confirma nadie. La pestaña sabe que ya hubo pedidos: seguir avisa que Recovery va a crear otra R, y el primer
+  // pedido después de recargar también (hallazgo 2).
   await page.goto('/onboarding');
+  await expect(page.getByText(RESUME_NEW_REQUEST_TEXT)).toBeVisible();
   await resume(page, envelopeJson);
+  await expect(page.getByText(NEW_REQUEST_TEXT)).toBeVisible();
   const third = await shownRequest(page);
   expect(third.enrollmentId).not.toBe(second.enrollmentId);
   await openReturnLink(context, { eid: second.enrollmentId, r: secondR, k: second.secret }, 'none');
@@ -778,4 +821,68 @@ test('enlace de regreso de un reemplazo de R con la wallet ya activa: lo explica
   expect(rejected).toEqual([]);
   // Ningún step-up de onboarding se pidió para avisar.
   expect(calls.filter((c) => c.path.startsWith('/platform-sessions/'))).toEqual([]);
+});
+
+test('retomar la creación con una R ya enviada (según la plataforma) avisa que Recovery va a crear otra R', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(120_000);
+  const { userKey, envelopeJson } = await sealedUserKey();
+  const s = await scenario(context, baseURL, userKey);
+  // Desde otra pestaña u otro dispositivo ya hubo un pedido y Recovery envió su R: la plataforma la informa. Esta
+  // pestaña (nueva) no sabe nada de ese pedido.
+  s.deployedR = randomAddress();
+  await page.goto('/onboarding');
+  await expect(page.getByRole('heading', { name: 'Seguir con la creación' })).toBeVisible();
+  await expect(page.getByText(RESUME_NEW_REQUEST_TEXT)).toBeVisible();
+  await resume(page, envelopeJson);
+  await expect(page.locator('[data-recovery-link]')).toBeVisible();
+  await expect(page.getByText(NEW_REQUEST_TEXT)).toBeVisible();
+  expect(s.enrollments).toHaveLength(1);
+});
+
+test('si la verificación venció, «Generar un pedido nuevo» pide el step-up ahí mismo y el pedido sale con la sesión nueva', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(180_000);
+  const { userKey, envelopeJson } = await sealedUserKey();
+  const s = await scenario(context, baseURL, userKey);
+  const creations = () =>
+    s.calls.filter((c) => c.method === 'POST' && /^\/wallets\/[^/]+\/recovery\/enrollments$/.test(c.path));
+  // La primera verificación vence enseguida (35 s: la app no empieza un pedido con menos de 30 s); la siguiente, no.
+  s.sessionMs = 35_000;
+  await page.goto('/onboarding');
+  await resume(page, envelopeJson);
+  const first = await shownRequest(page);
+  s.sessionMs = 15 * 60_000;
+  expect(creations()).toHaveLength(1);
+  expect(creations()[0]?.headers['x-platform-session']).toBe('platform-session-de-prueba-1');
+
+  // Ya vencida la verificación, el pedido vence (o lo cancelan): el paso sigue montado y ofrece otro.
+  await page.waitForTimeout(6_000);
+  s.view.set(first.enrollmentId, { body: { ...enrollmentView(first.enrollmentId, null), status: 'EXPIRED' } });
+  const ended = page.locator('[data-request-ended]');
+  await expect(ended).toBeVisible({ timeout: 15_000 });
+  await ended.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
+  // No sale un pedido condenado al 403 (ni «Reintentar» que vuelva a fallar): se pide la verificación en el paso.
+  const expired = step(page).locator('[data-session-expired]');
+  await expect(expired.getByText(SESSION_EXPIRED_TEXT)).toBeVisible();
+  await expect(expired.getByRole('heading', { name: 'Confirmá que sos vos' })).toBeVisible();
+  expect(creations()).toHaveLength(1);
+  await expired.getByRole('button', { name: 'Mandarme el código' }).click();
+  await expired.getByLabel('Código del email').fill('12345678');
+  await expired.getByRole('button', { name: 'Confirmar', exact: true }).click();
+
+  // Con la sesión nueva, el pedido nuevo (y el aviso de que Recovery va a crear otra R).
+  await expect(page.locator('[data-recovery-link]')).toBeVisible();
+  await expect(page.getByText(NEW_REQUEST_TEXT)).toBeVisible();
+  expect(creations()).toHaveLength(2);
+  expect(creations()[1]?.headers['x-platform-session']).toBe('platform-session-de-prueba-2');
+  expect((await shownRequest(page)).enrollmentId).not.toBe(first.enrollmentId);
+  await expect(page.getByText(/La sesión de la wallet venció/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Reintentar' })).toHaveCount(0);
 });

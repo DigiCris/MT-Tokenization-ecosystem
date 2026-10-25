@@ -5,13 +5,36 @@
 // inglés; el cifrado ofrece la opción avanzada de 128 MiB desactivada y con su advertencia, y el sobre elegido la lleva
 // ([F-KEY-03]); los backups dicen qué pasa si se pierden U y R (B1) y qué abre cada backup (O2); y las 17 palabras
 // cuentan como backup recién al reingresar 3 al azar: una casilla no las oculta, un error permite volver a verlas y,
-// mientras están a la vista sin confirmar, no se puede seguir (se confirman o se ocultan, N8).
-import { expect, test } from '@playwright/test';
-import { LOST_U_AND_R_WARNING } from '../../src/onboarding/user-key.ts';
+// mientras están a la vista sin confirmar, no se puede seguir (se confirman o se ocultan, N8). Tercera revisión de
+// P17.MAN: lo impreso (QR y 17 palabras) dice de qué app y de qué clave es, el QR avisa de la impresora de confianza y
+// las 17 palabras se guardan lejos de los backups de R (U y R juntas mueven los fondos sin la plataforma).
+import { expect, test, type Page } from '@playwright/test';
+import { LOST_U_AND_R_WARNING, U_WORDS_HANDWRITTEN, U_WORDS_TITLE, uQrTitle } from '../../src/onboarding/user-key.ts';
 import { accountRoutes, creatingWallet, mockApi, onboardingStepUpRoutes, WALLET_ID } from './helpers/mock-api.ts';
 import { downloadedText } from './stack/helpers/download.ts';
 
 test.use({ timezoneId: 'America/Argentina/Buenos_Aires' });
+
+/** Deja `window.print` sin diálogo (cuenta las llamadas) para revisar qué se imprimiría. */
+async function stubPrint(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const target = window as unknown as { printed: number };
+    target.printed = 0;
+    window.print = () => {
+      target.printed += 1;
+    };
+  });
+}
+
+/** Con la hoja de impresión: lo marcado se ve y el resto de la página no; después vuelve todo a la normalidad. */
+async function expectPrintsOnly(page: Page, visible: string[], hidden: string[]): Promise<void> {
+  await page.emulateMedia({ media: 'print' });
+  for (const selector of visible) await expect(page.locator(selector).first()).toBeVisible();
+  for (const selector of hidden) await expect(page.locator(selector).first()).toBeHidden();
+  await page.emulateMedia({ media: 'screen' });
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  await expect(page.locator('body.printing-section')).toHaveCount(0);
+}
 
 test('pasos, step-up, Password U, cifrado de 128 MiB y backups con las 17 palabras confirmadas', async ({
   page,
@@ -152,6 +175,14 @@ test('pasos, step-up, Password U, cifrado de 128 MiB y backups con las 17 palabr
       page.getByLabel('Guardé o imprimí el QR fuera de este dispositivo (sin la Password U al lado).'),
     ).toBeVisible();
   }
+  // Cada cuadro dice de qué app y qué clave es, qué parte y con qué se abre; se imprimen solos, con ese título, y se
+  // avisa de la impresora de confianza (hallazgos 7 y 9).
+  for (let part = 1; part <= parts; part++) await expect(page.getByText(uQrTitle(part, parts))).toBeVisible();
+  await expect(page.getByText('Si lo imprimís, usá una impresora de confianza y no guardes el PDF.')).toBeVisible();
+  await stubPrint(page);
+  await page.getByRole('button', { name: 'Imprimir QR' }).click();
+  expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(1);
+  await expectPrintsOnly(page, ['#qr-print canvas', '#qr-print figcaption'], ['#backup-file', 'header']);
 
   // 17 palabras: a la vista sin confirmar no dejan seguir (N8): hay que confirmarlas u ocultarlas.
   const openWords = page.getByText(
@@ -172,6 +203,22 @@ test('pasos, step-up, Password U, cifrado de 128 MiB y backups con las 17 palabr
   await expect(openWords).toBeVisible();
   await expect(page.getByText(/Están en inglés: copialas letra por letra/)).toBeVisible();
   await expect(page.getByText('Si las imprimís, usá una impresora de confianza y no guardes el PDF.')).toBeVisible();
+  // Lejos de la Password U y de los backups de R: U y R juntas mueven los fondos sin la plataforma (hallazgo 1).
+  await expect(
+    page.getByText(
+      /guardalas lejos de la Password U y de los backups de tu clave R: quien junte tu clave U y tu clave R puede mover tus fondos sin la plataforma\./,
+    ),
+  ).toBeVisible();
+  // Con su título, también impreso, y el pedido de anotarlo a mano (hallazgo 7).
+  await expect(page.locator('#words-print').getByText(U_WORDS_TITLE)).toBeVisible();
+  await expect(page.getByText(U_WORDS_HANDWRITTEN)).toBeVisible();
+  await page.getByRole('button', { name: 'Imprimir sólo las palabras' }).click();
+  expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(2);
+  await expectPrintsOnly(
+    page,
+    ['#words-print .words__word', '#words-print .print-title'],
+    ['#backup-file', '#qr-print canvas'],
+  );
   await page.getByLabel(/Anoté las 17 palabras/).check();
   await expect(list).toBeVisible();
   const proceed = page.getByRole('button', { name: 'Continuar' });

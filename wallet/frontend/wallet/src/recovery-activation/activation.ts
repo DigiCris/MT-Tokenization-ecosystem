@@ -182,9 +182,20 @@ export function addressGroups(address: Address): string[] {
   return getAddress(address).slice(2).match(/.{4}/g) ?? [];
 }
 
-/** Un grupo tipeado en su forma comparable: sin espacios y en minúsculas (da igual cómo se haya escrito). */
-function comparableGroup(value: string | undefined): string {
-  return (value ?? '').replace(/\s/g, '').toLowerCase();
+/**
+ * Lo que queda en el campo de un grupo al tipear: en el primero se ignora un «0x» inicial (tercera revisión de P17.MAN,
+ * hallazgo 5). Recovery muestra «0x 79cd …» y el «0x» no es uno de los 10 grupos (la Wallet lo muestra fijo antes del
+ * Grupo 1); quien lo tipea igual no corre todos los grupos. Ningún grupo empieza con «0x» («x» no es hexadecimal).
+ */
+export function typedGroup(index: number, value: string): string {
+  return index === 0 ? value.replace(/^\s*0x/i, '') : value;
+}
+
+/** Un grupo tipeado en su forma comparable: sin «0x» delante del primero, sin espacios y en minúsculas. */
+function comparableGroup(index: number, value: string | undefined): string {
+  return typedGroup(index, value ?? '')
+    .replace(/\s/g, '')
+    .toLowerCase();
 }
 
 /**
@@ -223,7 +234,7 @@ export function compareManually(
   }
   // Un grupo que falta cuenta como distinto.
   const mismatchedGroups = addressGroups(reported).flatMap((group, i) =>
-    comparableGroup(typed[i]) === group.toLowerCase() ? [] : [i],
+    comparableGroup(i, typed[i]) === group.toLowerCase() ? [] : [i],
   );
   if (mismatchedGroups.length === 0) return { match: true, recoveryKey: reported };
   return { match: false, mismatchedGroups, attemptsLeft: MANUAL_ATTEMPTS - failedAttempts - 1 };
@@ -241,19 +252,27 @@ export const MANUAL_MISMATCH_TEXT =
   'No coincide con la dirección que recibió la plataforma. Si la copiaste bien de Recovery, no sigas: alguien pudo haberla cambiado. Generá un pedido nuevo.';
 
 /**
+ * No coincide ningún grupo, o casi ninguno: no parece un error de tipeo, así que lo que corresponde es generar un pedido
+ * nuevo (la pantalla lo pone como acción principal, hallazgo 6 de la tercera revisión).
+ */
+export function nearlyNoneMatch(mismatchedGroups: readonly number[]): boolean {
+  return ADDRESS_GROUPS - mismatchedGroups.length <= NEARLY_NONE;
+}
+
+/**
  * Qué revisar si fue un error de tipeo y cuántos intentos le quedan al pedido; si no coincide ningún grupo (o casi
- * ninguno), no parece un error de tipeo y se recomienda no seguir.
+ * ninguno), no parece un error de tipeo y se recomienda no seguir (también con los intentos que quedan).
  */
 export function manualRetryText(mismatchedGroups: readonly number[], attemptsLeft: number): string {
   const matching = ADDRESS_GROUPS - mismatchedGroups.length;
-  if (matching <= NEARLY_NONE) {
+  const left = attemptsLeft === 1 ? 'te queda 1 intento' : `te quedan ${String(attemptsLeft)} intentos`;
+  if (nearlyNoneMatch(mismatchedGroups)) {
     const which =
       matching === 0
         ? 'No coincide ningún grupo'
         : `Coincide${matching === 1 ? ' sólo 1 grupo' : `n sólo ${String(matching)} grupos`} de ${String(ADDRESS_GROUPS)}`;
-    return `${which}: no parece un error de tipeo. No sigas con este pedido: generá uno nuevo.`;
+    return `${which}: no parece un error de tipeo (${left}). No sigas con este pedido: generá uno nuevo.`;
   }
-  const left = attemptsLeft === 1 ? 'te queda 1 intento' : `te quedan ${String(attemptsLeft)} intentos`;
   const separator = mismatchedGroups.length > 1 ? ',' : '';
   return `Si te equivocaste al copiar, revisá ${groupsText(mismatchedGroups)}${separator} y volvé a confirmar (${left}).`;
 }
@@ -261,9 +280,12 @@ export function manualRetryText(mismatchedGroups: readonly number[], attemptsLef
 /** Se agotaron los intentos de la comparación manual: el pedido se aborta. */
 export const MANUAL_ABORT_TEXT = `La dirección no coincidió con la que recibió la plataforma en ${String(MANUAL_ATTEMPTS)} intentos: se canceló este pedido. Si la copiaste bien de Recovery, alguien pudo haberla cambiado en el camino.`;
 
-/** El enlace de regreso trae un `k`, pero la pestaña que lo abrió no tiene el pedido para comprobarlo. */
+/**
+ * El enlace de regreso trae un `k`, pero la pestaña que lo abrió no tiene el pedido para comprobarlo: en la del pedido
+ * sí se puede, con el enlace o a mano con los 10 grupos.
+ */
 export const RETURN_LINK_ELSEWHERE_TEXT =
-  'Este enlace de regreso no se puede comprobar en esta pestaña: sólo la pestaña donde generaste el pedido conoce su código secreto. Si esa pestaña sigue abierta, volvé a ella y abrí de nuevo el enlace (o escaneá otra vez el QR) de la app Recovery. Si la cerraste, generá un pedido nuevo.';
+  'Este enlace de regreso no se puede comprobar en esta pestaña: sólo la pestaña donde generaste el pedido conoce su código secreto. Si esa pestaña sigue abierta, volvé a ella y abrí de nuevo el enlace (o escaneá otra vez el QR) de la app Recovery, o confirmá ahí la dirección a mano: tipeá los 10 grupos que muestra la app Recovery después del «0x». Si la cerraste, generá un pedido nuevo.';
 
 /** Un pedido nuevo obliga a crear otra R (Recovery siempre genera una R nueva): los backups de la anterior no sirven. */
 export const NEW_REQUEST_TEXT =
@@ -272,6 +294,16 @@ export const NEW_REQUEST_TEXT =
 /** Antes de pedir otro: lo mismo, dicho como consecuencia de generar el pedido nuevo. */
 export const BEFORE_NEW_REQUEST_TEXT =
   'Si generás un pedido nuevo, vas a escanear un QR nuevo y Recovery va a crear otra clave R: destruí los backups de la anterior.';
+
+/**
+ * Al retomar la creación cuando ya hubo un pedido de R para esta wallet (N5 de la segunda revisión, hallazgo 2 de la
+ * tercera): seguir genera otro, que obliga a crear otra R.
+ */
+export const RESUME_NEW_REQUEST_TEXT =
+  'Al seguir vas a activar Recovery de nuevo: Recovery va a crear otra clave R y los backups de la anterior no van a servir.';
+
+/** La verificación del onboarding venció antes de generar un pedido (hallazgo 4 de la tercera revisión). */
+export const SESSION_EXPIRED_TEXT = 'Tu verificación venció: confirmá que sos vos de nuevo para generar el pedido.';
 
 /** Cuándo vence el pedido (el plazo lo fija el backend: 15 minutos mientras Recovery no informa la dirección). */
 export function requestExpiryText(expiresAt: string, timeZone?: string): string {

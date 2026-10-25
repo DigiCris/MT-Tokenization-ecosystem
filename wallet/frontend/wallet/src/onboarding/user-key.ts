@@ -23,6 +23,19 @@ export const ONBOARDING_KEY_VERSION = 1;
  * piden los backups y al activar Recovery. El U+2060 (word joiner) pega cada raya a la palabra de al lado, para que no
  * quede sola al final de un renglón (hallazgo N9).
  */
+/**
+ * Título de lo que se imprime o se anota de cada backup de U (hallazgo 7 de la tercera revisión de P17.MAN): una hoja
+ * suelta tiene que decir de qué app y de qué clave es, y con qué se abre.
+ */
+export const U_WORDS_TITLE = 'MT Wallet: 17 palabras de tu clave U';
+
+export function uQrTitle(part: number, parts: number): string {
+  return `MT Wallet: QR del sobre de tu clave U, parte ${String(part)} de ${String(parts)} (se abre con la Password U)`;
+}
+
+/** Al anotar las 17 palabras a mano, el mismo título que sale impreso. */
+export const U_WORDS_HANDWRITTEN = `Si las anotás a mano, escribí arriba de qué clave son: «${U_WORDS_TITLE}».`;
+
 export const LOST_U_AND_R_WARNING =
   'Tu Safe necesita 2 de sus 3 firmas. Si perdés tu clave U (Password U y backups) y también tu clave R, nadie —\u2060tampoco MT Wallet\u2060— puede mover tus fondos: con la clave de la plataforma sola no alcanza. Por eso pedimos backups de las dos.';
 

@@ -316,6 +316,18 @@ textarea.field__input {
   border-color: var(--mtw-color-danger);
 }
 
+/* Campo con un texto fijo delante que no se tipea (el «0x» antes del primer grupo de una dirección). */
+.field__affixed {
+  display: flex;
+  align-items: center;
+  gap: var(--mtw-space-2);
+}
+
+.field__prefix {
+  font-family: var(--mtw-font-mono);
+  font-weight: var(--mtw-font-weight-bold);
+}
+
 .field__hint {
   margin: 0;
   font-size: var(--mtw-font-size-sm);
@@ -694,6 +706,12 @@ legend {
 }
 
 .words__word {
+  font-weight: var(--mtw-font-weight-bold);
+}
+
+/* Título de lo que se imprime (de qué app y qué clave es): se ve también en pantalla. */
+.print-title {
+  margin: 0;
   font-weight: var(--mtw-font-weight-bold);
 }
 

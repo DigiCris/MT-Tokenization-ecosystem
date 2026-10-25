@@ -20,6 +20,9 @@ import {
   ONBOARDING_KEY_VERSION,
   registerNewUserKey,
   sealUserKey,
+  U_WORDS_HANDWRITTEN,
+  U_WORDS_TITLE,
+  uQrTitle,
   userKeyMemoryKiB,
 } from './user-key.ts';
 
@@ -123,5 +126,14 @@ describe('alta de U', () => {
     expect(hasIndependentBackup({ drive: false, file: true, qr: false, words: false })).toBe(true);
     expect(hasIndependentBackup({ drive: false, file: false, qr: true, words: false })).toBe(true);
     expect(hasIndependentBackup({ drive: false, file: false, qr: false, words: true })).toBe(true);
+  });
+
+  it('lo impreso (y lo anotado a mano) dice de qué app y de qué clave es, qué parte y con qué se abre', () => {
+    expect(U_WORDS_TITLE).toBe('MT Wallet: 17 palabras de tu clave U');
+    expect(uQrTitle(1, 1)).toBe('MT Wallet: QR del sobre de tu clave U, parte 1 de 1 (se abre con la Password U)');
+    expect(uQrTitle(2, 3)).toBe('MT Wallet: QR del sobre de tu clave U, parte 2 de 3 (se abre con la Password U)');
+    expect(U_WORDS_HANDWRITTEN).toBe(
+      'Si las anotás a mano, escribí arriba de qué clave son: «MT Wallet: 17 palabras de tu clave U».',
+    );
   });
 });

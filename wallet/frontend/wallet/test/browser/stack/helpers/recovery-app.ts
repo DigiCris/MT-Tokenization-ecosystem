@@ -2,8 +2,9 @@
 // (API de Recovery, RPC del fork, contratos y clave de atestación del stack, la Wallet de la vista previa como
 // WALLET_ORIGIN) y se sirve con `vite preview` en el RECOVERY_ORIGIN con el que se compiló la Wallet y que acepta el
 // backend del stack (http://localhost:5174), como hace el simulacro de integridad. Después, el enrollment de R por sus
-// pantallas: login con la misma cuenta, step-up con el código del email, R interna con su Password R, backups (archivo,
-// QR y 17 palabras con su confirmación) y el envío, con capturas opcionales de cada pantalla.
+// pantallas: login con la misma cuenta, step-up con el código del email, R interna con su Password R (recordando o no
+// el sobre cifrado en ese dispositivo), backups (archivo, QR y 17 palabras con su confirmación) y el envío, con capturas
+// opcionales de cada pantalla. La pantalla final dice si el sobre quedó recordado.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -79,21 +80,23 @@ export interface RecoveryEnrollment {
 
 /**
  * El enrollment de R por las pantallas de Recovery desde el enlace de ida de la Wallet: login (si hace falta), step-up
- * con el código real del email, R interna con su Password R (con un intento equivocado para ver «Volver a ver las
- * palabras» si se pide), backups y envío. `snap` captura cada pantalla con el nombre dado (prefijo `recovery-`).
+ * con el código real del email, R interna con su Password R, backups y envío. `snap` captura cada pantalla con el nombre
+ * dado (prefijo `recovery-`). Con `remember: false` se desmarca «Recordar el sobre cifrado de R en este dispositivo»
+ * (marcado por defecto) y la pantalla final tiene que decir que el sobre no quedó.
  */
 export async function enrollInRecovery(
   recovery: Page,
   account: { email: string },
   enrollLink: URL,
-  options: { snap?: (name: string) => Promise<void>; allBackups?: boolean } = {},
+  options: { snap?: (name: string) => Promise<void>; allBackups?: boolean; remember?: boolean } = {},
 ): Promise<RecoveryEnrollment> {
   const snap = async (name: string) => options.snap?.(`recovery-${name}`);
+  const remember = options.remember ?? true;
   await recovery.goto(enrollLink.toString());
   const login = recovery.getByLabel('Contraseña de cuenta');
   const stepUp = recovery.getByRole('heading', { name: 'Verificá que sos vos' });
   // Con la verificación de esta wallet todavía vigente en la misma pestaña (15 min), Recovery no la vuelve a pedir y
-  // pasa directo a dónde va a vivir R (el botón sólo aparece con esa verificación).
+  // pasa directo a cómo va a tener R (el botón sólo aparece con esa verificación).
   const createR = recovery.getByRole('button', { name: 'Crear una clave R en este navegador' });
   await expect(login.or(stepUp).or(createR)).toBeVisible({ timeout: 30_000 });
   // El pedido sale de la URL apenas se lee.
@@ -118,7 +121,12 @@ export async function enrollInRecovery(
   }
 
   await expect(createR).toBeVisible();
-  await snap('donde-vive-r');
+  // A qué hora vence el pedido de la Wallet (se ve en todas las pantallas del enrollment).
+  await expect(recovery.locator('[data-request-expires]')).toContainText(
+    /Este pedido de la app Wallet vence a las \d{2}:\d{2}: enviá la dirección antes\./,
+  );
+  await expect(recovery.getByRole('heading', { name: '¿Cómo vas a tener tu clave R?' })).toBeVisible();
+  await snap('como-tener-r');
   await recovery.getByRole('button', { name: 'Crear una clave R en este navegador' }).click();
   await snap('crear-r');
   await recovery.getByRole('button', { name: 'Generar mi clave R' }).click();
@@ -126,14 +134,18 @@ export async function enrollInRecovery(
   await expect(passwordList).toHaveCount(5);
   const passwordWords = await passwordList.allTextContents();
   await snap('password-r');
-  await recovery.getByLabel('Anoté las 5 palabras en un lugar seguro').check();
+  await recovery.getByLabel('Anoté las 5 palabras en orden y las guardo fuera de este dispositivo.').check();
   await recovery.getByRole('button', { name: 'Ya las anoté' }).click();
   await expect(recovery.getByRole('heading', { name: 'Confirmá tu Password R' })).toBeVisible();
+  // En el paso de cifrado, recordar el sobre en este dispositivo viene marcado (como en la Wallet).
+  const rememberBox = recovery.getByLabel(/^Recordar el sobre cifrado de R en este dispositivo/);
+  await expect(rememberBox).toBeChecked();
   await snap('confirmar-password-r');
   for (const field of await recovery.getByLabel(/^Palabra \d$/).all()) {
     const position = Number((await field.getAttribute('name'))?.replace('word-', ''));
     await field.fill(passwordWords[position] ?? '');
   }
+  if (!remember) await rememberBox.uncheck();
   await recovery.getByRole('button', { name: 'Confirmar y cifrar' }).click();
 
   await expect(recovery.getByRole('heading', { name: 'Backups de tu clave R' })).toBeVisible({ timeout: 120_000 });
@@ -175,6 +187,13 @@ export async function enrollInRecovery(
   await expect(recovery.getByRole('heading', { name: 'Dirección de tu clave R enviada' })).toBeVisible({
     timeout: 60_000,
   });
+  // Lo que dice de dónde queda R es cierto en cada caso (con el sobre recordado o sin él).
+  await expect(recovery.locator(`[data-kept="${remember ? 'remembered' : 'not-remembered'}"]`)).toBeVisible();
+  await expect(
+    recovery.getByText(
+      remember ? /Queda cifrada en este dispositivo/ : /Esta app no la guarda: se borra de este navegador/,
+    ),
+  ).toBeVisible();
   await snap('direccion-enviada');
   const recoveryKey = getAddress(
     (await recovery.locator('[data-recovery-key]').getAttribute('data-recovery-key')) ?? '',

@@ -6,6 +6,11 @@
 // (U sólo se descifra para firmar la autorización). El indicador de pasos marca el actual con aria-current. Un enlace
 // de regreso de Recovery que ninguna otra pestaña tomó no llega acá: lo explica su propia pantalla (ReturnedLinkCard,
 // ADR-033). Cada step-up nuevo lleva los avisos pendientes de pedidos de R abortados (abort-reports.ts).
+//
+// Tercera revisión de P17.MAN: si ya hubo un pedido de R para esta wallet (en esta pestaña, aunque se haya recargado, o
+// con una R ya enviada según la plataforma), seguir con la creación avisa que Recovery va a crear otra R y el primer
+// pedido lo repite. Activar Recovery sigue montado aunque venza la verificación (el pedido vigente se puede seguir
+// confirmando): antes de generar otro, el paso pide el step-up ahí mismo.
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { isAddressEqual, type Address } from 'viem';
@@ -15,6 +20,8 @@ import { appConfig } from '../config/index.ts';
 import { zeroize } from '../crypto/bytes.ts';
 import { keysForEnvelope, openEnvelope, type KeyEnvelope } from '../crypto/envelope.ts';
 import { normalizePassword } from '../crypto/password.ts';
+import { RESUME_NEW_REQUEST_TEXT } from '../recovery-activation/activation.ts';
+import { hadOnboardingRequest, markOnboardingRequest } from '../recovery-activation/previous-request.ts';
 import { RecoveryActivationStep, type ConfirmedRecovery } from '../recovery-activation/RecoveryActivationStep.tsx';
 import { SafeCreationStep } from '../safe/SafeCreationStep.tsx';
 import { EnvelopeSource } from '../unlock/EnvelopeSource.tsx';
@@ -70,6 +77,8 @@ export function OnboardingPage() {
   const [desktop] = useState(() => window.matchMedia('(pointer: fine)').matches);
   const [desktopKdf, setDesktopKdf] = useState(false);
   const [flags, setFlags] = useState<StorageFlags | null>(null);
+  // Ya hubo un pedido de R para esta wallet: el próximo obliga a crear otra R (y se avisa).
+  const [priorRequest, setPriorRequest] = useState(false);
 
   useEffect(
     () => () => {
@@ -122,13 +131,15 @@ export function OnboardingPage() {
     ),
   );
 
-  // Pestaña recargada con la wallet en creación y U ya registrada: se retoma abriendo el sobre.
+  // Pestaña recargada con la wallet en creación y U ya registrada: se retoma abriendo el sobre. Si ya hubo un pedido de R
+  // (marca de esta pestaña o una R enviada según la plataforma), seguir obliga a crear otra.
   useEffect(() => {
     if (wallet?.status !== 'CREATING' || userKey !== null || draft !== null) return;
     let live = true;
     void api.walletDeployment(wallet.id).then((deployment) => {
       if (!live || deployment.U === null) return;
       setRegisteredU(deployment.U);
+      if (hadOnboardingRequest(wallet.id, deployment.R ?? null)) setPriorRequest(true);
       setStep('resume');
     });
     return () => {
@@ -371,6 +382,7 @@ export function OnboardingPage() {
             Tu clave U ya está registrada. Para seguir abrí tu sobre cifrado con tu Password U: se descifra en este
             navegador y no se envía a ningún lado.
           </p>
+          {priorRequest && <Notice tone="warning">{RESUME_NEW_REQUEST_TEXT}</Notice>}
           {resumeEnvelope === null ? (
             <EnvelopeSource onEnvelope={setResumeEnvelope} />
           ) : (
@@ -393,13 +405,28 @@ export function OnboardingPage() {
       {step === 'recovery' &&
         wallet &&
         userKey &&
-        (live ? (
+        // Con una verificación ya hecha el paso queda montado aunque venza: pide el step-up antes de otro pedido.
+        (stepUp !== null ? (
           <RecoveryActivationStep
             walletId={wallet.id}
             platform={stepUp.platform}
             sessionExpiresAt={stepUp.session.expiresAt}
-            intro="Tu clave de recuperación (R) vive en la app Recovery, separada de esta. Con U y R podés recuperar tu wallet sin la plataforma."
+            intro="Tu clave de recuperación (R) se crea en la app Recovery, separada de esta, y queda en los backups que hagas ahí (y, si lo elegís, cifrada en ese dispositivo). Con U y R podés recuperar tu wallet sin la plataforma."
             warning={LOST_U_AND_R_WARNING}
+            previousRequest={priorRequest}
+            onRequested={() => {
+              markOnboardingRequest(wallet.id);
+              setPriorRequest(true);
+            }}
+            renewSession={(renewed) => (
+              <StepUpForm
+                scope="ONBOARDING"
+                onSession={(session) => {
+                  setStepUp(session);
+                  renewed(session.platform);
+                }}
+              />
+            )}
             onConfirmed={(confirmed) => {
               setRecovery(confirmed);
               setStep('safe');

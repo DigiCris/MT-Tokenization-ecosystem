@@ -181,7 +181,8 @@ export class DriveClient {
 
   /**
    * Crea o reemplaza `name` con `content` y lo verifica: lo descarga de nuevo y exige los mismos bytes. Si quedaron
-   * copias viejas con el mismo nombre (subidas interrumpidas), se borran después de verificar la nueva.
+   * copias viejas con el mismo nombre (subidas interrumpidas), se borran después de verificar la nueva; una que ya no
+   * está (la borró otro dispositivo u otra subida) no convierte en error un backup ya verificado.
    */
   async uploadVerified(name: string, content: Uint8Array): Promise<{ file: DriveFile; replaced: boolean }> {
     const existing = await this.list(name);
@@ -192,8 +193,18 @@ export class DriveClient {
     if (!equalBytes(stored, content)) {
       throw new DriveError('MISMATCH', 'El archivo en Drive no coincide con lo subido: no se dio por guardado');
     }
-    for (const old of stale) await this.remove(old.id);
+    for (const old of stale) await this.#removeStale(old.id);
     return { file, replaced: replaced !== null };
+  }
+
+  /** Borra una copia vieja; si ya no existe (404), no hay nada que borrar. */
+  async #removeStale(id: string): Promise<void> {
+    try {
+      await this.remove(id);
+    } catch (error) {
+      if (error instanceof DriveError && error.code === 'NOT_FOUND') return;
+      throw error;
+    }
   }
 
   /**

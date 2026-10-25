@@ -15,13 +15,20 @@
 // aceptarse, y un pedido que la plataforma da por terminado (cancelado o reemplazado desde otra pestaña o dispositivo,
 // vencido) ofrece generar otro. Dejar el pedido después de una comparación que no coincidió lo aborta e informa: al
 // salir de la pantalla por la cola de avisos y al cerrar o recargar la pestaña con un aviso firmado de antemano.
-import { useCallback, useEffect, useRef, useState } from 'react';
+//
+// Tercera revisión de P17.MAN: el aviso de que Recovery va a crear otra R sale también en el primer pedido de un paso
+// montado de nuevo (p. ej. tras recargar la pestaña) si ya hubo uno antes (`previousRequest`); la sesión se comprueba
+// antes de cada pedido y, si venció, se pide la verificación ahí mismo (`renewSession`) en lugar de fallar con un 403
+// sin salida; el «0x» va fijo antes del Grupo 1 (y uno tipeado ahí se ignora); y con casi ningún grupo coincidente se
+// dicen los intentos que quedan y la acción principal pasa a ser generar un pedido nuevo.
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { isAddress, type Address } from 'viem';
 import { ApiError, NetworkError } from '../api/problem.ts';
 import type { PlatformAuth } from '../api/request-signature.ts';
 import type { CreatedEnrollment, RecoveryEnrollment } from '../api/wallet-api.ts';
 import { abortReports, api } from '../app/services.ts';
 import { appConfig } from '../config/index.ts';
+import { liveUntil } from '../session/step-up.ts';
 import { AddressText } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
 import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
@@ -38,6 +45,7 @@ import {
   MANUAL_ABORT_TEXT,
   MANUAL_MISMATCH_TEXT,
   manualRetryText,
+  nearlyNoneMatch,
   NEW_REQUEST_TEXT,
   newReturnSecret,
   POLL_ERROR_TEXT,
@@ -48,7 +56,9 @@ import {
   RETURN_LINK_NETWORK_TEXT,
   ReturnLinkUnverifiedError,
   sameSecret,
+  SESSION_EXPIRED_TEXT,
   submittedRecoveryKey,
+  typedGroup,
   type RejectReason,
 } from './activation.ts';
 import { listenForReturn, type ReturnResult } from './return-channel.ts';
@@ -82,6 +92,9 @@ export function RecoveryActivationStep({
   onConfirmed,
   intro,
   warning,
+  previousRequest = false,
+  onRequested,
+  renewSession,
 }: {
   walletId: string;
   platform: PlatformAuth;
@@ -91,10 +104,22 @@ export function RecoveryActivationStep({
   intro: string;
   /** Aviso destacado debajo de la introducción (p. ej. qué pasa si se pierden U y R). */
   warning?: string;
+  /** Ya hubo un pedido de R antes de montar este paso: el primero de acá también obliga a crear otra R. */
+  previousRequest?: boolean;
+  /** Se generó un pedido (quien usa el paso lo recuerda si lo vuelve a montar). */
+  onRequested?: () => void;
+  /**
+   * Cómo renovar la sesión si venció antes de generar un pedido (en el onboarding, el step-up ONBOARDING): recibe a quién
+   * pasarle la sesión nueva, con la que sale el pedido (el padre también la guarda y la pasa en `platform`). Sin esto,
+   * el pedido se intenta igual (el reemplazo de R lo resuelve el desbloqueo).
+   */
+  renewSession?: (renewed: (platform: PlatformAuth) => void) => ReactNode;
 }) {
   const [request, setRequest] = useState<Request | null>(null);
-  // Cuántos pedidos se generaron en este paso: desde el segundo, Recovery va a crear otra R.
-  const [requests, setRequests] = useState(0);
+  // Cuántos pedidos hubo, contando uno anterior al montaje: desde el segundo, Recovery va a crear otra R.
+  const [requests, setRequests] = useState(previousRequest ? 1 : 0);
+  // La sesión venció antes de generar un pedido: se muestra la verificación en lugar de fallar.
+  const [renewing, setRenewing] = useState(false);
   const [enrollment, setEnrollment] = useState<RecoveryEnrollment | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const [typed, setTyped] = useState<string[]>(emptyGroups);
@@ -112,11 +137,14 @@ export function RecoveryActivationStep({
   const endedIds = useRef(new Set<string>());
   // Pedidos ya confirmados: el mismo enlace abierto otra vez no vuelve a confirmar (ni cancela) nada.
   const doneIds = useRef(new Set<string>());
-  // El callback y la sesión vigentes, sin volver a suscribir el canal del enlace en cada render del padre.
+  // Los callbacks y la sesión vigentes, sin volver a suscribir el canal del enlace (ni generar otro pedido) en cada
+  // render del padre.
   const onConfirmedRef = useRef(onConfirmed);
+  const onRequestedRef = useRef(onRequested);
   const sessionRef = useRef({ platform, expiresAt: sessionExpiresAt });
   useEffect(() => {
     onConfirmedRef.current = onConfirmed;
+    onRequestedRef.current = onRequested;
     sessionRef.current = { platform, expiresAt: sessionExpiresAt };
   });
 
@@ -154,32 +182,57 @@ export function RecoveryActivationStep({
   }, []);
 
   const create = useAsyncAction(
-    useCallback(async () => {
-      // Sin pedido mientras se crea el nuevo: el polling y el enlace de regreso del anterior se cortan (sus respuestas
-      // tardías se descartan) y no vuelven a poblar el paso con su R. El secreto del anterior se descarta con él.
-      current.current = null;
-      setRequest(null);
-      setEnrollment(null);
-      setEnded(null);
-      setLinkError(null);
-      setManualError(null);
-      setPollError(null);
-      setFailedAttempts(0);
-      setMismatch(null);
-      setConfirmed(null);
-      setTyped(emptyGroups());
-      const created = await api.createRecoveryEnrollment(platform, walletId);
-      // Recién con el pedido nuevo puesto pasa a ser el vigente: nada tardío del anterior cae en éste.
-      current.current = created.enrollmentId;
-      setRequest({ created, secret: newReturnSecret() });
-      setRequests((n) => n + 1);
-    }, [platform, walletId]),
+    useCallback(
+      async (renewedAuth?: PlatformAuth) => {
+        // Sin pedido mientras se crea el nuevo: el polling y el enlace de regreso del anterior se cortan (sus respuestas
+        // tardías se descartan) y no vuelven a poblar el paso con su R. El secreto del anterior se descarta con él.
+        current.current = null;
+        setRenewing(false);
+        setRequest(null);
+        setEnrollment(null);
+        setEnded(null);
+        setLinkError(null);
+        setManualError(null);
+        setPollError(null);
+        setFailedAttempts(0);
+        setMismatch(null);
+        setConfirmed(null);
+        setTyped(emptyGroups());
+        // Con la sesión vigente: la del padre o la que se acaba de renovar acá (el padre la recibe en el mismo render).
+        const created = await api.createRecoveryEnrollment(renewedAuth ?? sessionRef.current.platform, walletId);
+        // Recién con el pedido nuevo puesto pasa a ser el vigente: nada tardío del anterior cae en éste.
+        current.current = created.enrollmentId;
+        setRequest({ created, secret: newReturnSecret() });
+        setRequests((n) => n + 1);
+        onRequestedRef.current?.();
+      },
+      [walletId],
+    ),
+  );
+  const run = create.run;
+
+  // Antes de cada pedido, la sesión tiene que seguir vigente: si venció y hay cómo renovarla, se pide ahí mismo (un
+  // pedido con la sesión vencida fallaría con 403, y «Reintentar» también).
+  const canRenew = renewSession !== undefined;
+  const requestNew = useCallback(() => {
+    const { expiresAt } = sessionRef.current;
+    if (canRenew && expiresAt !== undefined && !liveUntil(expiresAt)) {
+      setRenewing(true);
+      return;
+    }
+    void run();
+  }, [canRenew, run]);
+  const renewed = useCallback(
+    (renewedAuth: PlatformAuth) => {
+      void run(renewedAuth);
+    },
+    [run],
   );
 
   // Un enrollment por montaje del paso (uno nuevo reemplaza a los anteriores en el backend).
-  const start = create.run;
+  const start = requestNew;
   useEffect(() => {
-    void start();
+    start();
   }, [start]);
 
   const created = request?.created ?? null;
@@ -360,10 +413,32 @@ export function RecoveryActivationStep({
 
   const link = request ? recoveryEnrollLink(appConfig.recoveryOrigin, request.created, request.secret) : null;
   const newRequestButton = (
-    <button type="button" className="button" onClick={() => void create.run()}>
+    <button
+      type="button"
+      className="button"
+      onClick={() => {
+        requestNew();
+      }}
+    >
       Generar un pedido nuevo
     </button>
   );
+  // Casi ningún grupo coincide (no parece un error de tipeo): generar otro pedido pasa a ser la acción principal.
+  const startOver = mismatch !== null && nearlyNoneMatch(mismatch.groups);
+
+  if (renewing && renewSession !== undefined) {
+    return (
+      <article className="card stack" aria-labelledby="recovery-title">
+        <h2 id="recovery-title">Activar Recovery</h2>
+        <p>{intro}</p>
+        {warning && <Notice tone="warning">{warning}</Notice>}
+        <div className="stack" data-session-expired="">
+          <Notice tone="warning">{SESSION_EXPIRED_TEXT}</Notice>
+          {renewSession(renewed)}
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article className="card stack" aria-labelledby="recovery-title">
@@ -373,7 +448,13 @@ export function RecoveryActivationStep({
       {create.error && (
         <>
           <Notice tone="error">{create.error}</Notice>
-          <button type="button" className="button" onClick={() => void create.run()}>
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              requestNew();
+            }}
+          >
             Reintentar
           </button>
         </>
@@ -431,8 +512,9 @@ export function RecoveryActivationStep({
           </p>
           <p>
             Si no, copiá la dirección que muestra la app Recovery (acá no la mostramos a propósito). Sirve para
-            comprobar que nadie la cambió en el camino; da igual mayúsculas o minúsculas. Va en {ADDRESS_GROUPS} grupos
-            de 4 caracteres, como la muestra Recovery; si la pegás completa, se reparte sola en los grupos.
+            comprobar que nadie la cambió en el camino; da igual mayúsculas o minúsculas. Copiá los {ADDRESS_GROUPS}{' '}
+            grupos de 4 caracteres que siguen al «0x», uno en cada campo (el «0x» ya está puesto); si pegás la dirección
+            completa, se reparte sola en los grupos.
           </p>
           {linkError && <Notice tone="error">{linkError}</Notice>}
           <form
@@ -447,6 +529,8 @@ export function RecoveryActivationStep({
                 key={i}
                 label={`Grupo ${String(i + 1)} de ${String(ADDRESS_GROUPS)}`}
                 name={`group-${String(i)}`}
+                // El «0x» fijo antes del primer grupo: no es uno de los 10 (si se tipea igual, se ignora).
+                {...(i === 0 ? { prefix: '0x' } : {})}
                 autoComplete="off"
                 autoCapitalize="none"
                 spellCheck={false}
@@ -455,7 +539,7 @@ export function RecoveryActivationStep({
                 aria-invalid={mismatch?.groups.includes(i) === true ? true : undefined}
                 value={value}
                 onChange={(event) => {
-                  const next = event.currentTarget.value;
+                  const next = typedGroup(i, event.currentTarget.value);
                   setTyped((current) => current.map((v, j) => (j === i ? next : v)));
                 }}
                 onPaste={(event) => {
@@ -473,11 +557,11 @@ export function RecoveryActivationStep({
                 <p>{BEFORE_NEW_REQUEST_TEXT}</p>
                 <button
                   type="button"
-                  className="button button--secondary"
+                  className={startOver ? 'button' : 'button button--secondary'}
                   onClick={() => {
                     // Dejar este pedido después de una comparación que no coincidió es abortarlo: se informa igual.
                     abort(created.enrollmentId, created.purpose, MANUAL_ABORT_TEXT, 'MANUAL_COMPARISON_FAILED');
-                    void create.run();
+                    requestNew();
                   }}
                 >
                   Generar un pedido nuevo
@@ -485,7 +569,12 @@ export function RecoveryActivationStep({
               </div>
             )}
             {manualError && <Notice tone="error">{manualError}</Notice>}
-            <button type="submit" className="button" disabled={checking} aria-busy={checking}>
+            <button
+              type="submit"
+              className={startOver ? 'button button--secondary' : 'button'}
+              disabled={checking}
+              aria-busy={checking}
+            >
               Confirmar la dirección de R
             </button>
           </form>

@@ -19,6 +19,7 @@ import {
   MANUAL_ATTEMPTS,
   MANUAL_MISMATCH_TEXT,
   manualRetryText,
+  nearlyNoneMatch,
   NEW_REQUEST_TEXT,
   newReturnSecret,
   parseRecoveryReturn,
@@ -27,9 +28,13 @@ import {
   RecoveryActivationError,
   RecoveryKeyMismatchError,
   requestExpiryText,
+  RESUME_NEW_REQUEST_TEXT,
+  RETURN_LINK_ELSEWHERE_TEXT,
   ReturnLinkUnverifiedError,
   sameSecret,
+  SESSION_EXPIRED_TEXT,
   submittedRecoveryKey,
+  typedGroup,
 } from './activation.ts';
 
 const R = '0x7184D30100a188c9F869ccB6883392534ecD6C9d';
@@ -258,16 +263,22 @@ describe('comparación manual de la dirección de R (sin enlace de regreso)', ()
     );
     // Ninguno o casi ninguno: no parece un error de tipeo y se recomienda no seguir.
     const all = Array.from({ length: ADDRESS_GROUPS }, (_, i) => i);
+    // También dice cuántos intentos quedan (hallazgo 6 de la tercera revisión de P17.MAN).
     expect(manualRetryText(all, 2)).toBe(
-      'No coincide ningún grupo: no parece un error de tipeo. No sigas con este pedido: generá uno nuevo.',
+      'No coincide ningún grupo: no parece un error de tipeo (te quedan 2 intentos). No sigas con este pedido: generá uno nuevo.',
     );
     expect(manualRetryText(all.slice(1), 2)).toBe(
-      'Coincide sólo 1 grupo de 10: no parece un error de tipeo. No sigas con este pedido: generá uno nuevo.',
+      'Coincide sólo 1 grupo de 10: no parece un error de tipeo (te quedan 2 intentos). No sigas con este pedido: generá uno nuevo.',
     );
     expect(manualRetryText(all.slice(2), 1)).toBe(
-      'Coinciden sólo 2 grupos de 10: no parece un error de tipeo. No sigas con este pedido: generá uno nuevo.',
+      'Coinciden sólo 2 grupos de 10: no parece un error de tipeo (te queda 1 intento). No sigas con este pedido: generá uno nuevo.',
     );
     expect(manualRetryText(all.slice(3), 1)).toMatch(/^Si te equivocaste al copiar, revisá los grupos 4, 5, 6/);
+    // Con ninguno o casi ninguno, generar un pedido nuevo es la acción principal; con 3 o más, revisar y confirmar.
+    expect(nearlyNoneMatch(all)).toBe(true);
+    expect(nearlyNoneMatch(all.slice(2))).toBe(true);
+    expect(nearlyNoneMatch(all.slice(3))).toBe(false);
+    expect(nearlyNoneMatch([5])).toBe(false);
     expect(MANUAL_MISMATCH_TEXT).toBe(
       'No coincide con la dirección que recibió la plataforma. Si la copiaste bien de Recovery, no sigas: alguien pudo haberla cambiado. Generá un pedido nuevo.',
     );
@@ -297,5 +308,50 @@ describe('comparación manual de la dirección de R (sin enlace de regreso)', ()
     ]);
     expect(distributePaste(empty, 0, 'abcd')).toBeNull();
     expect(distributePaste(empty, 0, ' 0xab ')).toBeNull();
+  });
+
+  it('un «0x» tipeado al principio del Grupo 1 se ignora: no corre los grupos ni cuenta como error (hallazgo 5)', () => {
+    // Lo que queda en el campo mientras se tipea: «0» puede ser el comienzo de un grupo; «0x», nunca.
+    expect(typedGroup(0, '0')).toBe('0');
+    expect(typedGroup(0, '0x')).toBe('');
+    expect(typedGroup(0, '0X7')).toBe('7');
+    expect(typedGroup(0, ' 0x71')).toBe('71');
+    expect(typedGroup(0, groups[0] ?? '')).toBe(groups[0]);
+    // En los demás grupos no se toca nada (y ahí no coincide).
+    expect(typedGroup(3, '0x12')).toBe('0x12');
+    // Al comparar, también: el primer grupo con «0x» delante coincide.
+    const withPrefix = groups.map((g, i) => (i === 0 ? `0x${g}` : g));
+    expect(compareManually(enrollment(), withPrefix, 0)).toEqual({ match: true, recoveryKey: R });
+    expect(
+      compareManually(
+        enrollment(),
+        groups.map((g, i) => (i === 0 ? `0X ${g}` : g)),
+        0,
+      ),
+    ).toEqual({
+      match: true,
+      recoveryKey: R,
+    });
+    expect(
+      compareManually(
+        enrollment(),
+        groups.map((g, i) => (i === 4 ? `0x${g}` : g)),
+        0,
+      ),
+    ).toMatchObject({
+      match: false,
+      mismatchedGroups: [4],
+    });
+  });
+
+  it('textos del paso: retomar con un pedido anterior, verificación vencida y el enlace en una pestaña sin el pedido', () => {
+    expect(RESUME_NEW_REQUEST_TEXT).toBe(
+      'Al seguir vas a activar Recovery de nuevo: Recovery va a crear otra clave R y los backups de la anterior no van a servir.',
+    );
+    expect(SESSION_EXPIRED_TEXT).toBe('Tu verificación venció: confirmá que sos vos de nuevo para generar el pedido.');
+    // La pestaña sin el pedido también explica cómo confirmar a mano en la del pedido.
+    expect(RETURN_LINK_ELSEWHERE_TEXT).toContain(
+      'o confirmá ahí la dirección a mano: tipeá los 10 grupos que muestra la app Recovery después del «0x»',
+    );
   });
 });

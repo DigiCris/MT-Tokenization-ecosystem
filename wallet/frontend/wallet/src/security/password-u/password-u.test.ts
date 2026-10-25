@@ -1,7 +1,8 @@
 // P17.T07: cambio de Password U [F-KEY-08] — la misma U re-cifrada con salt, nonce y K nuevos (abre con la nueva y no
 // con la vieja), registro OPAQUE nuevo con la PlatformSession OPERATIONS y la API de cambio con el KDF y los backups
 // nuevos — y "perdí mi Password U": sobre de U' con la versión que asigna el backend, registro OPAQUE, KeyAcceptance
-// firmada por U' (EIP-712 de la plataforma) y link de handoff a Recovery con la rotación y U' en el fragmento.
+// firmada por U' (EIP-712 de la plataforma) y link de handoff a Recovery con la rotación y U' en el fragmento. La U' que
+// se muestra y va en el handoff es la que generó esta app: si la plataforma informa otra, no se sigue.
 import { describe, expect, it, vi } from 'vitest';
 import { recoverTypedDataAddress } from 'viem';
 import wordlistText from '../../vendor/mtw-wordlist-v1.txt?raw';
@@ -19,7 +20,13 @@ import { startLogin } from '../../unlock/opaque.ts';
 import { opaqueTestServer } from '../../unlock/opaque-server.test-helper.ts';
 import type { UnlockedWallet } from '../../unlock/unlock.ts';
 import { commitNewPassword, resealWithNewPassword } from './change.ts';
-import { prepareReplacement, recoveryHandoffUrl, registerReplacement } from './lost.ts';
+import {
+  NEW_USER_KEY_COMPARE_TEXT,
+  OTHER_USER_KEY_TEXT,
+  prepareReplacement,
+  recoveryHandoffUrl,
+  registerReplacement,
+} from './lost.ts';
 
 const wordlist = parseWordlist(wordlistText);
 const argon2: Argon2 = (input) => deriveArgon2id(input);
@@ -166,6 +173,63 @@ describe('perdí mi Password U', () => {
       signature,
     });
     expect(signer).toBe(draft.address);
+  });
+
+  it("si la plataforma informa otra U' (o algo que no es una dirección), no se sigue a Recovery", async () => {
+    const server = opaqueTestServer();
+    const draft = draftUserKey(wordlist);
+    const stepUp: StepUpSession = {
+      platform: { token: 'jws', sessionId: crypto.randomUUID(), key: await generateSessionKey() },
+      session: {
+        id: crypto.randomUUID(),
+        scope: 'U_REPLACEMENT',
+        authMethod: 'STEP_UP',
+        walletId: WALLET,
+        safe: null,
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      },
+    };
+    let reported: string = draftUserKey(wordlist).address;
+    const api = {
+      userKeyOpaqueRegistration: vi.fn<WalletApi['userKeyOpaqueRegistration']>((_p, walletId, request) =>
+        Promise.resolve({ registrationResponse: server.registrationResponse(walletId, 2, request), keyVersion: 2 }),
+      ),
+      registerReplacementUserKey: vi.fn<WalletApi['registerReplacementUserKey']>(() =>
+        Promise.resolve({
+          rotationId: 'f0e1d2c3-b4a5-4968-8776-655443322110',
+          walletId: WALLET,
+          userKey: reported as `0x${string}`,
+          keyVersion: 2,
+          status: 'DRAFT' as const,
+        }),
+      ),
+    };
+    const prepared = await prepareReplacement(
+      api as unknown as WalletApi,
+      stepUp,
+      draft,
+      draft.passwordWords.join(' '),
+      'mt-test',
+      argon2,
+    );
+    const flags = { drive: false, file: true, qr: false, words: false };
+    await expect(
+      registerReplacement(api as unknown as WalletApi, stepUp, draft, prepared, flags, FACTORY),
+    ).rejects.toThrow(OTHER_USER_KEY_TEXT);
+    reported = '0xno-es-una-direccion';
+    await expect(
+      registerReplacement(api as unknown as WalletApi, stepUp, draft, prepared, flags, FACTORY),
+    ).rejects.toThrow(OTHER_USER_KEY_TEXT);
+    // La misma U' en minúsculas sí es la misma clave: se devuelve la local, con su checksum.
+    reported = draft.address.toLowerCase();
+    expect(
+      (await registerReplacement(api as unknown as WalletApi, stepUp, draft, prepared, flags, FACTORY)).userKey,
+    ).toBe(draft.address);
+    // Lo que se le pide al usuario con esa dirección en Recovery.
+    expect(NEW_USER_KEY_COMPARE_TEXT).toBe(
+      'En la app Recovery te vamos a pedir que copies estos 10 grupos (los que siguen al «0x»): comparalos con calma; si Recovery muestra otra dirección, no firmes.',
+    );
   });
 
   it("el handoff a Recovery lleva la rotación y U' en el fragmento (no llega a servidores)", () => {

@@ -3,7 +3,9 @@
 // imprimir sin otros datos). Las 17 palabras cuentan como backup recién cuando el usuario reingresa 3 al azar: hasta
 // entonces puede volver a verlas, y después se borran de la memoria. Hace falta al menos un backup que no dependa de la
 // plataforma (archivo, QR o palabras) para seguir, y no se sigue con las palabras a la vista sin confirmar (después de
-// este paso no se vuelven a mostrar): hay que confirmarlas u ocultarlas.
+// este paso no se vuelven a mostrar): hay que confirmarlas u ocultarlas. Lo que se imprime lleva el título de qué app y
+// qué clave es, y las 17 palabras se guardan lejos de los backups de R: U y R juntas mueven los fondos sin la
+// plataforma (tercera revisión de P17.MAN).
 import { useCallback, useEffect, useState } from 'react';
 import type { StorageFlags } from '../api/wallet-api.ts';
 import { drive } from '../app/services.ts';
@@ -18,7 +20,7 @@ import { downloadText, envelopeFileName } from '../ui/download.ts';
 import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { printSection } from '../ui/print.ts';
 import { EnvelopeQr } from './EnvelopeQr.tsx';
-import { hasIndependentBackup, LOST_U_AND_R_WARNING } from './user-key.ts';
+import { hasIndependentBackup, LOST_U_AND_R_WARNING, U_WORDS_HANDWRITTEN, U_WORDS_TITLE } from './user-key.ts';
 
 /** Palabras que se reingresan para confirmar el backup de 17 (como las 2 de la Password U). */
 const WORDS_TO_CONFIRM = 3;
@@ -226,8 +228,9 @@ function BackupWords({
       <h2 id="backup-words">17 palabras de la clave</h2>
       <Notice tone="warning">
         Las 17 palabras son la clave misma: quien las tenga controla la clave sin necesitar la Password U. Se muestran
-        sólo en este paso: anotalas en papel, en orden, y guardalas aparte. Están en inglés: copialas letra por letra,
-        sin traducir ni corregir.
+        sólo en este paso: anotalas en papel, en orden, y guardalas lejos de la Password U y de los backups de tu clave
+        R: quien junte tu clave U y tu clave R puede mover tus fondos sin la plataforma. Están en inglés: copialas letra
+        por letra, sin traducir ni corregir.
       </Notice>
       {step === 'hidden' && (
         <button
@@ -243,6 +246,7 @@ function BackupWords({
       {step === 'shown' && words !== null && (
         <>
           <div className="stack" id="words-print">
+            <p className="print-title">{U_WORDS_TITLE}</p>
             <ol className="words words--17" aria-label="17 palabras de la clave">
               {words.map((word, i) => (
                 <li key={`${String(i)}-${word}`} className="words__item">
@@ -251,6 +255,7 @@ function BackupWords({
               ))}
             </ol>
           </div>
+          <p>{U_WORDS_HANDWRITTEN}</p>
           <div className="choices">
             <button
               type="button"

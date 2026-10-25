@@ -105,8 +105,16 @@ export function accountRoutes(wallet: () => unknown): MockRoute[] {
   ];
 }
 
-/** Step-up ONBOARDING: el código vence a la hora que diga `codeExpiresAt` y la PlatformSession dura 15 minutos. */
-export function onboardingStepUpRoutes(codeExpiresAt: string, walletId: () => string | null): MockRoute[] {
+/**
+ * Step-up ONBOARDING: el código vence a la hora que diga `codeExpiresAt` y la PlatformSession dura lo que diga
+ * `sessionMs` (15 minutos si no), con un token distinto en cada step-up (`platform-session-de-prueba-<n>`).
+ */
+export function onboardingStepUpRoutes(
+  codeExpiresAt: string,
+  walletId: () => string | null,
+  sessionMs: () => number = () => 15 * 60_000,
+): MockRoute[] {
+  let issued = 0;
   return [
     {
       method: 'POST',
@@ -118,9 +126,10 @@ export function onboardingStepUpRoutes(codeExpiresAt: string, walletId: () => st
       path: /^\/platform-sessions\/step-up\/finish$/,
       handle: () => {
         const now = Date.now();
+        issued += 1;
         return {
           body: {
-            token: 'platform-session-de-prueba',
+            token: `platform-session-de-prueba-${String(issued)}`,
             csrfToken: 'csrf-de-prueba-2',
             session: {
               id: crypto.randomUUID(),
@@ -129,7 +138,7 @@ export function onboardingStepUpRoutes(codeExpiresAt: string, walletId: () => st
               walletId: walletId(),
               safe: null,
               issuedAt: new Date(now).toISOString(),
-              expiresAt: new Date(now + 15 * 60_000).toISOString(),
+              expiresAt: new Date(now + sessionMs()).toISOString(),
             },
           },
         };
