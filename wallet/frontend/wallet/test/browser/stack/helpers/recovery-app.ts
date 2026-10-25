@@ -92,7 +92,10 @@ export async function enrollInRecovery(
   await recovery.goto(enrollLink.toString());
   const login = recovery.getByLabel('Contraseña de cuenta');
   const stepUp = recovery.getByRole('heading', { name: 'Verificá que sos vos' });
-  await expect(login.or(stepUp)).toBeVisible({ timeout: 30_000 });
+  // Con la verificación de esta wallet todavía vigente en la misma pestaña (15 min), Recovery no la vuelve a pedir y
+  // pasa directo a dónde va a vivir R (el botón sólo aparece con esa verificación).
+  const createR = recovery.getByRole('button', { name: 'Crear una clave R en este navegador' });
+  await expect(login.or(stepUp).or(createR)).toBeVisible({ timeout: 30_000 });
   // El pedido sale de la URL apenas se lee.
   expect(await recovery.evaluate(() => window.location.hash)).toBe('');
   if (await login.isVisible()) {
@@ -100,17 +103,21 @@ export async function enrollInRecovery(
     await recovery.getByLabel('Email').fill(account.email);
     await recovery.getByLabel('Contraseña de cuenta').fill(ACCOUNT_PASSWORD);
     await recovery.getByRole('button', { name: 'Iniciar sesión' }).click();
+    await expect(stepUp.or(createR)).toBeVisible();
   }
-  await expect(recovery.getByRole('heading', { name: 'Verificá que sos vos' })).toBeVisible();
-  await snap('enroll');
-  await recovery.getByRole('button', { name: 'Mandarme el código' }).click();
-  await expect(recovery.getByLabel('Código del email')).toBeVisible();
-  await snap('enroll-codigo');
-  await recovery.getByLabel('Código del email').fill(await nextCode(account.email));
-  await recovery.getByRole('button', { name: 'Confirmar' }).click();
-  await expect(recovery.getByRole('heading', { name: 'Verificá que sos vos' })).toHaveCount(0, { timeout: 30_000 });
+  if (await stepUp.isVisible()) {
+    await snap('enroll');
+    await recovery.getByRole('button', { name: 'Mandarme el código' }).click();
+    await expect(recovery.getByLabel('Código del email')).toBeVisible();
+    await snap('enroll-codigo');
+    await recovery.getByLabel('Código del email').fill(await nextCode(account.email));
+    await recovery.getByRole('button', { name: 'Confirmar' }).click();
+    await expect(stepUp).toHaveCount(0, { timeout: 30_000 });
+  } else {
+    await snap('enroll-verificacion-vigente');
+  }
 
-  await expect(recovery.getByRole('button', { name: 'Crear una clave R en este navegador' })).toBeVisible();
+  await expect(createR).toBeVisible();
   await snap('donde-vive-r');
   await recovery.getByRole('button', { name: 'Crear una clave R en este navegador' }).click();
   await snap('crear-r');
