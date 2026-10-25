@@ -139,7 +139,7 @@ function keySection(role: KeyRole): HTMLElement {
       out,
       notice(
         owner ? 'ok' : 'info',
-        `${role} abierta: ${address}${safe === null ? '' : owner ? ' (owner de la Safe)' : ''}`,
+        `${role} abierta, dirección ${address}${safe === null ? '' : owner ? ' (owner de la Safe)' : ''}`,
       ),
       safe !== null && !owner ? notice('error', `${role} no es owner de esta Safe: su firma no sirve.`) : null,
     );
@@ -178,8 +178,8 @@ const destinationField = field('Dirección de destino', destinationInput);
 const replaceFields = el(
   'div',
   { hidden: '' },
-  field('Clave que sale', oldOwnerInput),
-  field('Clave nueva', newOwnerInput),
+  field('Dirección de la clave que sale', oldOwnerInput),
+  field('Dirección de la clave nueva', newOwnerInput),
 );
 actionSelect.addEventListener('change', () => {
   destinationField.hidden = !actionSelect.value.startsWith('TRANSFER_');

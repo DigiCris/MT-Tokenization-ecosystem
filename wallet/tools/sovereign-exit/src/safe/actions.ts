@@ -77,7 +77,7 @@ export function replaceOwner(
       encodeFunctionData({ abi: SAFE_ABI, functionName: 'swapOwner', args: [prev, getAddress(oldOwner), next] }),
       nonce,
     ),
-    description: `Reemplazar en la Safe la clave ${getAddress(oldOwner)} por ${next}`,
+    description: `Reemplazar en la Safe la clave con dirección ${getAddress(oldOwner)} por la clave con dirección ${next}`,
   };
 }
 

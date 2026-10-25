@@ -130,12 +130,12 @@ test('transferencia soberana con U (sobre + Password) y R (17 palabras), con la 
   });
   await page.getByLabel('Password U').fill(userVector.password);
   await page.getByRole('button', { name: 'Abrir U' }).click();
-  await expect(page.locator('[data-out="key-U"]')).toContainText(`U abierta: ${U} (owner de la Safe)`);
+  await expect(page.locator('[data-out="key-U"]')).toContainText(`U abierta, dirección ${U} (owner de la Safe)`);
 
   await page.locator('select[name="source-R"]').selectOption('words');
   await page.getByLabel('17 palabras de R').fill(recoveryWords.join(' '));
   await page.getByRole('button', { name: 'Abrir R' }).click();
-  await expect(page.locator('[data-out="key-R"]')).toContainText(`R abierta: ${R} (owner de la Safe)`);
+  await expect(page.locator('[data-out="key-R"]')).toContainText(`R abierta, dirección ${R} (owner de la Safe)`);
 
   const destination = privateKeyToAddress(generatePrivateKey());
   await page.getByLabel('Acción').selectOption('TRANSFER_USDC');
