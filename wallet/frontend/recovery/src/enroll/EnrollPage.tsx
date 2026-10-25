@@ -75,6 +75,18 @@ export function EnrollPage() {
   useEffect(() => {
     discardOAuthState();
   }, []);
+  // Un enlace de ida nuevo abierto en esta misma pestaña sólo cambia el fragmento (misma ruta): el navegador no recarga
+  // y el pedido se lee al cargar. Se recarga para tomarlo como cualquier enlace nuevo; lo del pedido anterior en memoria
+  // (también una R generada) se descarta, como pide un pedido nuevo.
+  useEffect(() => {
+    const onHashChange = () => {
+      if (parseEnrollFragment(window.location.hash) !== null) window.location.reload();
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+    };
+  }, []);
   const [enrollment, setEnrollment] = useState<EnrollmentStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [enrollmentKey, setEnrollmentKey] = useState<SessionKey | null>(null);
