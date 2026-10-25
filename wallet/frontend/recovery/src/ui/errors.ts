@@ -1,5 +1,6 @@
 // Errores para mostrar en Recovery: los problemas del backend pasan a un texto en castellano de esta app; los errores
-// propios de la app (verificaciones, sobres, palabras) ya traen su mensaje.
+// propios de la app (verificaciones, sobres, palabras) ya traen su mensaje y los de librerías o terceros van con un
+// texto genérico.
 //
 // Regla (revisión de seguridad de ADR-033, igual que en la app Wallet): ningún texto del backend llega a la pantalla.
 // Un backend comprometido (ESC-20) controla `title` y `detail` de sus errores: con texto libre podría mostrar una
@@ -57,6 +58,56 @@ function byStatus(status: number): string {
   return 'La plataforma rechazó el pedido: revisá los datos y reintentá.';
 }
 
+/**
+ * Las clases de error de esta app, por su `name`: su mensaje es un texto local. Un error de una librería o de un tercero
+ * (la red, el RPC, una wallet externa, el navegador) trae otro nombre ("TypeError", "HttpRequestError",
+ * "NotAllowedError") y un mensaje que no eligió esta app (técnico, en inglés o con el detalle que mandó un RPC): no se
+ * muestra. Un `Error` común lo arma la propia app con su texto. errors.test.ts comprueba que la lista esté completa.
+ */
+export const APP_ERROR_NAMES: ReadonlySet<string> = new Set([
+  'AddressInputError',
+  'AttestationError',
+  'BackupWordsError',
+  'CanonicalJsonError',
+  'DriveConnectError',
+  'DriveError',
+  'EncodingError',
+  'EnrollmentError',
+  'EnvelopeError',
+  'ExternalWalletError',
+  'FrameError',
+  'KeyError',
+  'MigrationCheckError',
+  'OperationWaitTimeout',
+  'PasswordError',
+  'RecoverySignatureError',
+  'RestoreError',
+  'RotationError',
+  'SafeCheckError',
+  'SafeTxMismatchError',
+  'SovereignActionError',
+  'SovereignDocumentError',
+  'SovereignFlowError',
+  'StepUpError',
+  'SystemContractsMismatchError',
+  'WordlistError',
+  'WrongPasswordError',
+]);
+
+/** La wallet externa rechazó el pedido porque el usuario lo canceló ahí (EIP-1193 4001), en cualquier nivel de `cause`. */
+function rejectedInWallet(error: unknown): boolean {
+  for (let current = error, depth = 0; current instanceof Error && depth < 6; current = current.cause, depth++) {
+    if (current.name === 'UserRejectedRequestError' || (current as { code?: unknown }).code === 4001) return true;
+  }
+  return false;
+}
+
+/** El mensaje de un error de la app; null si es de un tercero o no trae texto. */
+function localMessage(error: unknown): string | null {
+  if (!(error instanceof Error) || error.message === '') return null;
+  return error.name === 'Error' || APP_ERROR_NAMES.has(error.name) ? error.message : null;
+}
+
 export function describeError(error: unknown): string {
   if (error instanceof ApiError) {
     const text = API_TEXT[error.code] ?? byStatus(error.status);
@@ -64,6 +115,6 @@ export function describeError(error: unknown): string {
       ? `${text} (podés reintentar en ${String(error.retryAfterSeconds)} s)`
       : text;
   }
-  if (error instanceof Error && error.message !== '') return error.message;
-  return 'Algo salió mal.';
+  if (rejectedInWallet(error)) return 'Cancelaste el pedido en tu wallet externa: no se firmó nada.';
+  return localMessage(error) ?? 'Algo salió mal. Reintentá en un momento.';
 }

@@ -154,6 +154,45 @@ export function apiErrorText(error: ApiError): string {
   return text;
 }
 
+/**
+ * Las clases de error de esta app, por su `name`: su mensaje es un texto local. Un error de una librería o de un tercero
+ * (la red, el RPC, una wallet externa, el navegador) trae otro nombre ("TypeError", "HttpRequestError",
+ * "NotAllowedError") y un mensaje que no eligió esta app (técnico, en inglés o con el detalle que mandó un RPC): no se
+ * muestra. Un `Error` común lo arma la propia app con su texto. errors.test.ts comprueba que la lista esté completa.
+ */
+export const APP_ERROR_NAMES: ReadonlySet<string> = new Set([
+  'AmountError',
+  'AttestationError',
+  'BackupWordsError',
+  'CreationCheckError',
+  'DestinationError',
+  'DriveConnectError',
+  'DriveError',
+  'EnvelopeError',
+  'MigrationCheckError',
+  'NetworkError',
+  'OnchainCheckError',
+  'OperationWaitTimeout',
+  'RecoveryAbortError',
+  'RecoveryActivationError',
+  'RecoveryKeyMismatchError',
+  'RestoreError',
+  'ReturnLinkUnverifiedError',
+  'RotationCheckError',
+  'SafeTxMismatchError',
+  'SovereignDocumentError',
+  'SystemContractsMismatchError',
+  'TokenConfigError',
+  'UnlockError',
+  'WalletCreationFailed',
+]);
+
+/** El mensaje de un error de la app; null si es de un tercero o no trae texto. */
+function localMessage(error: unknown): string | null {
+  if (!(error instanceof Error) || error.message === '') return null;
+  return error.name === 'Error' || APP_ERROR_NAMES.has(error.name) ? error.message : null;
+}
+
 export function describeError(error: unknown): string {
   if (error instanceof ApiError) return apiErrorText(error);
   if (error instanceof NetworkError) return `${error.message}. Revisá tu conexión y reintentá.`;
@@ -165,6 +204,5 @@ export function describeError(error: unknown): string {
   ) {
     return error.message;
   }
-  if (error instanceof Error && error.message !== '') return error.message;
-  return 'Algo salió mal. Reintentá en un momento.';
+  return localMessage(error) ?? 'Algo salió mal. Reintentá en un momento.';
 }

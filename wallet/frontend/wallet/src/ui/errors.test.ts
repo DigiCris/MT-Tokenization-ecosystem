@@ -1,10 +1,11 @@
 // P18.MAN (M1): los errores de la API llegan en castellano y sin códigos crudos. El swap firmado tarde (POLICY_REJECTED
 // con DEADLINE_INVALID) dice que venció el plazo y que hay que volver a cotizar; los demás rechazos de la policy, los
 // problemas del destino y los estados del detalle se traducen. Revisión de seguridad de ADR-033 (MEDIO 2): ningún texto
-// del backend (título, detalle o requestId) llega a la pantalla; sólo textos de la app, por código o por status.
+// del backend (título, detalle o requestId) llega a la pantalla; sólo textos de la app, por código o por status. Los
+// errores de librerías o terceros (RPC, navegador) tampoco muestran su mensaje.
 import { describe, expect, it } from 'vitest';
 import { ApiError, NetworkError } from '../api/problem.ts';
-import { describeError } from './errors.ts';
+import { APP_ERROR_NAMES, describeError } from './errors.ts';
 
 const apiError = (code: string, title: string, detail?: string, retryAfter: number | null = null) =>
   new ApiError(
@@ -128,5 +129,33 @@ describe('mensajes de error', () => {
     );
     expect(describeError(new Error('otra cosa'))).toBe('otra cosa');
     expect(describeError('raro')).toBe('Algo salió mal. Reintentá en un momento.');
+  });
+
+  it('un error de una librería o de un tercero no muestra su mensaje (puede traer texto que no eligió la app)', () => {
+    class HttpRequestError extends Error {
+      override name = 'HttpRequestError';
+    }
+    const rpc = new HttpRequestError('HTTP request failed. Details: llamá a soporte al +54 11 5555-0000');
+    expect(describeError(rpc)).toBe('Algo salió mal. Reintentá en un momento.');
+    expect(describeError(new TypeError('Failed to fetch'))).toBe('Algo salió mal. Reintentá en un momento.');
+    expect(describeError(new DOMException('The operation is insecure.', 'SecurityError'))).toBe(
+      'Algo salió mal. Reintentá en un momento.',
+    );
+  });
+
+  it('la lista de clases de error de la app está completa', () => {
+    const sources = import.meta.glob<string>(['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}'], {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    });
+    const declared = new Set<string>();
+    for (const source of Object.values(sources)) {
+      for (const match of source.matchAll(/(?:override name|this\.name) = '([A-Za-z]+)'/g)) {
+        if (match[1] !== undefined && match[1] !== 'ApiError') declared.add(match[1]);
+      }
+    }
+    expect(declared.size).toBeGreaterThan(10);
+    expect([...declared].sort()).toEqual([...APP_ERROR_NAMES].sort());
   });
 });

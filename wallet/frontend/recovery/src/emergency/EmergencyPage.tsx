@@ -194,7 +194,9 @@ function Emergency({ ctx }: { ctx: RecoveryContext }) {
             <ul className="list">
               {state.destinations.map((d) => (
                 <li key={d.address} className="list__item" data-destination={d.address}>
-                  <strong>{d.label ?? 'Sin nombre'}</strong> <AddressText address={d.address} />{' '}
+                  {/* El nombre lo eligió el usuario y llega del backend: entre «», no se confunde con un texto de la app. */}
+                  <strong>{d.label === null ? 'Sin nombre' : `«${d.label}»`}</strong>{' '}
+                  <AddressText address={d.address} />{' '}
                   <button
                     type="button"
                     className="button button--link"
