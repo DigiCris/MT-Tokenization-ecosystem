@@ -36,7 +36,7 @@ import { QrCanvas } from '../ui/QrCanvas.tsx';
 import type { EnrollmentPurpose, PendingAbort } from './abort-reports.ts';
 import {
   ADDRESS_GROUPS,
-  BEFORE_NEW_REQUEST_TEXT,
+  beforeNewRequestText,
   compareManually,
   confirmWithReturnLink,
   distributePaste,
@@ -46,7 +46,7 @@ import {
   MANUAL_MISMATCH_TEXT,
   manualRetryText,
   nearlyNoneMatch,
-  NEW_REQUEST_TEXT,
+  newRequestText,
   newReturnSecret,
   POLL_ERROR_TEXT,
   RecoveryAbortError,
@@ -461,7 +461,7 @@ export function RecoveryActivationStep({
       )}
       {link && created && reported === null && ended === null && (
         <div className="stack">
-          {requests > 1 && <Notice tone="warning">{NEW_REQUEST_TEXT}</Notice>}
+          {requests > 1 && <Notice tone="warning">{newRequestText(created.purpose)}</Notice>}
           <p>
             Te recomendamos crear tu clave R en otro dispositivo, como tu celular: escaneá este QR con su cámara y se
             abre la app Recovery con este pedido. Si no tenés otro dispositivo, abrí el enlace en este.
@@ -484,7 +484,7 @@ export function RecoveryActivationStep({
       {ended !== null && (
         <div className="stack" data-request-ended="">
           <Notice tone="error">{ended}</Notice>
-          <p>{BEFORE_NEW_REQUEST_TEXT}</p>
+          <p>{beforeNewRequestText(created?.purpose)}</p>
           {newRequestButton}
         </div>
       )}
@@ -554,7 +554,7 @@ export function RecoveryActivationStep({
               <div className="stack" data-mismatch-groups={mismatch.groups.map((g) => g + 1).join(',')}>
                 <Notice tone="error">{MANUAL_MISMATCH_TEXT}</Notice>
                 <p>{manualRetryText(mismatch.groups, mismatch.attemptsLeft)}</p>
-                <p>{BEFORE_NEW_REQUEST_TEXT}</p>
+                <p>{beforeNewRequestText(created.purpose)}</p>
                 <button
                   type="button"
                   className={startOver ? 'button' : 'button button--secondary'}

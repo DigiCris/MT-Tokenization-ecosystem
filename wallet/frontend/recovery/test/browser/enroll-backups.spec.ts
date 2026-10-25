@@ -447,7 +447,8 @@ test('backups de R veraces, QR quieto e imprimible, 17 palabras confirmadas, sob
 
   // Canario de [F-KEY-07]: en el dispositivo quedó el sobre cifrado (el mismo del archivo) y nada más de R.
   const { dump, envelopes } = await storages(page, context);
-  expect(envelopes.map(([key]) => key)).toEqual([WALLET_ID]);
+  // Uno por clave de cada wallet (en un reemplazo conviven el de la R vigente y el de R′).
+  expect(envelopes.map(([key]) => key)).toEqual([`${WALLET_ID}:${envelope.keyAddress.toLowerCase()}`]);
   const remembered = envelopes[0]?.[1];
   expect(typeof remembered).toBe('string');
   expect(parseRecoveryEnvelope(JSON.parse(String(remembered)))).toEqual(envelope);
@@ -474,7 +475,8 @@ test('sin recordar el sobre nada queda (se borra el de un pedido anterior); sin 
   // Un enlace de ida sin k (de una Wallet anterior o recortado en el camino).
   await page.goto(`/enroll#${new URLSearchParams({ eid: ENROLLMENT_ID, n: NONCE }).toString()}`);
   await expect(page.getByRole('heading', { name: 'Activar Recovery' })).toBeVisible();
-  // En este dispositivo quedó el sobre de la R de un pedido anterior de esta misma wallet (todavía en creación).
+  // En este dispositivo quedó el sobre de la R de un pedido anterior de esta misma wallet (todavía en creación), con la
+  // clave con la que se guardaba antes (sólo la wallet).
   await page.evaluate(async (walletId) => {
     await new Promise<void>((resolveDone, reject) => {
       const request = indexedDB.open('mtw-recovery', 2);

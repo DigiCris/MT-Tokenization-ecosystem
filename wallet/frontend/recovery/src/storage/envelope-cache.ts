@@ -1,6 +1,8 @@
 // "Recordar en este dispositivo" ([F-KEY-07]): sólo el sobre cifrado `R.enc` (nunca R ni la Password R) en IndexedDB,
-// uno por wallet. Es una comodidad: el backup independiente de la plataforma sigue siendo obligatorio. También la Safe
-// que R ya verificó (dato público): el modo soberano la propone sin preguntarle al backend.
+// uno por clave de cada wallet: en un reemplazo de R conviven el de la R vigente y el de R′, porque hasta que el
+// reemplazo se ejecute (48 h) la vigente es la que cancela rotaciones desde acá. Es una comodidad: el backup
+// independiente de la plataforma sigue siendo obligatorio. También la Safe que R ya verificó (dato público): el modo
+// soberano la propone sin preguntarle al backend.
 import { getAddress, isAddress, type Address } from 'viem';
 import { parseRecoveryEnvelope, type RecoveryEnvelope } from '../crypto/envelope.ts';
 
@@ -46,26 +48,55 @@ async function run<T>(
   }
 }
 
+/** Dónde se guarda el sobre: su wallet y la dirección de su clave (antes, sólo la wallet). */
+function envelopeKey(envelope: RecoveryEnvelope): string {
+  return `${envelope.walletId}:${envelope.keyAddress.toLowerCase()}`;
+}
+
 export async function rememberEnvelope(envelope: RecoveryEnvelope): Promise<void> {
-  await run(ENVELOPES, 'readwrite', (store) => store.put(JSON.stringify(envelope), envelope.walletId));
+  await run(ENVELOPES, 'readwrite', (store) => store.put(JSON.stringify(envelope), envelopeKey(envelope)));
 }
 
+/** Borra todos los sobres recordados de la wallet (también uno guardado con la clave anterior, sólo la wallet). */
 export async function forgetEnvelope(walletId: string): Promise<void> {
-  await run(ENVELOPES, 'readwrite', (store) => store.delete(walletId));
+  const db = await open();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(ENVELOPES, 'readwrite');
+      const cursor = transaction.objectStore(ENVELOPES).openCursor();
+      cursor.onsuccess = () => {
+        const current = cursor.result;
+        if (current === null) return;
+        const key = typeof current.key === 'string' ? current.key : '';
+        if (key === walletId || key.startsWith(`${walletId}:`)) current.delete();
+        current.continue();
+      };
+      transaction.oncomplete = () => {
+        resolve();
+      };
+      transaction.onerror = () => {
+        reject(transaction.error ?? new Error('IndexedDB falló'));
+      };
+    });
+  } finally {
+    db.close();
+  }
 }
 
-/** Los sobres recordados (válidos); uno corrupto se ignora. */
+/** Los sobres recordados (válidos), uno por clave de cada wallet; uno corrupto se ignora. */
 export async function rememberedEnvelopes(): Promise<RecoveryEnvelope[]> {
   const values = await run<unknown[]>(ENVELOPES, 'readonly', (store) => store.getAll());
-  const envelopes: RecoveryEnvelope[] = [];
+  const envelopes = new Map<string, RecoveryEnvelope>();
   for (const value of values) {
     try {
-      if (typeof value === 'string') envelopes.push(parseRecoveryEnvelope(JSON.parse(value)));
+      if (typeof value !== 'string') continue;
+      const envelope = parseRecoveryEnvelope(JSON.parse(value));
+      envelopes.set(envelopeKey(envelope), envelope);
     } catch {
       // Un sobre que ya no valida no se ofrece.
     }
   }
-  return envelopes;
+  return [...envelopes.values()];
 }
 
 /** La Safe que R verificó on-chain (RecoveryGate), por dirección de R. */

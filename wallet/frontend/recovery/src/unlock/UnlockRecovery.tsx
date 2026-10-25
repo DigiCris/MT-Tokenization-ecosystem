@@ -98,7 +98,7 @@ export function UnlockRecovery({
           <p>Elegí el sobre cifrado de R (el archivo que guardaste, el QR o el recordado en este dispositivo).</p>
           {remembered.map((e) => (
             <button
-              key={e.walletId}
+              key={`${e.walletId}:${e.keyAddress}`}
               type="button"
               className="button button--secondary"
               onClick={() => {

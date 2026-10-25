@@ -20,7 +20,10 @@ import {
   MANUAL_MISMATCH_TEXT,
   manualRetryText,
   nearlyNoneMatch,
+  BEFORE_NEW_REQUEST_TEXT,
+  beforeNewRequestText,
   NEW_REQUEST_TEXT,
+  newRequestText,
   newReturnSecret,
   parseRecoveryReturn,
   RecoveryAbortError,
@@ -167,6 +170,15 @@ describe('activar Recovery', () => {
   it('vencimiento del pedido con la hora que informa el backend', () => {
     expect(requestExpiryText('2026-10-18T15:15:00Z', 'America/Argentina/Buenos_Aires')).toBe(
       'Este pedido vence a las 12:15: si Recovery no informa la dirección antes, vas a tener que generar otro.',
+    );
+    // En un reemplazo, «la anterior» no es la R actual: sus backups no se destruyen hasta que el reemplazo se ejecute.
+    expect(newRequestText('ONBOARDING')).toBe(NEW_REQUEST_TEXT);
+    expect(newRequestText('REPLACEMENT')).toContain('Los de tu R actual, no: sigue siendo tu clave de recuperación');
+    expect(beforeNewRequestText('ONBOARDING')).toBe(BEFORE_NEW_REQUEST_TEXT);
+    expect(beforeNewRequestText('REPLACEMENT')).toContain('destruí los backups de la que creaste para este pedido');
+    expect(beforeNewRequestText('REPLACEMENT')).toContain('Los de tu R actual, no');
+    expect(beforeNewRequestText(null)).toContain(
+      'Si estabas reemplazando tu clave R, los backups de la actual no los destruyas',
     );
     expect(NEW_REQUEST_TEXT).toBe(
       'Escaneá el QR nuevo: Recovery va a crear otra clave R; destruí los backups de la anterior.',

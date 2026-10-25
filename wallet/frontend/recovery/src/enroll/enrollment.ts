@@ -189,7 +189,7 @@ export function requestExpiryText(expiresAt: string, timeZone?: string): string 
   return `Este pedido de la app Wallet vence a las ${time}: enviá la dirección antes.`;
 }
 
-/** Los sobres recordados en este dispositivo (src/storage/envelope-cache.ts: IndexedDB, uno por wallet). */
+/** Los sobres recordados en este dispositivo (src/storage/envelope-cache.ts: IndexedDB, uno por clave de cada wallet). */
 export interface EnvelopeStore {
   remember: (envelope: RecoveryEnvelope) => Promise<void>;
   forget: (walletId: string) => Promise<void>;
@@ -197,21 +197,19 @@ export interface EnvelopeStore {
 
 /**
  * «Recordar el sobre cifrado de R en este dispositivo» ([F-KEY-07]) al enviar la dirección de una R creada en este
- * navegador: con la casilla marcada se guarda sólo el sobre cifrado (nunca R ni la Password R), en lugar del que
- * hubiera recordado de esa wallet. Se guarda recién con la dirección enviada, así un pedido que vence o se abandona no
- * deja el sobre de una R que no se va a usar. Sin marcar no se guarda nada; en el onboarding, además, se borra el que
- * hubiera quedado de un pedido anterior (la wallet todavía no tiene R vigente: era de una R que ya no se usa), y en un
- * reemplazo de R no se toca (puede ser el de la R vigente). Devuelve si quedó recordado.
+ * navegador: con la casilla marcada se guarda sólo el sobre cifrado (nunca R ni la Password R). Se guarda recién con la
+ * dirección enviada, así un pedido que vence o se abandona no deja el sobre de una R que no se va a usar. En el
+ * onboarding, antes se borra el que hubiera quedado de un pedido anterior (la wallet todavía no tiene R vigente: era de
+ * una R que ya no se usa). En un reemplazo de R nunca se borra nada: el de R′ queda junto al de la R vigente, que hasta
+ * que el reemplazo se ejecute (48 h) es la que cancela rotaciones. Devuelve si quedó recordado.
  */
 export async function keepEnvelopeOnDevice(
   envelope: RecoveryEnvelope,
   choice: { remember: boolean; purpose: EnrollmentStatus['purpose'] },
   store: EnvelopeStore,
 ): Promise<boolean> {
-  if (choice.remember) {
-    await store.remember(envelope);
-    return true;
-  }
   if (choice.purpose === 'ONBOARDING') await store.forget(envelope.walletId);
-  return false;
+  if (!choice.remember) return false;
+  await store.remember(envelope);
+  return true;
 }

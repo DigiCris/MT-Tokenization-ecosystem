@@ -13,6 +13,7 @@
 // la R del enlace aborta el pedido (sólo un error de red deja reintentar).
 import { getAddress, isAddress, isAddressEqual, type Address } from 'viem';
 import type { CreatedEnrollment, RecoveryEnrollment } from '../api/wallet-api.ts';
+import type { EnrollmentPurpose } from './abort-reports.ts';
 import { randomBytes, toBase64Url } from '../crypto/bytes.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -294,6 +295,30 @@ export const NEW_REQUEST_TEXT =
 /** Antes de pedir otro: lo mismo, dicho como consecuencia de generar el pedido nuevo. */
 export const BEFORE_NEW_REQUEST_TEXT =
   'Si generás un pedido nuevo, vas a escanear un QR nuevo y Recovery va a crear otra clave R: destruí los backups de la anterior.';
+
+/**
+ * En un reemplazo de R, la «anterior» es la R nueva del pedido anterior, no la actual: la R actual sigue siendo la de
+ * recuperación (y puede cancelar el reemplazo) hasta que se ejecute, así que sus backups no se destruyen.
+ */
+export const REPLACEMENT_NEW_REQUEST_TEXT =
+  'Escaneá el QR nuevo: Recovery va a crear otra clave R nueva; destruí los backups de la que creaste para el pedido anterior. Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.';
+
+export const REPLACEMENT_BEFORE_NEW_REQUEST_TEXT =
+  'Si generás un pedido nuevo, vas a escanear un QR nuevo y Recovery va a crear otra clave R nueva: destruí los backups de la que creaste para este pedido. Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.';
+
+/** Sin saber el propósito del pedido (no se pudo leer): lo del onboarding, con la salvedad del reemplazo. */
+export const ANY_BEFORE_NEW_REQUEST_TEXT = `${BEFORE_NEW_REQUEST_TEXT} Si estabas reemplazando tu clave R, los backups de la actual no los destruyas: sigue vigente hasta que el reemplazo se ejecute.`;
+
+/** El aviso de pedido nuevo según el propósito del pedido. */
+export function newRequestText(purpose: EnrollmentPurpose): string {
+  return purpose === 'REPLACEMENT' ? REPLACEMENT_NEW_REQUEST_TEXT : NEW_REQUEST_TEXT;
+}
+
+/** Antes de generar otro pedido, según el propósito (null o undefined si no se sabe). */
+export function beforeNewRequestText(purpose: EnrollmentPurpose | null | undefined): string {
+  if (purpose === 'REPLACEMENT') return REPLACEMENT_BEFORE_NEW_REQUEST_TEXT;
+  return purpose === 'ONBOARDING' ? BEFORE_NEW_REQUEST_TEXT : ANY_BEFORE_NEW_REQUEST_TEXT;
+}
 
 /**
  * Al retomar la creación cuando ya hubo un pedido de R para esta wallet (N5 de la segunda revisión, hallazgo 2 de la

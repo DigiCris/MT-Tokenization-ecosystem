@@ -27,6 +27,7 @@ import {
 } from './enrollment.ts';
 import {
   NEW_R_PER_REQUEST_TEXT,
+  REPLACEMENT_NEW_R_PER_REQUEST_TEXT,
   R_EXTERNAL_TEXT,
   R_KEEP_FAILED_TEXT,
   R_KEPT_TEXT,
@@ -234,12 +235,12 @@ describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07],
       forgotten,
       store: {
         remember: (envelope: RecoveryEnvelope) => {
-          stored.set(envelope.walletId, JSON.stringify(envelope));
+          stored.set(`${envelope.walletId}:${envelope.keyAddress}`, JSON.stringify(envelope));
           return Promise.resolve();
         },
         forget: (walletId: string) => {
           forgotten.push(walletId);
-          stored.delete(walletId);
+          for (const key of [...stored.keys()]) if (key.startsWith(`${walletId}:`)) stored.delete(key);
           return Promise.resolve();
         },
       },
@@ -260,9 +261,12 @@ describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07],
   it('con la casilla marcada queda sólo el sobre cifrado: nunca R ni la Password R', async () => {
     const envelope = await sealed();
     const { stored, forgotten, store } = fakeStore();
+    stored.set(`${WALLET}:0xde-un-pedido-anterior`, '{"de":"un pedido anterior"}');
     expect(await keepEnvelopeOnDevice(envelope, { remember: true, purpose: 'ONBOARDING' }, store)).toBe(true);
-    expect(forgotten).toEqual([]);
-    const saved = stored.get(WALLET) ?? '';
+    // En el onboarding no queda el sobre de la R de un pedido anterior, sólo el de la nueva.
+    expect(forgotten).toEqual([WALLET]);
+    expect([...stored.keys()]).toEqual([`${WALLET}:${envelope.keyAddress}`]);
+    const saved = stored.get(`${WALLET}:${envelope.keyAddress}`) ?? '';
     expect(JSON.parse(saved)).toEqual(envelope);
     // Ni la clave (hex con o sin 0x, base64url) ni la Password R (completa o sus palabras) aparecen en lo guardado.
     const keyHex = bytesToHex(R_KEY).slice(2);
@@ -280,19 +284,31 @@ describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07],
   it('sin marcar no se guarda nada; en el onboarding se borra el sobre de un pedido anterior, en un reemplazo no', async () => {
     const envelope = await sealed();
     const onboarding = fakeStore();
-    onboarding.stored.set(WALLET, '{"de":"un pedido anterior"}');
+    onboarding.stored.set(`${WALLET}:0xde-un-pedido-anterior`, '{"de":"un pedido anterior"}');
     expect(await keepEnvelopeOnDevice(envelope, { remember: false, purpose: 'ONBOARDING' }, onboarding.store)).toBe(
       false,
     );
     expect(onboarding.forgotten).toEqual([WALLET]);
     expect(onboarding.stored.size).toBe(0);
     const replacement = fakeStore();
-    replacement.stored.set(WALLET, '{"de":"la R vigente"}');
+    replacement.stored.set(`${WALLET}:0xde-la-r-vigente`, '{"de":"la R vigente"}');
     expect(await keepEnvelopeOnDevice(envelope, { remember: false, purpose: 'REPLACEMENT' }, replacement.store)).toBe(
       false,
     );
     expect(replacement.forgotten).toEqual([]);
-    expect(replacement.stored.get(WALLET)).toBe('{"de":"la R vigente"}');
+    expect(replacement.stored.get(`${WALLET}:0xde-la-r-vigente`)).toBe('{"de":"la R vigente"}');
+  });
+
+  it('en un reemplazo, el sobre de R′ queda junto al de la R vigente (hasta las 48 h, la vigente cancela rotaciones)', async () => {
+    const envelope = await sealed();
+    const replacement = fakeStore();
+    replacement.stored.set(`${WALLET}:0xde-la-r-vigente`, '{"de":"la R vigente"}');
+    expect(await keepEnvelopeOnDevice(envelope, { remember: true, purpose: 'REPLACEMENT' }, replacement.store)).toBe(
+      true,
+    );
+    expect(replacement.forgotten).toEqual([]);
+    expect(replacement.stored.get(`${WALLET}:0xde-la-r-vigente`)).toBe('{"de":"la R vigente"}');
+    expect(JSON.parse(replacement.stored.get(`${WALLET}:${envelope.keyAddress}`) ?? '')).toEqual(envelope);
   });
 
   it('si el dispositivo no deja guardarlo, el error llega a quien lo pidió (la pantalla no dice que quedó)', async () => {
@@ -327,6 +343,9 @@ describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07],
     expect(RETURN_WITHOUT_SECRET_TEXT).toContain('acá no hay enlace de regreso');
     expect(RETURN_WITHOUT_SECRET_TEXT).toContain('los 10 grupos que siguen al «0x»');
     expect(RETURN_QR_TEXT).toMatch(/^Si la Wallet está en tu celular, escaneá este QR con él/);
+    expect(REPLACEMENT_NEW_R_PER_REQUEST_TEXT).toContain(
+      'Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.',
+    );
     expect(NEW_R_PER_REQUEST_TEXT).toBe(
       'Cada pedido crea una clave R nueva: si creaste otra para un pedido anterior, destruí sus backups.',
     );

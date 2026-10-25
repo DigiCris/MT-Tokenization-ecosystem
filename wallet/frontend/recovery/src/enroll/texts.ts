@@ -10,6 +10,13 @@ export const REMEMBER_R_LABEL =
 export const NEW_R_PER_REQUEST_TEXT =
   'Cada pedido crea una clave R nueva: si creaste otra para un pedido anterior, destruí sus backups.';
 
+/**
+ * Lo mismo en un reemplazo de R: la R actual no es «la de un pedido anterior» que se descarta. Sigue siendo la de
+ * recuperación (y puede cancelar el reemplazo) hasta que se ejecute: sus backups no se destruyen.
+ */
+export const REPLACEMENT_NEW_R_PER_REQUEST_TEXT =
+  'Cada pedido crea una clave R nueva: si creaste otra para un pedido de reemplazo anterior, destruí sus backups. Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.';
+
 /** Pantalla final, R creada en este navegador con el sobre recordado. */
 export const R_KEPT_TEXT =
   'Tu clave R no salió de esta app: a la plataforma sólo le llegó su dirección. Queda cifrada en este dispositivo (sólo se abre con tu Password R), pero igual necesitás sus backups fuera de él: si se borran los datos del navegador o perdés el dispositivo, son tu única copia.';

@@ -4,7 +4,7 @@
 // cifrado en este dispositivo ([F-KEY-07], marcado por defecto como en la Wallet): se guarda recién al enviar la
 // dirección (enrollment.ts, keepEnvelopeOnDevice).
 import { useCallback, useState } from 'react';
-import type { StorageFlags } from '../api/recovery-api.ts';
+import type { EnrollmentStatus, StorageFlags } from '../api/recovery-api.ts';
 import { argon2 } from '../app/services.ts';
 import { BackupStep } from '../backup/BackupStep.tsx';
 import { NewPasswordR } from '../backup/NewPasswordR.tsx';
@@ -15,13 +15,16 @@ import { newPrivateKey } from '../crypto/secp256k1.ts';
 import type { UnlockedRecovery } from '../crypto/session.ts';
 import { useSessionStore } from '../session/context.tsx';
 import { useAsyncAction } from '../ui/forms.tsx';
-import { NEW_R_PER_REQUEST_TEXT, REMEMBER_R_LABEL } from './texts.ts';
+import { NEW_R_PER_REQUEST_TEXT, REMEMBER_R_LABEL, REPLACEMENT_NEW_R_PER_REQUEST_TEXT } from './texts.ts';
 
 export function CreateRecoveryKey({
   walletId,
+  purpose,
   onReady,
 }: {
   walletId: string;
+  /** En un reemplazo, la R actual sigue vigente: el aviso de «otra R» no le pide destruir sus backups. */
+  purpose: EnrollmentStatus['purpose'];
   onReady: (result: { unlocked: UnlockedRecovery; flags: StorageFlags; remember: boolean }) => void;
 }) {
   const store = useSessionStore();
@@ -67,7 +70,7 @@ export function CreateRecoveryKey({
         La app genera tu clave R y una Password R de 5 palabras. R nunca sale de este navegador sin cifrar y la
         plataforma no puede usarla.
       </p>
-      <p>{NEW_R_PER_REQUEST_TEXT}</p>
+      <p>{purpose === 'REPLACEMENT' ? REPLACEMENT_NEW_R_PER_REQUEST_TEXT : NEW_R_PER_REQUEST_TEXT}</p>
       <NewPasswordR
         generateLabel="Generar mi clave R"
         confirmLabel="Confirmar y cifrar"

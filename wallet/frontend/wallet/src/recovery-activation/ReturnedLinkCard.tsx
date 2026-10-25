@@ -16,7 +16,7 @@ import { StepUpForm } from '../session/StepUpForm.tsx';
 import { Notice } from '../ui/forms.tsx';
 import type { EnrollmentPurpose } from './abort-reports.ts';
 import {
-  BEFORE_NEW_REQUEST_TEXT,
+  beforeNewRequestText,
   RETURN_LINK_ELSEWHERE_TEXT,
   ReturnLinkUnverifiedError,
   type RecoveryReturn,
@@ -86,7 +86,7 @@ export function ReturnedLinkCard({ returned }: { returned: RecoveryReturn }) {
       ) : (
         <Notice tone="warning">{RETURN_LINK_ELSEWHERE_TEXT}</Notice>
       )}
-      <p>{BEFORE_NEW_REQUEST_TEXT}</p>
+      <p>{beforeNewRequestText(purpose)}</p>
       <p>
         <ContinueLink purpose={purpose} />
       </p>

@@ -362,6 +362,7 @@ export function EnrollPage() {
       {platformOk && enrollmentKey !== null && choice === null && mode === 'internal' && (
         <CreateRecoveryKey
           walletId={enrollment.walletId}
+          purpose={enrollment.purpose}
           onReady={(ready) => {
             setChoice({ kind: 'internal', ...ready });
           }}
