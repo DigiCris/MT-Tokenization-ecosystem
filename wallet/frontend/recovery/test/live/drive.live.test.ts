@@ -16,7 +16,7 @@ import {
   uploadRecoveryEnvelope,
 } from '../../src/drive/backup.ts';
 import { DRIVE_API, DriveClient } from '../../src/drive/client.ts';
-import { DRIVE_SCOPE } from '../../src/drive/token.ts';
+import { DRIVE_SCOPE, revokeDriveToken, setDriveToken } from '../../src/drive/token.ts';
 import envelopeVectors from '../vectors/wire/envelope.json' with { type: 'json' };
 
 const NAMES = ['GOOGLE_DRIVE_TEST_CLIENT_ID', 'GOOGLE_DRIVE_TEST_CLIENT_SECRET', 'GOOGLE_DRIVE_TEST_REFRESH_TOKEN'];
@@ -103,5 +103,15 @@ describe('Drive real: carpeta privada de la app', () => {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     expect(response.status).toBe(403);
+  });
+  it('la revocación de la app tiene el formato que acepta Google: un token inválido responde 400 invalid_token', async () => {
+    // Con el token de la cuenta de prueba no se puede: revocarlo revoca el permiso entero del cliente de prueba (los
+    // refresh tokens de Drive y de Gmail). Un token inválido prueba el endpoint real y el pedido que arma la app; un
+    // pedido mal armado respondería invalid_request.
+    let response: Response | undefined;
+    setDriveToken({ accessToken: `mtw-invalido-${crypto.randomUUID()}`, expiresAt: Date.now() + 3_600_000 });
+    await revokeDriveToken(async (input, init) => (response = await fetch(input, init)));
+    expect(response?.status).toBe(400);
+    expect(await response?.json()).toMatchObject({ error: 'invalid_token' });
   });
 });

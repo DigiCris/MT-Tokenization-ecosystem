@@ -13,7 +13,7 @@ import { securityGuardAbi } from '../../../src/chain/abis/SecurityGuard.ts';
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from '../../../src/crypto/envelope.ts';
 import { chain } from './helpers/chain.ts';
 import { downloadedText } from './helpers/download.ts';
-import { answerGoogleConsent, removeRecoveryBackup, testDrive } from './helpers/drive.ts';
+import { answerGoogleConsent, driveTestToken, removeRecoveryBackup, testDrive } from './helpers/drive.ts';
 import { finishOnboarding, onboardUntilEnrollment, type Onboarding } from './helpers/onboard.ts';
 import { contract, walletOrigin } from './helpers/stack.ts';
 import { installTestWallet } from './helpers/test-wallet.ts';
@@ -49,7 +49,7 @@ test('R interna: Password R, backups en Drive y archivo, prueba de control y Saf
   page.on('request', (request) => {
     if (!request.isNavigationRequest()) sentToApi.push(`${request.url()} ${request.postData() ?? ''}`);
   });
-  await answerGoogleConsent(page);
+  const consent = await answerGoogleConsent(page);
   await page.goto(enrollUrl(state, secret));
   await expect(page.getByRole('heading', { name: 'Activar Recovery' })).toBeVisible();
   await login(page, state.account.email);
@@ -98,6 +98,12 @@ test('R interna: Password R, backups en Drive y archivo, prueba de control y Saf
     });
     expect(sentToApi.filter((entry) => entry.includes(secret))).toEqual([]);
     expect(passwordWords).toHaveLength(5);
+    // Al cerrar sesión, Recovery revoca el token de Drive en Google ([F-DRV-01]); answerGoogleConsent intercepta ese
+    // pedido para no revocar el permiso de la cuenta de prueba.
+    expect(consent.revoked).toEqual([]);
+    await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+    await expect(page.getByRole('link', { name: 'Iniciar sesión' })).toBeVisible();
+    await expect.poll(() => consent.revoked).toEqual([await driveTestToken()]);
 
     const active = await finishOnboarding(state, null);
     expect(await onchainRecoveryKey(active.safe)).toBe(sent);

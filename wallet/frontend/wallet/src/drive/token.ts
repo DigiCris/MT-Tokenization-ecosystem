@@ -1,5 +1,5 @@
 // Access token de Drive ([F-DRV-01]): sólo en memoria de la pestaña, hasta su `expires_in` (con margen); sin refresh
-// tokens. Al cerrar sesión o bloquear se revoca en Google (`POST /revoke`) y se descarta.
+// tokens. Al cerrar sesión se revoca en Google (`POST /revoke`) y se descarta.
 
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 export const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';

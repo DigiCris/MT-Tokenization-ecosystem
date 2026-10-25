@@ -117,7 +117,7 @@ test('onboarding con Drive: U, Password U, AuthSecret_U y las 17 palabras no sal
   const account = await verifiedAccount('canario');
   const seen = capture(page);
   await login(page, account.email, account.password);
-  await answerGoogleConsent(page);
+  const consent = await answerGoogleConsent(page);
   await page.getByRole('button', { name: 'Conectar Google Drive' }).click();
   await completeStepUp(page, account.email);
   const words = await writeDownAndConfirmPassword(page);
@@ -146,6 +146,11 @@ test('onboarding con Drive: U, Password U, AuthSecret_U y las 17 palabras no sal
     const stored = await storages(page, context);
     assertAbsent(stored, canaries, 'los storages del navegador');
     assertAbsent(stored, { 'token de Drive': [await driveTestToken()], PlatformSession: seen.tokens }, 'los storages');
+    // Al salir, la app revoca el token de Drive en Google ([F-DRV-01]); answerGoogleConsent intercepta ese pedido.
+    expect(consent.revoked).toEqual([]);
+    await page.getByRole('button', { name: 'Salir' }).click();
+    await expect(page).toHaveURL(/\/login$/);
+    await expect.poll(() => consent.revoked).toEqual([await driveTestToken()]);
   } finally {
     await removeEnvelopeBackup(serializeEnvelope(parseEnvelope(JSON.parse(file))));
   }
