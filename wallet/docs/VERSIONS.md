@@ -23,7 +23,7 @@ Mínimos del sistema exigidos por PF-01: bash ≥ 4.0, git ≥ 2.34, python ≥ 
 | stack local: valkey | `valkey/valkey:9.2@sha256:247b5e730bdc9dc29fddb8274d1731b203a1a1a46af63eae3a9d55b4bf74853f` | 2026-10-17 |
 | stack local: foundry | `ghcr.io/foundry-rs/foundry:v1.8.5@sha256:32c8ea9ef052a440cb1620175987a3f49eff8b068a0c6a3d09ebf7f5f9a0e043` | 2026-10-17 |
 | stack local: mailpit | `axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387` | 2026-10-17 |
-| navegadores de los tests fuera de GitHub Actions (Firefox y WebKit, `scripts/lib/browser-server.mjs`) y rendimiento de Argon2id con la CPU limitada (Chromium y WebKit, P17.T08): playwright | `mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea` | 2026-10-25 (digest del índice multi-arquitectura leído del registro de MCR; la misma lectura reproduce el digest de `v1.64.0-noble`) |
+| navegadores de los tests fuera de GitHub Actions (Firefox y WebKit, `scripts/lib/browser-server.mjs`) y rendimiento de Argon2id con la CPU limitada (Chromium y WebKit, P17.T08): playwright | `mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f` | 2026-10-18; la de 1.64.1 (`sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea`, leída del registro de MCR el 2026-10-25) se adopta con `@playwright/test` 1.64.1 cuando se pueda descargar (ver la tabla de los frontends) |
 | seguridad: semgrep | `semgrep/semgrep:1.181.0@sha256:81474464c1f07483ba0682a44787fd93c91397419762a04abe2bafaae396304b` | 2026-10-17 |
 | seguridad: osv-scanner | `ghcr.io/google/osv-scanner:v2.7.0@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0` | 2026-10-17 |
 | seguridad: zizmor | `ghcr.io/zizmorcore/zizmor:1.31.1@sha256:42d409dbb851d4c5d35a058cf042b828bea1e3f2884378c526eb0974780e18d9` | 2026-10-17 |
@@ -161,14 +161,14 @@ motivos que en `backend/app`). Los procedimientos del ciclo de vida usan el bina
 Dos proyectos independientes (un lockfile cada uno, sin código compartido) con la misma política de
 [supply chain](#supply-chain). Al crearlos (2026-10-18) estas versiones de la tabla todavía no tenían 7 días: se fijó la
 última de la misma línea que sí los cumplía; la de la tabla se adopta en el primer cambio de dependencias posterior a su
-fecha de elegibilidad (en las dos apps, respetando la regla de 72 h entre ambas de [F-SEC-09] para `viem`). **Adoptadas el 2026-10-25** con los parches de [seguridad](#parches-de-seguridad-osv-2026-10-25), salvo `viem` en Recovery, que se adopta desde el 2026-10-28 (72 h después del cambio en Wallet).
+fecha de elegibilidad (en las dos apps, respetando la regla de 72 h entre ambas de [F-SEC-09] para `viem`). **Adoptadas el 2026-10-25** con los parches de [seguridad](#parches-de-seguridad-osv-2026-10-25), salvo `viem` en Recovery, que se adopta desde el 2026-10-28 (72 h después del cambio en Wallet), y `@playwright/test`, que espera a que se pueda descargar su imagen fijada.
 
 | Paquete | Tabla (publicada) | Elegible desde | Fijada en los frontends (publicada) | Integridad (lockfile) |
 |---|---|---|---|---|
 | `react` | 19.3.1 (2026-10-14) | 2026-10-21 | 19.3.1 (2026-10-14) | `sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==` |
 | `react-dom` | 19.3.1 (2026-10-14) | 2026-10-21 | 19.3.1 (2026-10-14) | `sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==` |
 | `viem` | 2.57.7 (2026-10-14) | 2026-10-21 | 2.57.7 (2026-10-14) en Wallet; Recovery sigue en 2.57.4 hasta el 2026-10-28 ([F-SEC-09]: ≥ 72 h entre las dos apps) | `sha512-x3UqqrcQuESaRVK6a0BvNmoNP0SVhu913uxEAxYLJx1lNYnj6ylTntfUdakCUKjk1+T+63gkdwFGJQ2O5C/nRw==` |
-| `@playwright/test` | 1.64.1 (2026-10-14) | 2026-10-21 | 1.64.1 (2026-10-14) | `sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg==` |
+| `@playwright/test` | 1.64.1 (2026-10-14) | 2026-10-21 | 1.64.0 (2026-10-07): la 1.64.1 de la tabla va junto con su imagen fijada, y el 2026-10-25 la descarga de MCR (3,6 GB) no progresó; se adopta cuando se pueda descargar. Mismos navegadores (Chromium 1248, Firefox 1555, WebKit 2370) | `sha512-oTN9FNYuN6bqQMwiho6jJKLCG2/QOYCixGXuCjRmzOq23eODeukuY2XiAVoVpAECbuezMt1MHQjAiQxK8F+Y+g==` |
 | `@tanstack/react-query` (sólo Recovery) | 5.104.3 (2026-10-15) | 2026-10-22 | 5.104.3 (2026-10-15) | `sha512-5Ts1ImwJKqoJgPkLxl9WrPQy1JEoEmti3MaaODCfBamHUGFk57IFrc+AIksPq+BAm10EsroX56qm398Z42LG7w==` |
 | `vitest` | 5.0.5 (2026-10-15) | 2026-10-22 | 5.0.5 (2026-10-15) | `sha512-cPODOMF8YnkiiYtDdHo6n4wWmBrOBBbOIYH2d33M4l3CdNn72h+qMmO6uXffUN6A5AZFXNND/d+krS9mgkXRfg==` |
 | `eslint` | 10.13.0 (2026-10-16) | 2026-10-23 | 10.13.0 (2026-10-16) | `sha512-UohDjD4zSzEwhf58M3O7vc/ycc8O1I7dNlhtD0WxE8Px8EHNJKtUwzBqrzeGhisRuv2ag4sAYswszCJRgKXYUg==` |
@@ -204,7 +204,7 @@ automático) y el plugin sólo agrega React Refresh, cuyo preámbulo es un scrip
 (también aplicada en dev) bloquea; sin el plugin hay una dependencia menos y en dev los cambios recargan la página.
 
 Navegador de los tests: Chrome for Testing 156.0.8078.4 (`chromium-headless-shell` revisión 1248), fijado por
-`@playwright/test` 1.64.1 (igual que 1.64.0) e instalado con `playwright install --only-shell chromium` (en CI con `--with-deps`).
+`@playwright/test` 1.64.0 (1.64.1 trae la misma revisión) e instalado con `playwright install --only-shell chromium` (en CI con `--with-deps`).
 
 Fuentes self-hosted de `frontend/design-tokens/` (procedencia en su `LICENSES`):
 
