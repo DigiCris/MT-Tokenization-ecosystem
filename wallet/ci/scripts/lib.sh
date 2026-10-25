@@ -113,6 +113,12 @@ ci_frontend_app() { # <ruta relativa> <fase>
   section "$rel: navegador de Playwright (headless shell de la versión fijada)"
   ensure_playwright_browser "$dir"
   run_if_script "$dir" test:browser
+  # Otra vez después de los tests de navegador: si alguno revocara en Google el token de la cuenta de prueba (la app lo
+  # revoca al cerrar sesión y los helpers interceptan ese pedido), falla esta corrida y no la siguiente.
+  if has_script "$dir" test:drive-live; then
+    section "$rel: Drive real otra vez (el refresh token de prueba sigue vigente después de los tests de navegador)"
+    (cd "$dir" && pnpm run -s test:drive-live)
+  fi
   section "$rel: SBOM CycloneDX (syft)"
   bash "$CI_SCRIPTS_DIR/sbom.sh" "${rel#frontend/}"
 }
