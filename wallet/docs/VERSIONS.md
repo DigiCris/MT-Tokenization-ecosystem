@@ -23,7 +23,7 @@ Mínimos del sistema exigidos por PF-01: bash ≥ 4.0, git ≥ 2.34, python ≥ 
 | stack local: valkey | `valkey/valkey:9.2@sha256:247b5e730bdc9dc29fddb8274d1731b203a1a1a46af63eae3a9d55b4bf74853f` | 2026-10-17 |
 | stack local: foundry | `ghcr.io/foundry-rs/foundry:v1.8.5@sha256:32c8ea9ef052a440cb1620175987a3f49eff8b068a0c6a3d09ebf7f5f9a0e043` | 2026-10-17 |
 | stack local: mailpit | `axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387` | 2026-10-17 |
-| rendimiento de Argon2id con la CPU limitada (Chromium y WebKit, P17.T08): playwright | `mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f` | 2026-10-18 |
+| navegadores de los tests fuera de GitHub Actions (Firefox y WebKit, `scripts/lib/browser-server.mjs`) y rendimiento de Argon2id con la CPU limitada (Chromium y WebKit, P17.T08): playwright | `mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea` | 2026-10-25 (digest del índice multi-arquitectura leído del registro de MCR; la misma lectura reproduce el digest de `v1.64.0-noble`) |
 | seguridad: semgrep | `semgrep/semgrep:1.181.0@sha256:81474464c1f07483ba0682a44787fd93c91397419762a04abe2bafaae396304b` | 2026-10-17 |
 | seguridad: osv-scanner | `ghcr.io/google/osv-scanner:v2.7.0@sha256:4f3b7e2c64b9d38a5febc5a7e4a3dfef1d1362f726dea7a2ef4762b46469fcd0` | 2026-10-17 |
 | seguridad: zizmor | `ghcr.io/zizmorcore/zizmor:1.31.1@sha256:42d409dbb851d4c5d35a058cf042b828bea1e3f2884378c526eb0974780e18d9` | 2026-10-17 |
@@ -103,22 +103,22 @@ Versiones adicionales fijadas en esta verificación (no estaban en la tabla §3.
 
 ### Versiones efectivas de `backend/app` (edad mínima de publicación)
 
-La política de [supply chain](#supply-chain) (`minimumReleaseAge: 10080`, 7 días) no instala versiones publicadas hace menos de una semana. Al crear `backend/app` (P08, 2026-10-17) estas versiones de la tabla todavía no tenían 7 días: se fijó la última versión de la misma línea que sí los cumplía. La versión de la tabla se adopta en el primer cambio de dependencias del proyecto posterior a su fecha de elegibilidad, con el mismo control de edad.
+La política de [supply chain](#supply-chain) (`minimumReleaseAge: 10080`, 7 días) no instala versiones publicadas hace menos de una semana. Al crear `backend/app` (P08, 2026-10-17) estas versiones de la tabla todavía no tenían 7 días: se fijó la última versión de la misma línea que sí los cumplía. La versión de la tabla se adopta en el primer cambio de dependencias del proyecto posterior a su fecha de elegibilidad, con el mismo control de edad. **Adoptadas el 2026-10-25**, en el primer cambio de dependencias posterior a su elegibilidad (los parches de [seguridad del 2026-10-25](#parches-de-seguridad-osv-2026-10-25)): todas las de la tabla salvo `nodemailer`, que va directo a una versión corregida (ver esa sección).
 
 | Paquete | Tabla (publicada) | Elegible desde | Fijada en `backend/app` (publicada) | Integridad (lockfile) |
 |---|---|---|---|---|
-| `fastify` | 5.12.7 (2026-10-13) | 2026-10-20 | 5.12.5 (2026-09-16) | `sha512-OB2k1dlxs5/NAABqeKV2FUHkSD2BbENsCak8yULVcymn3fHIPDVa9TI3SDnJSWYSllZmSYuZXy2gTnsT+Sut1A==` |
-| `@fastify/helmet` | 13.2.0 (2026-10-13) | 2026-10-20 | 13.1.2 (2026-10-08) | `sha512-fXTultrEFW9bczr3jcffZD7NLlsTYa8eCCzVFsJvLIVO7SUiY/VWp18qCJbf2N9AXIEzIC11NYlNB3BlzBEZeg==` |
-| `zod` | 4.6.7 (2026-10-12) | 2026-10-19 | 4.6.5 (2026-09-13) | `sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==` |
-| `bullmq` | 6.3.15 (2026-10-14) | 2026-10-21 | 6.3.12 (2026-10-09) | `sha512-zuPU+RbyiTzRtxVeokO0EotJ+PkHyAEXugEAYYyP+pm7bbJAbrvQR1SHW6MCUgA0e4C23/07dcOCymEe+GNGHw==` |
+| `fastify` | 5.12.7 (2026-10-13) | 2026-10-20 | 5.12.7 (2026-10-13) | `sha512-v4pEPsTRPuqlDIYiQFB+BHjVN4SdHX9u0ABk0ZDUKbbdY1vsNryUd1j4Z+jQEZajvYIVk047Kimva9/AJ79GYw==` |
+| `@fastify/helmet` | 13.2.0 (2026-10-13) | 2026-10-20 | 13.2.0 (2026-10-13) | `sha512-2u41U5hR9o1u3HUHLT3Njp7vWuWw+XXw8qCBwVY17pRQAN179YYKiU9f7/qEn1ITabgNTkq/Yk6gmrYPSraagA==` |
+| `zod` | 4.6.7 (2026-10-12) | 2026-10-19 | 4.6.7 (2026-10-12) | `sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==` |
+| `bullmq` | 6.3.15 (2026-10-14) | 2026-10-21 | 6.3.15 (2026-10-14) | `sha512-J6EZH/DhfGnsIafSK2FfNJ6XtSAQnD4YM1vts5+jT4usLYkxV2uU72oKNpmyxUQl9U4sFEvK5MO5SJ+dGlwOLQ==` |
 | `nodemailer` | 10.1.2 (2026-10-16) | 2026-10-23 | 10.0.16 (2026-10-07) | `sha512-VL9xKErxN+el77o8eBOuYKUPMyEx7F9hfnDCuiUKJRp9v3wnWMOudYgP/SWbwSHy8rUL4cylobuXtki1LpQS7A==` |
-| `viem` | 2.57.7 (2026-10-14) | 2026-10-21 | 2.57.4 (2026-10-08) | `sha512-ro+8AKrcGU6tPfou0gBRYv6bxnU3tPxxJGY4qpJwjiR40eHCWzeGhrAgYMlIncFtlnry2/yGjz57WOC67oshCQ==` |
-| `vitest` | 5.0.5 (2026-10-15) | 2026-10-22 | 5.0.3 (2026-09-30) | `sha512-xMw97S3rjdtj5dkVat7jCsqWBpvchs3RlpQctUqwJD0KkERk40vz2fJ77lDwW/Vzh/pk18eItYAzkodhSes3jQ==` |
-| `testcontainers` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.0 (2026-09-28) | `sha512-Pd0c2eU0DdIuK+Pb3c+vmBUdKjDLgxZmPecQGESFAKyn5LTqSaSw8l7htfMlLwabb/QsUILe6XkxMJw8Ly/ThA==` |
-| `@testcontainers/postgresql` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.0 (2026-09-28) | `sha512-14oNBbKdqIkWTiw8XwP6YqWnuBebiij8m4fF03WTSHvNt5FfvQpGTLwIV3p07UpDnqWRFvY50YFzbiYdB+SWuA==` |
-| `@testcontainers/redis` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.0 (2026-09-28) | `sha512-ZwD+aUL5LDHT4BIVzzbpPJitXqUibKt8UyFgWGzQbw9YoIaQdRrBbdY7Y+L4th7nYwmV+1UI1iO9XtJzadXnAw==` |
-| `eslint` | 10.13.0 (2026-10-16) | 2026-10-23 | 10.12.0 (2026-10-02) | `sha512-npHjrHb2o4ehH3mE+YuxABR+0gyb0aVWCIolgJDArwCiHEIsonBm3ZKjel5b0U5+a+MbEvIyRCGCzD3eKKK2NA==` |
-| `typescript-eslint` | 8.71.2 (2026-10-12) | 2026-10-19 | 8.71.1 (2026-10-05) | `sha512-oiNVPC3/NbV1FpaHU07l8O6ynqG9v4PAiW2WvTrAmZdR0f2HI/gE668ElMLCK7Xbsu5k2fK5C4fXNiq05j7/nQ==` |
+| `viem` | 2.57.7 (2026-10-14) | 2026-10-21 | 2.57.7 (2026-10-14) | `sha512-x3UqqrcQuESaRVK6a0BvNmoNP0SVhu913uxEAxYLJx1lNYnj6ylTntfUdakCUKjk1+T+63gkdwFGJQ2O5C/nRw==` |
+| `vitest` | 5.0.5 (2026-10-15) | 2026-10-22 | 5.0.5 (2026-10-15) | `sha512-cPODOMF8YnkiiYtDdHo6n4wWmBrOBBbOIYH2d33M4l3CdNn72h+qMmO6uXffUN6A5AZFXNND/d+krS9mgkXRfg==` |
+| `testcontainers` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.1 (2026-10-13) | `sha512-JfbCyOvLdzatwgqUI3AvYCwRW0P5mCkKQVBPO8U5qSH1efC2kHvnfWmi9VHloy1rAFG2MEqWZObRH4bq0gU1kQ==` |
+| `@testcontainers/postgresql` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.1 (2026-10-13) | `sha512-MIbI5KjZ9M4SY4+xzxg/w4ZLBeV+Jd6ognXoWn7dh/mhIhBbn7ss0MiZHNg2XbCbu03BW9YQ9+H9xW8PFkJWaA==` |
+| `@testcontainers/redis` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.1 (2026-10-13) | `sha512-pF/HAs0LEsSfuQv++Wyp36S9cFNo8vfweddUOJQl/+wuAW1ThlupJLQv7L4PKkpqYGq+epRuaKhPrNKKnmbU3g==` |
+| `eslint` | 10.13.0 (2026-10-16) | 2026-10-23 | 10.13.0 (2026-10-16) | `sha512-UohDjD4zSzEwhf58M3O7vc/ycc8O1I7dNlhtD0WxE8Px8EHNJKtUwzBqrzeGhisRuv2ag4sAYswszCJRgKXYUg==` |
+| `typescript-eslint` | 8.71.2 (2026-10-12) | 2026-10-19 | 8.71.2 (2026-10-12) | `sha512-Rz4effbMy2g9wnvOJZG6SbVavX313Lap1vNEbk1RUochzickvzP8P4HB+bkNg5e50eVz1hQGjh9K1omI1xB4Bw==` |
 
 El resto de las dependencias de `backend/app` usa exactamente la versión de la tabla. Dependencias de desarrollo que no figuran en la tabla (fijadas el 2026-10-17, todas con más de 7 días):
 
@@ -134,25 +134,25 @@ Scripts de instalación denegados en `backend/app/pnpm-workspace.yaml` (`allowBu
 
 Proyecto independiente con su propio lockfile y la misma política de [supply chain](#supply-chain) que `backend/app`
 (`saveExact`, `minimumReleaseAge: 10080`, `strictDepBuilds`). Usa sólo lo necesario para el signer (sin Swagger, sin
-cola, sin email): mismas versiones efectivas que `backend/app` para las librerías compartidas, que todavía no tienen 7
-días en su versión de la tabla (ver la sección anterior).
+cola, sin email): mismas versiones efectivas que `backend/app` para las librerías compartidas (las de la tabla desde
+el 2026-10-25, ver la sección anterior).
 
 | Paquete | Fijada en `backend/signer` | Uso | Integridad (lockfile) |
 |---|---|---|---|
 | `@noble/curves` | 2.4.0 | secp256k1: firma de digests (RFC 6979, low-s) y recuperación | `sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==` |
 | `@noble/hashes` | 2.4.0 | scrypt y keccak de los keystores V3, HKDF de las contraseñas, HMAC del fingerprint | `sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==` |
-| `fastify` | 5.12.5 | servidor HTTPS mTLS | `sha512-OB2k1dlxs5/NAABqeKV2FUHkSD2BbENsCak8yULVcymn3fHIPDVa9TI3SDnJSWYSllZmSYuZXy2gTnsT+Sut1A==` |
+| `fastify` | 5.12.7 | servidor HTTPS mTLS | `sha512-v4pEPsTRPuqlDIYiQFB+BHjVN4SdHX9u0ABk0ZDUKbbdY1vsNryUd1j4Z+jQEZajvYIVk047Kimva9/AJ79GYw==` |
 | `jose` | 6.2.12 | verificación JWS EdDSA (sesión, challenge, integridad, atestación) | `sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==` |
 | `kysely` | 0.29.6 | DB propia del shard | `sha512-hHaB8C/rfzDDtr/t8YZwxAuPJTT0zHyaPoVzcXwDYhYNAgH/4sIfVhi/XLLIY+bL/FqaIJnjATDbi8ObSELmxg==` |
 | `pg` | 8.23.1 | driver de PostgreSQL | `sha512-aL96AHANtWjPLDOLqnhx+ngp9+UK7ETEU8VJrDCGvsSSi/mGLcWYsS6Herg7lmaBJe4uwrfqsa7gTEFaSizDoQ==` |
 | `pino` | 10.4.0 | logs JSON con redacción | `sha512-bk1ZMTwG/Vymx+zPoa28MhNzucFvXJWp3csrSuxuHPSMeUettaCoQ5Jvg07mtC4JGNpcfTwz41oVCnNgBK9+vA==` |
 | `prom-client` | 15.1.3 | métricas del shard | `sha512-6ZiOBfCywsD4k1BN9IX0uZhF+tJkV8q8llP64G5Hajs4JOeVLPCwpPVcpXy3BwYiUGgyJzsJJQeOIv7+hDSq8g==` |
-| `viem` | 2.57.4 | ABI de lecturas on-chain y serialización EIP-1559 (la decodificación de la SafeTx es propia) | `sha512-ro+8AKrcGU6tPfou0gBRYv6bxnU3tPxxJGY4qpJwjiR40eHCWzeGhrAgYMlIncFtlnry2/yGjz57WOC67oshCQ==` |
-| `zod` | 4.6.5 | validación de pedidos, configuración y snapshot de policy | `sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==` |
+| `viem` | 2.57.7 | ABI de lecturas on-chain y serialización EIP-1559 (la decodificación de la SafeTx es propia) | `sha512-x3UqqrcQuESaRVK6a0BvNmoNP0SVhu913uxEAxYLJx1lNYnj6ylTntfUdakCUKjk1+T+63gkdwFGJQ2O5C/nRw==` |
+| `zod` | 4.6.7 | validación de pedidos, configuración y snapshot de policy | `sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==` |
 
 Dependencias de desarrollo: las mismas versiones que `backend/app` (`typescript` 6.0.3, `vitest` y
-`@vitest/coverage-v8` 5.0.3, `testcontainers` y `@testcontainers/postgresql` 12.2.0, `eslint` 10.12.0,
-`typescript-eslint` 8.71.1, `@eslint/js` 10.0.1, `prettier` 3.9.10, `@types/node` 26.6.5, `@types/pg` 8.23.1).
+`@vitest/coverage-v8` 5.0.5, `testcontainers` y `@testcontainers/postgresql` 12.2.1, `eslint` 10.13.0,
+`typescript-eslint` 8.71.2, `@eslint/js` 10.0.1, `prettier` 3.9.10, `@types/node` 26.6.5, `@types/pg` 8.23.1).
 Scripts de instalación denegados en `backend/signer/pnpm-workspace.yaml`: `cpu-features`, `ssh2` y `protobufjs` (mismos
 motivos que en `backend/app`). Los procedimientos del ciclo de vida usan el binario `age` de la toolchain.
 
@@ -161,18 +161,18 @@ motivos que en `backend/app`). Los procedimientos del ciclo de vida usan el bina
 Dos proyectos independientes (un lockfile cada uno, sin código compartido) con la misma política de
 [supply chain](#supply-chain). Al crearlos (2026-10-18) estas versiones de la tabla todavía no tenían 7 días: se fijó la
 última de la misma línea que sí los cumplía; la de la tabla se adopta en el primer cambio de dependencias posterior a su
-fecha de elegibilidad (en las dos apps, respetando la regla de 72 h entre ambas de [F-SEC-09] para `viem`).
+fecha de elegibilidad (en las dos apps, respetando la regla de 72 h entre ambas de [F-SEC-09] para `viem`). **Adoptadas el 2026-10-25** con los parches de [seguridad](#parches-de-seguridad-osv-2026-10-25), salvo `viem` en Recovery, que se adopta desde el 2026-10-28 (72 h después del cambio en Wallet).
 
 | Paquete | Tabla (publicada) | Elegible desde | Fijada en los frontends (publicada) | Integridad (lockfile) |
 |---|---|---|---|---|
-| `react` | 19.3.1 (2026-10-14) | 2026-10-21 | 19.3.0 (2026-09-09) | `sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==` |
-| `react-dom` | 19.3.1 (2026-10-14) | 2026-10-21 | 19.3.0 (2026-09-09) | `sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==` |
-| `viem` | 2.57.7 (2026-10-14) | 2026-10-21 | 2.57.4 (2026-10-08) | `sha512-ro+8AKrcGU6tPfou0gBRYv6bxnU3tPxxJGY4qpJwjiR40eHCWzeGhrAgYMlIncFtlnry2/yGjz57WOC67oshCQ==` |
-| `@playwright/test` | 1.64.1 (2026-10-14) | 2026-10-21 | 1.64.0 (2026-10-07) | `sha512-oTN9FNYuN6bqQMwiho6jJKLCG2/QOYCixGXuCjRmzOq23eODeukuY2XiAVoVpAECbuezMt1MHQjAiQxK8F+Y+g==` |
-| `@tanstack/react-query` (sólo Recovery) | 5.104.3 (2026-10-15) | 2026-10-22 | 5.104.1 (2026-10-02) | `sha512-Zz70EgjahNI7aCz8BZxM3vUGU44ycxEAzMuCUjLeA7SVhhOkg3ZgPjPJPvHjs6Rmky/dtmnu1WzjGHNHmhCoZQ==` |
-| `vitest` | 5.0.5 (2026-10-15) | 2026-10-22 | 5.0.3 (2026-09-30) | `sha512-xMw97S3rjdtj5dkVat7jCsqWBpvchs3RlpQctUqwJD0KkERk40vz2fJ77lDwW/Vzh/pk18eItYAzkodhSes3jQ==` |
-| `eslint` | 10.13.0 (2026-10-16) | 2026-10-23 | 10.12.0 (2026-10-02) | `sha512-npHjrHb2o4ehH3mE+YuxABR+0gyb0aVWCIolgJDArwCiHEIsonBm3ZKjel5b0U5+a+MbEvIyRCGCzD3eKKK2NA==` |
-| `typescript-eslint` | 8.71.2 (2026-10-12) | 2026-10-19 | 8.71.1 (2026-10-05) | `sha512-oiNVPC3/NbV1FpaHU07l8O6ynqG9v4PAiW2WvTrAmZdR0f2HI/gE668ElMLCK7Xbsu5k2fK5C4fXNiq05j7/nQ==` |
+| `react` | 19.3.1 (2026-10-14) | 2026-10-21 | 19.3.1 (2026-10-14) | `sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==` |
+| `react-dom` | 19.3.1 (2026-10-14) | 2026-10-21 | 19.3.1 (2026-10-14) | `sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==` |
+| `viem` | 2.57.7 (2026-10-14) | 2026-10-21 | 2.57.7 (2026-10-14) en Wallet; Recovery sigue en 2.57.4 hasta el 2026-10-28 ([F-SEC-09]: ≥ 72 h entre las dos apps) | `sha512-x3UqqrcQuESaRVK6a0BvNmoNP0SVhu913uxEAxYLJx1lNYnj6ylTntfUdakCUKjk1+T+63gkdwFGJQ2O5C/nRw==` |
+| `@playwright/test` | 1.64.1 (2026-10-14) | 2026-10-21 | 1.64.1 (2026-10-14) | `sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg==` |
+| `@tanstack/react-query` (sólo Recovery) | 5.104.3 (2026-10-15) | 2026-10-22 | 5.104.3 (2026-10-15) | `sha512-5Ts1ImwJKqoJgPkLxl9WrPQy1JEoEmti3MaaODCfBamHUGFk57IFrc+AIksPq+BAm10EsroX56qm398Z42LG7w==` |
+| `vitest` | 5.0.5 (2026-10-15) | 2026-10-22 | 5.0.5 (2026-10-15) | `sha512-cPODOMF8YnkiiYtDdHo6n4wWmBrOBBbOIYH2d33M4l3CdNn72h+qMmO6uXffUN6A5AZFXNND/d+krS9mgkXRfg==` |
+| `eslint` | 10.13.0 (2026-10-16) | 2026-10-23 | 10.13.0 (2026-10-16) | `sha512-UohDjD4zSzEwhf58M3O7vc/ycc8O1I7dNlhtD0WxE8Px8EHNJKtUwzBqrzeGhisRuv2ag4sAYswszCJRgKXYUg==` |
+| `typescript-eslint` | 8.71.2 (2026-10-12) | 2026-10-19 | 8.71.2 (2026-10-12) | `sha512-Rz4effbMy2g9wnvOJZG6SbVavX313Lap1vNEbk1RUochzickvzP8P4HB+bkNg5e50eVz1hQGjh9K1omI1xB4Bw==` |
 
 Con la versión exacta de la tabla: `react-router` 8.4.0, `@noble/hashes` 2.4.0, `vite` 8.3.4, `typescript` 6.0.3,
 `@noble/curves` 2.4.0 y `@scure/base` 2.4.0 (sólo Wallet desde P17: firma secp256k1 de U y base64url de los sobres),
@@ -204,7 +204,7 @@ automático) y el plugin sólo agrega React Refresh, cuyo preámbulo es un scrip
 (también aplicada en dev) bloquea; sin el plugin hay una dependencia menos y en dev los cambios recargan la página.
 
 Navegador de los tests: Chrome for Testing 156.0.8078.4 (`chromium-headless-shell` revisión 1248), fijado por
-`@playwright/test` 1.64.0 e instalado con `playwright install --only-shell chromium` (en CI con `--with-deps`).
+`@playwright/test` 1.64.1 (igual que 1.64.0) e instalado con `playwright install --only-shell chromium` (en CI con `--with-deps`).
 
 Fuentes self-hosted de `frontend/design-tokens/` (procedencia en su `LICENSES`):
 
@@ -225,6 +225,23 @@ demás. Un override fuerza `uuid` 11.1.1 (2026-04-29) en lugar de las versiones 
 misma API). La instalación avisa de dos subdependencias deprecadas de los conectores (`@paulmillr/qr` 0.2.1 y
 `@safe-global/safe-gateway-typescript-sdk` 3.23.1), sin vulnerabilidades conocidas (OSV-Scanner y `pnpm audit`); se
 revisan con la verificación de cada conector en P19.
+
+### Parches de seguridad (OSV, 2026-10-25)
+
+El 2026-10-25 OSV-Scanner (`ci/scripts/ci-security.sh`) marcó advisories publicados después de fijar las versiones.
+Cada uno se corrige con la versión que lo resuelve, con el mismo control de [edad mínima](#supply-chain):
+
+| Advisory (CVSS) | Paquete (versión vulnerable) | Proyectos | Corrección | Estado |
+|---|---|---|---|---|
+| GHSA-mrhx-c7xc-m3w5 (8.2): validar un array enorme agota la memoria | `zod` 4.6.5; en Recovery también 3.22.4 y 3.25.76, transitivas de `@reown/appkit-wallet` y `@coinbase/cdp-sdk` | los tres backends y los dos frontends | 4.6.7 (la de la tabla). En Recovery, override `'zod@<4.6.6': 4.6.7`: la serie 3 de zod no tiene versión corregida y esos paquetes sólo usan APIs que zod 4 mantiene | aplicado (2026-10-25) |
+| GHSA-xjj6-f33q-929c (7.5), GHSA-4qv8-2p9j-2685 (5.9) y GHSA-f72v-6w45-q472 (5.9) | `undici` 8.11.2 (transitiva) | `backend/app`, `backend/signer` y los dos frontends | 8.12.2 (2026-10-15) | aplicado (2026-10-25) |
+| GHSA-rxp7-6hxx-x8q5 (6.3) | `ip-address` 10.7.3 (transitiva) | `backend/app` | 10.7.4 (2026-10-11) | aplicado (2026-10-25) |
+| GHSA-389g-gv7q-r4x8 (3.7) | `fastify` 5.12.5 | los tres backends | 5.12.7 (la de la tabla) | aplicado (2026-10-25) |
+| GHSA-85x2-q946-cp5h, GHSA-8c8m-p3m8-cjg8 y GHSA-m943-m63m-w62w (6.5) | `nodemailer` 10.0.16 | `backend/app` | 10.1.4 (publicada el 2026-10-18 11:59 UTC) | pendiente de la edad mínima: elegible desde el 2026-10-25 11:59 UTC |
+| GHSA-333x-w4r6-6crp (3.7), GHSA-w74x-v6f9-j3xg (6.1), GHSA-wjr9-j795-jxcr (4.8) y GHSA-xhq7-xmqj-769h (3.7) | `fast-uri` 3.1.8 y 4.2.2 (transitivas de Fastify) | los tres backends | 3.1.9 y 4.2.3 (publicadas el 2026-10-19 cerca de las 23 UTC) | pendiente de la edad mínima: elegibles desde el 2026-10-26 23:05 UTC |
+
+Mientras `nodemailer` y `fast-uri` no cumplan los 7 días, OSV-Scanner sigue fallando por ellos: no se agrega ninguna
+excepción ni se saltea la edad mínima, y se actualizan apenas son elegibles (registro en §13 del planner).
 
 ## Herramientas de seguridad y de infraestructura
 
