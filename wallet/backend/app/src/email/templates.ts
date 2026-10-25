@@ -2,7 +2,8 @@
 // la red, la Safe, la expiración (hora local del usuario y UTC), la IP/dispositivo de origen y qué hacer si no fue el
 // usuario. Ninguna incluye links que ejecuten acciones: los códigos se ingresan en la app (el único link es el de
 // reset de password de [B-AUTH-07], que abre el formulario con el token en el fragmento). Direcciones y montos van con el
-// formato de las apps (email/format.ts): la app pide compararlos con el email.
+// formato de las apps (email/format.ts): la app pide compararlos con el email. Una dirección se rotula como dirección
+// («Dirección de la clave nueva»: la dirección no es la clave) y sin jerga («en Base», no «on-chain»).
 import type { AppEnv } from '../config/env.ts';
 import { dualTime, escapeHtml, groupedAddress, tokenAmount } from './format.ts';
 
@@ -223,13 +224,32 @@ function rejectionOutcome(purpose: 'ONBOARDING' | 'REPLACEMENT', plural: boolean
   return `La plataforma descartó ${which}: ${use}. Para seguir, generá un pedido nuevo desde la app Wallet.${rotation}`;
 }
 
+/**
+ * Cada rol rotado, con «tu» si es una clave del usuario (U y R) y con su artículo si no: S es la clave de la plataforma
+ * y los guards son contratos de la Safe.
+ */
 const ROLE_NAMES: Record<Role, string> = {
-  U: 'clave de usuario (U)',
-  R: 'clave de recuperación (R)',
-  S: 'clave de la plataforma (S)',
-  GUARD: 'Guard de seguridad de la Safe',
-  MODULE_GUARD: 'guard de módulos de la Safe',
+  U: 'tu clave de usuario (U)',
+  R: 'tu clave de recuperación (R)',
+  S: 'la clave de la plataforma (S)',
+  GUARD: 'el Guard de seguridad de la Safe',
+  MODULE_GUARD: 'el guard de módulos de la Safe',
 };
+
+/** «de tu clave de usuario (U)», «de la clave de la plataforma (S)», «del Guard de seguridad de la Safe». */
+function ofRole(role: Role): string {
+  const name = ROLE_NAMES[role];
+  return name.startsWith('el ') ? `del ${name.slice('el '.length)}` : `de ${name}`;
+}
+
+/** Lo que se rota es una clave (U, R, S) o un contrato de la Safe (los guards). */
+const isContract = (role: Role) => role === 'GUARD' || role === 'MODULE_GUARD';
+
+/** El rótulo de una dirección de la rotación: «Dirección de la clave nueva», «Dirección del contrato anterior». */
+function addressLabel(role: Role, which: 'actual' | 'anterior' | 'nueva'): string {
+  if (!isContract(role)) return `Dirección de la clave ${which}`;
+  return `Dirección del contrato ${which === 'nueva' ? 'nuevo' : which}`;
+}
 const ACTOR_NAMES: Record<'U' | 'R' | 'SAFE', string> = {
   U: 'tu clave de usuario',
   R: 'tu clave de recuperación',
@@ -442,13 +462,13 @@ const RENDERERS: Renderers = {
   }),
   'rotation-proposed': (p, ctx) => ({
     subject: 'Propuesta de rotación de clave',
-    heading: `Se propuso rotar tu ${ROLE_NAMES[p.role]}`,
+    heading: `Se propuso rotar ${ROLE_NAMES[p.role]}`,
     intro:
       'La rotación se puede ejecutar recién cuando termine el plazo de 48 h. Hasta entonces podés cancelarla con tu clave de usuario o tu clave de recuperación.',
     details: [
-      ['Acción', `Rotación de ${ROLE_NAMES[p.role]}`],
-      ['Clave actual', groupedAddress(p.oldKey)],
-      ['Clave nueva', groupedAddress(p.newKey)],
+      ['Acción', `Rotación ${ofRole(p.role)}`],
+      [addressLabel(p.role, 'actual'), groupedAddress(p.oldKey)],
+      [addressLabel(p.role, 'nueva'), groupedAddress(p.newKey)],
       ['Red', ctx.networkLabel],
       ['Safe', groupedAddress(p.safe)],
       ...timeRows(ctx, 'Ejecutable desde', p.executableAt),
@@ -459,10 +479,10 @@ const RENDERERS: Renderers = {
   }),
   'rotation-cancelled': (p, ctx) => ({
     subject: 'Rotación de clave cancelada',
-    heading: `Se canceló la rotación de tu ${ROLE_NAMES[p.role]}`,
+    heading: `Se canceló la rotación ${ofRole(p.role)}`,
     intro: `La cancelación la hizo ${ACTOR_NAMES[p.cancelledBy]}.`,
     details: [
-      ['Acción', `Cancelación de la rotación de ${ROLE_NAMES[p.role]}`],
+      ['Acción', `Cancelación de la rotación ${ofRole(p.role)}`],
       ['Red', ctx.networkLabel],
       ['Safe', groupedAddress(p.safe)],
       ...timeRows(ctx, 'Fecha', p.occurredAt),
@@ -471,12 +491,14 @@ const RENDERERS: Renderers = {
   }),
   'rotation-executed': (p, ctx) => ({
     subject: 'Rotación de clave ejecutada',
-    heading: `Se rotó tu ${ROLE_NAMES[p.role]}`,
-    intro: 'La clave anterior ya no tiene control sobre la Safe.',
+    heading: `Se rotó ${ROLE_NAMES[p.role]}`,
+    intro: isContract(p.role)
+      ? 'La Safe ya usa el contrato nuevo en lugar del anterior.'
+      : 'La clave anterior ya no tiene control sobre la Safe.',
     details: [
-      ['Acción', `Rotación ejecutada de ${ROLE_NAMES[p.role]}`],
-      ['Clave anterior', groupedAddress(p.oldKey)],
-      ['Clave nueva', groupedAddress(p.newKey)],
+      ['Acción', `Rotación ejecutada ${ofRole(p.role)}`],
+      [addressLabel(p.role, 'anterior'), groupedAddress(p.oldKey)],
+      [addressLabel(p.role, 'nueva'), groupedAddress(p.newKey)],
       ['Red', ctx.networkLabel],
       ['Safe', groupedAddress(p.safe)],
       ...timeRows(ctx, 'Fecha', p.occurredAt),
@@ -488,10 +510,10 @@ const RENDERERS: Renderers = {
     heading: 'Hay que rotar la clave de la plataforma (S)',
     intro: `Motivo: ${EXECUTOR_ROTATION_REASON_TEXT[p.reason]}. Entrá a la app Wallet, revisá la clave nueva y firmá la propuesta: se puede ejecutar después de 48 h y hasta entonces la podés cancelar. Mientras tanto tu wallet sigue operando con la clave actual.`,
     details: [
-      ['Acción', `Pedido de rotación de ${ROLE_NAMES.S}`],
+      ['Acción', `Pedido de rotación ${ofRole('S')}`],
       ['Motivo', EXECUTOR_ROTATION_REASON_TEXT[p.reason]],
-      ['Clave actual', groupedAddress(p.oldKey)],
-      ['Clave nueva', groupedAddress(p.newKey)],
+      [addressLabel('S', 'actual'), groupedAddress(p.oldKey)],
+      [addressLabel('S', 'nueva'), groupedAddress(p.newKey)],
       ['Red', ctx.networkLabel],
       ['Safe', groupedAddress(p.safe)],
       ...timeRows(ctx, 'Fecha', p.occurredAt),
@@ -519,8 +541,8 @@ const RENDERERS: Renderers = {
       [
         'Acción',
         p.purpose === 'REPLACEMENT'
-          ? `Cancelación del reemplazo de tu ${ROLE_NAMES.R}`
-          : `Cancelación del registro de tu ${ROLE_NAMES.R}`,
+          ? `Cancelación del reemplazo ${ofRole('R')}`
+          : `Cancelación del registro ${ofRole('R')}`,
       ],
       ['Motivo', REJECTION_REASON[p.reason]],
       ...(p.recoveryKey === null
@@ -540,7 +562,7 @@ const RENDERERS: Renderers = {
       heading: `Cancelamos ${more} para registrar tu clave de recuperación (R)`,
       intro: `Después de nuestro último aviso, la app Wallet canceló ${more} porque no pudo confirmar la dirección de tu clave R. Para no llenarte de emails te los mandamos juntos: el detalle de cada uno está en los avisos de la app Wallet. Puede ser un error al copiar, pero también que alguien haya intentado cambiar tu clave R en el camino. ${rejectionOutcome(p.replacement ? 'REPLACEMENT' : 'ONBOARDING', p.count > 1)}`,
       details: [
-        ['Acción', `Cancelación de pedidos de tu ${ROLE_NAMES.R}`],
+        ['Acción', `Cancelación de pedidos ${ofRole('R')}`],
         ['Pedidos cancelados', String(p.count)],
         ['Motivos', p.reasons.map((reason) => REJECTION_REASON[reason]).join('; ')],
         ['Red', ctx.networkLabel],
@@ -597,7 +619,7 @@ const RENDERERS: Renderers = {
     subject: 'La configuración de tu Safe cambió fuera de la plataforma',
     heading: 'Tu Safe ya no está en modo asistido',
     intro:
-      'La configuración on-chain de tu Safe ya no es la de una wallet asistida (por ejemplo, se retiró el Guard de seguridad firmando con tus claves U y R). Sin el Guard no hay control on-chain de las operaciones, así que la plataforma dejó de co-firmar; tus fondos siguen bajo tu control con tus claves U y R.',
+      'La configuración de tu Safe en Base ya no es la de una wallet asistida (por ejemplo, se retiró el Guard de seguridad firmando con tus claves U y R). Sin el Guard no hay control de las operaciones en Base, así que la plataforma dejó de co-firmar; tus fondos siguen bajo tu control con tus claves U y R.',
     details: [
       ['Acción', 'Cambio de configuración de la Safe'],
       ['Cambios detectados', p.items.map((item) => CONFIG_DRIFT_TEXT[item] ?? `código interno ${item}`).join('; ')],
@@ -611,7 +633,7 @@ const RENDERERS: Renderers = {
   'migration-approved': (p, ctx) => ({
     subject: 'Se aprobó la migración de tu wallet',
     heading: 'Migración excepcional aprobada',
-    intro: `Dos operadores aprobaron mover tus fondos a una Safe nueva donde ${p.healthy} conserva su rol. Hasta que termine, la plataforma sólo co-firma la migración desde tu Safe actual; la transferencia la firmás vos con esa clave, después de que la autorización on-chain cumpla su plazo de 24 h.`,
+    intro: `Dos operadores aprobaron mover tus fondos a una Safe nueva donde ${p.healthy} conserva su rol. Hasta que termine, la plataforma sólo co-firma la migración desde tu Safe actual; la transferencia la firmás vos con esa clave, después de que la autorización en Base cumpla su plazo de 24 h.`,
     details: [
       ['Acción', 'Migración excepcional de la wallet'],
       ['Credencial sana', p.healthy],

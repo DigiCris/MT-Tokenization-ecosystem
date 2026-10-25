@@ -473,7 +473,7 @@ export class RotationSync {
         template: 'rotation-proposed',
         params: {
           ...params,
-          origin: { ipPrefix: null, userAgent: origin === 'ONCHAIN' ? 'propuesta on-chain' : null },
+          origin: { ipPrefix: null, userAgent: origin === 'ONCHAIN' ? 'propuesta directamente en Base' : null },
         },
         locale: wallet.locale,
         timeZone: wallet.time_zone,

@@ -2,6 +2,8 @@
 // acción, dirección completa (EIP-55 en grupos de 4), red, Safe, expiración (hora local del usuario y UTC), origen y
 // qué hacer si no fue el usuario; sin links que ejecuten acciones y con el HTML escapado. P18.MAN: direcciones y montos
 // con el formato de las apps (`0x ` y 10 grupos de 4; montos es-AR con su token), que es lo que la app pide comparar.
+// Tercera revisión independiente: una dirección se rotula como dirección de la clave (o del contrato, en un guard),
+// «tu» sólo para las claves del usuario y «en Base» en lugar de «on-chain».
 import { describe, expect, it } from 'vitest';
 import { dualTime, escapeHtml, groupedAddress, networkLabel, tokenAmount } from '../../src/email/format.ts';
 import { renderTemplate, TEMPLATE_NAMES, type TemplateContext, type TemplateName } from '../../src/email/templates.ts';
@@ -163,12 +165,54 @@ describe('contenido obligatorio', () => {
     expect(render(name).text).toContain('Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0');
   });
 
-  it('rotaciones: clave actual y nueva completas y plazo de ejecución', () => {
+  it('rotaciones: dirección de la clave actual y de la nueva completas y plazo de ejecución', () => {
     const { text } = render('rotation-proposed');
-    expect(text).toContain(`Clave actual: ${groupedAddress(OLD_KEY)}`);
-    expect(text).toContain(`Clave nueva: ${groupedAddress(NEW_KEY)}`);
+    expect(text).toContain(`Dirección de la clave actual: ${groupedAddress(OLD_KEY)}`);
+    expect(text).toContain(`Dirección de la clave nueva: ${groupedAddress(NEW_KEY)}`);
     expect(text).toMatch(/^Ejecutable desde: 19\/10\/2026, 12:04 \(America\/Argentina\/Buenos_Aires\)$/m);
     expect(text).toContain('48 h');
+  });
+
+  it('rotaciones: «tu» sólo para las claves del usuario; un guard es un contrato, no una clave', () => {
+    const executed = render('rotation-executed').text;
+    expect(executed).toMatch(/^Se rotó la clave de la plataforma \(S\)$/m);
+    expect(executed).toContain('Acción: Rotación ejecutada de la clave de la plataforma (S)');
+    expect(executed).toContain(`Dirección de la clave anterior: ${groupedAddress(OLD_KEY)}`);
+    const guard = renderTemplate(
+      'rotation-executed',
+      { ...TEMPLATE_FIXTURES['rotation-executed'], role: 'GUARD' },
+      CTX,
+    ).text;
+    expect(guard).toMatch(/^Se rotó el Guard de seguridad de la Safe$/m);
+    expect(guard).toContain('La Safe ya usa el contrato nuevo en lugar del anterior.');
+    expect(guard).toContain('Acción: Rotación ejecutada del Guard de seguridad de la Safe');
+    expect(guard).toContain(`Dirección del contrato anterior: ${groupedAddress(OLD_KEY)}`);
+    expect(guard).toContain(`Dirección del contrato nuevo: ${groupedAddress(NEW_KEY)}`);
+    const proposed = renderTemplate(
+      'rotation-proposed',
+      { ...TEMPLATE_FIXTURES['rotation-proposed'], role: 'MODULE_GUARD' },
+      CTX,
+    ).text;
+    expect(proposed).toMatch(/^Se propuso rotar el guard de módulos de la Safe$/m);
+    expect(proposed).toContain(`Dirección del contrato actual: ${groupedAddress(OLD_KEY)}`);
+    const cancelled = renderTemplate(
+      'rotation-cancelled',
+      { ...TEMPLATE_FIXTURES['rotation-cancelled'], role: 'S' },
+      CTX,
+    ).text;
+    expect(cancelled).toMatch(/^Se canceló la rotación de la clave de la plataforma \(S\)$/m);
+    expect(render('rotation-proposed').text).toMatch(/^Se propuso rotar tu clave de usuario \(U\)$/m);
+  });
+
+  it('ninguna dirección se rotula como si fuera la clave y ningún email dice «on-chain»', () => {
+    for (const name of TEMPLATE_NAMES) {
+      const { text, html } = render(name);
+      expect(text, name).not.toMatch(/^Clave (actual|nueva|anterior):/m);
+      expect(text, name).not.toMatch(/on-chain/i);
+      expect(html, name).not.toMatch(/on-chain/i);
+    }
+    expect(render('safe-config-modified').text).toContain('La configuración de tu Safe en Base ya no es');
+    expect(render('migration-approved').text).toContain('después de que la autorización en Base cumpla su plazo');
   });
 
   it('rechazo de un enrollment de R (P17.MAN, N10): posible sustitución, motivo, dirección recibida y qué hacer', () => {

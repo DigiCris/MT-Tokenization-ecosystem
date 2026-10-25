@@ -74,7 +74,7 @@ describe('propuesta on-chain no originada por el backend', { timeout: 300_000 },
       propose_operation_id: null,
     });
     const email = await nextEmail(wallet.onboarded.user.account.email, 'Propuesta de rotación de clave');
-    expect(email.text).toContain('propuesta on-chain');
+    expect(email.text).toContain('propuesta directamente en Base');
     expect(email.text).toContain('podés cancelarla');
     const notifications = await wallet.onboarded.user.recovery.get('/api/v1/notifications');
     expect(notifications.json<{ items: { type: string; payload: Record<string, unknown> }[] }>().items).toContainEqual(
