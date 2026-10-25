@@ -89,10 +89,13 @@ export function tokenBalance(token: Address, owner: Address): Promise<bigint> {
   return chain().readContract({ address: token, abi: erc20Abi, functionName: 'balanceOf', args: [owner] });
 }
 
-/** Adelanta el reloj de la cadena y mina un bloque con el timestamp nuevo. */
+/**
+ * Adelanta el reloj de la cadena y mina los bloques que la plataforma espera para dar por confirmado un evento
+ * (CONFIRMATION_DEPTH, 3 en `.env.example`): en Anvil sólo hay bloques nuevos con transacciones; en Base llegan solos.
+ */
 export async function increaseTime(seconds: number): Promise<void> {
   await anvil('evm_increaseTime', [seconds]);
-  await anvil('evm_mine', []);
+  await anvil('anvil_mine', ['0x3']);
 }
 
 /** Cuenta nueva con ETH del fork para pagar gas (relayer o wallet externa). */

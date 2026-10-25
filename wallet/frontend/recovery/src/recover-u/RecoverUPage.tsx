@@ -66,10 +66,26 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
     confirmed !== null && draft !== null && current?.rejection === null && sameDraft(confirmed, draft)
       ? confirmed.newKey
       : null;
-  const live =
-    rotations?.find((r) => r.role === 'U' && ['PENDING_TIMELOCK', 'READY_TO_EXECUTE'].includes(r.status)) ?? null;
   // Una propuesta en el timelock hacia una U′ que no coincidió (cancelada o bloqueada en esta pestaña) no se ejecuta.
   const refused = pending !== null && refusedTarget(pending.newValue, rotations);
+  // La propuesta del timelock como la registró la plataforma: la ejecución la arma el backend con esos datos.
+  const registered =
+    pending === null
+      ? null
+      : (rotations?.find((r) => r.proposalId?.toLowerCase() === pending.id.toLowerCase()) ?? null);
+  const mature = pending !== null && now !== null && pending.executableAt.getTime() <= now;
+  // Madura según la cadena pero todavía sin registrar (la plataforma aplica la propuesta con algunas confirmaciones de
+  // la red): no se ofrece ejecutarla y se relee sola hasta que aparezca.
+  const awaitingPlatform = mature && !refused && registered === null;
+  useEffect(() => {
+    if (!awaitingPlatform) return;
+    const timer = setInterval(() => {
+      setReload((n) => n + 1);
+    }, 4_000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [awaitingPlatform]);
 
   const reread = useCallback(async () => {
     const { items } = await api.rotations(walletId);
@@ -127,7 +143,7 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
       if (!pending) return;
       if (refusedTarget(pending.newValue, rotations)) throw new Error(REFUSED_PROPOSAL_TEXT);
       const rotation =
-        live ??
+        registered ??
         (await api.rotations(walletId)).items.find((r) => r.proposalId?.toLowerCase() === pending.id.toLowerCase());
       if (!rotation)
         throw new Error('La plataforma todavía no registró esta propuesta: probá de nuevo en unos segundos.');
@@ -143,7 +159,7 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
         });
       });
       setReview({ title: 'Revisá la ejecución del reemplazo de tu clave de usuario (U)', item });
-    }, [pending, rotations, live, walletId, platform, safe]),
+    }, [pending, rotations, registered, walletId, platform, safe]),
   );
 
   if (review) {
@@ -166,7 +182,6 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
     );
   }
 
-  const mature = pending !== null && now !== null && pending.executableAt.getTime() <= now;
   return (
     <section className="card stack" aria-labelledby="recover-u-title">
       <h1 id="recover-u-title">Recuperar tu clave de usuario (U)</h1>
@@ -196,7 +211,13 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
                   : `Se puede ejecutar desde el ${pending.executableAt.toLocaleString('es-AR')} (hora de la red).`}
               </p>
               {execute.error && <Notice tone="error">{execute.error}</Notice>}
-              {mature && (
+              {awaitingPlatform && (
+                <Notice>
+                  La plataforma todavía no registró la propuesta (la ve después de algunas confirmaciones de la red): el
+                  botón para ejecutarla aparece en cuanto la registre.
+                </Notice>
+              )}
+              {mature && registered !== null && (
                 <button type="button" className="button" disabled={execute.pending} onClick={() => void execute.run()}>
                   Ejecutar el reemplazo
                 </button>
