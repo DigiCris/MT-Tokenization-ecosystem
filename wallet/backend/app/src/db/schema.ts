@@ -465,7 +465,8 @@ export interface RotationRequestsTable {
     | 'EXECUTING'
     | 'EXECUTED'
     | 'CANCELLED'
-    | 'FAILED';
+    | 'FAILED'
+    | 'REJECTED';
   propose_operation_id: string | null;
   execute_operation_id: string | null;
   executable_at: Timestamp | null;
@@ -488,7 +489,20 @@ export interface RotationRequestsTable {
   request_reason: Generated<'SHARD_MIGRATION' | 'HSM_MIGRATION' | 'KEY_COMPROMISE' | 'MAINTENANCE' | null>;
   /** P15: RotationTimelock de la propuesta (null en filas anteriores: el del sistema). */
   timelock: Bytes | null;
+  /** 0011: por qué la app Recovery rechazó el borrador de U′ (sólo con REJECTED) y cuándo. */
+  rejection_reason: UReplacementRejectionReason | null;
+  rejected_at: Timestamp | null;
+  /** 0011: el email de seguridad del rechazo (null si no está rechazada). */
+  rejection_email: RejectionEmailStatus | null;
+  /** 0011: cuándo salió el email que lo cubre (en el momento o en el resumen de la ventana). */
+  rejection_emailed_at: Timestamp | null;
 }
+
+/**
+ * Motivo del rechazo de un borrador del reemplazo de U por la app Recovery ([F-LNK-04]): la dirección que el usuario
+ * copió de la app Wallet no coincidió con la U′ del borrador en los intentos de la comparación.
+ */
+export type UReplacementRejectionReason = 'MANUAL_COMPARISON_FAILED';
 
 /** P15: eventos de RotationTimelock de las Safes de la plataforma (indexados con finalidad y reorgs). */
 export interface RotationEventsTable {

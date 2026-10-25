@@ -53,10 +53,9 @@ import {
 } from '../wallets/wallet-service.ts';
 import type { StorageFlags } from '../wallets/schemas.ts';
 import type { Selectable } from 'kysely';
+import { rejectionEmailSlot } from './rejection-email.ts';
 
 export const ENROLLMENT_TTL_SECONDS = 15 * 60;
-/** Un email de seguridad de rechazo por usuario en esta ventana; los demás van juntos en el resumen al cerrarla. */
-export const REJECTION_EMAIL_WINDOW_MS = 60 * 60_000;
 /** Una rotación de R en curso (desde que se preparó la propuesta hasta que se ejecuta): su pedido ya no se rechaza. */
 const ROTATION_IN_PROGRESS = [
   'AWAITING_SIGNATURE',
@@ -144,21 +143,6 @@ export interface EnrollmentServiceDeps {
 }
 
 type EnrollmentRow = Selectable<RecoveryMetadataTable>;
-
-/** Cuándo salió el último email de rechazo del usuario (en el momento o en un resumen); null si nunca. */
-export async function lastRejectionEmail(
-  db: Kysely<Database> | Transaction<Database>,
-  userId: string,
-): Promise<Date | null> {
-  const row = await db
-    .selectFrom('recovery_metadata as r')
-    .innerJoin('wallets as w', 'w.id', 'r.wallet_id')
-    .select((eb) => eb.fn.max('r.rejection_emailed_at').as('last'))
-    .where('w.user_id', '=', userId)
-    .where('r.rejection_emailed_at', 'is not', null)
-    .executeTakeFirst();
-  return row?.last ?? null;
-}
 
 function effectiveStatus(row: EnrollmentRow, now: number): EnrollmentView['status'] {
   return row.status === 'REQUESTED' && row.expires_at.getTime() <= now ? 'EXPIRED' : row.status;
@@ -750,7 +734,9 @@ export class EnrollmentService {
         const stale =
           row.status === 'REJECTED' &&
           (row.rejected_at === null || row.rejected_at.getTime() + ENROLLMENT_TTL_SECONDS * 1000 < now);
-        const email = stale || this.#d.emails === null ? 'NONE' : await this.#emailSlot(trx, actor.userId, now);
+        // Un email por ventana y usuario (rejection-email.ts); los demás de la ventana, en el resumen.
+        const email =
+          stale || this.#d.emails === null ? 'NONE' : await rejectionEmailSlot(trx, actor.userId, now, 'R_ENROLLMENT');
         const updated = await trx
           .updateTable('recovery_metadata')
           .set({
@@ -888,15 +874,6 @@ export class EnrollmentService {
       }
     }
     return result.view;
-  }
-
-  /**
-   * Un email de rechazo por ventana y usuario: SENT si ninguno (inmediato o resumen) salió en la ventana; si no, HELD y
-   * lo manda el resumen al cerrar la ventana (rejection-digest.ts). Sin carreras: el rechazo toma el lock de auditoría.
-   */
-  async #emailSlot(trx: Transaction<Database>, userId: string, now: number): Promise<'SENT' | 'HELD'> {
-    const last = await lastRejectionEmail(trx, userId);
-    return last !== null && now - last.getTime() < REJECTION_EMAIL_WINDOW_MS ? 'HELD' : 'SENT';
   }
 
   async #audit(

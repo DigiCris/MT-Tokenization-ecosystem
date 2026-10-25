@@ -101,8 +101,9 @@ src/
                  deployer.ts (deploy y activación en el proceso gas-tank), verification.ts (V9 §16), salt.ts,
                  key-restore.ts (KEY_RESTORE), sovereign.ts (SOVEREIGN_MODIFIED), balances.ts, schemas.ts
   recovery/      enrollment.ts (enrollment de R —también el de reemplazo— y autorización de creación firmada por U),
-                 u-replacement.ts (perdí U: registro de U′), migration.ts (migración excepcional), executor-replacement.ts
-                 (pérdida de S: reemplazo soberano)
+                 u-replacement.ts (perdí U: registro de U′ y rechazo del borrador desde Recovery), rejection-email.ts y
+                 rejection-digest.ts (tope y resumen de los emails de rechazo), migration.ts (migración excepcional),
+                 executor-replacement.ts (pérdida de S: reemplazo soberano)
   observability/ logger.ts, redaction.ts, metrics.ts
   api/           server.ts (dos listeners), errors.ts (RFC 9457), health.ts, routes/ (health, v1/auth, v1/users,
                  v1/sessions, v1/platform-sessions, v1/wallets, v1/recovery, v1/operations, v1/whitelist, v1/send,
@@ -283,7 +284,8 @@ CANCEL_REQUESTED ──se mina la NoOp──▶ CANCELLED · CANCEL_REQUESTED �
 
 Alertas en logs (campo `alert`): `REORG_DETECTED`, `TX_REVERTED`, `TX_STUCK`, `FEE_CAP`, `RETRIES_EXHAUSTED`,
 `SAFE_CONFIG_MODIFIED`, `RECONCILIATION_DISCREPANCY`, `SIGNER_RESPONSE_MISMATCH` y, del onboarding,
-`RECOVERY_KEY_SUBSTITUTION_SUSPECTED` (con `mtw_recovery_enrollment_rejections_total`), y de las rotaciones
+`RECOVERY_KEY_SUBSTITUTION_SUSPECTED` (con `mtw_recovery_enrollment_rejections_total`), del reemplazo de U
+`USER_KEY_SUBSTITUTION_SUSPECTED` (con `mtw_u_replacement_rejections_total{reason}`), y de las rotaciones
 `ROTATION_EVENT_QUARANTINED` (un evento del timelock que no se pudo aplicar queda en cuarentena con espera exponencial;
 los siguientes de su Safe esperan y los demás siguen: `mtw_rotation_event_apply_failures_total{kind}` y el gauge
 `mtw_rotation_events_quarantined`) y `RECOVERY_REJECTED_KEY_EXECUTED` (se ejecutó on-chain la rotación hacia una R′ que
@@ -328,7 +330,8 @@ la Wallet había rechazado: la cadena manda). Métricas: `mtw_operation_transiti
   `GET /wallets/{id}/whitelist` (ambos listeners) y `GET /operation-groups/{id}`; todo recurso de otro usuario es 404.
 - **Efectos** (`EFFECTS_INTERVAL_MS`, worker): sincronización de whitelist, coordinación de grupos de swap y avisos
   de alto valor, idempotentes y separados del pipeline (desde P15 también las rotaciones, las migraciones y el resumen
-  de los avisos de rechazo de R retenidos por la ventana de email, ADR-033).
+  de los avisos de rechazo retenidos por la ventana de email: enrollments de R, ADR-033, y borradores del reemplazo de
+  U, [F-LNK-04]).
 
 Métricas: `mtw_whitelist_events_total{event}`, `mtw_two_factor_challenges_total{method,result}`,
 `mtw_swap_quotes_total{result}`, `mtw_notifications_created_total{type}`.
@@ -348,7 +351,16 @@ Métricas: `mtw_whitelist_events_total{event}`, `mtw_two_factor_challenges_total
   vigentes y la propuesta pendiente, y el gas tank la retransmite (cola `gas-tank`, rate limit propio por propuesta).
   Sin el backend: [runbook](../../docs/runbooks/rotation-cancellation.md).
 - **Perdí U** (`POST /recovery/u-replacement`, scope U_REPLACEMENT, sólo Wallet) y **perdí R** (enrollment con
-  OPERATIONS en Wallet → R′ desde Recovery con su KeyAcceptance): los dos terminan en una rotación de 48 h.
+  OPERATIONS en Wallet → R′ desde Recovery con su KeyAcceptance): los dos terminan en una rotación de 48 h. Si la U′ del
+  borrador no coincide con la que el usuario copió de la app Wallet ([F-LNK-04]), Recovery lo informa con
+  `POST /recovery/u-replacement/{id}/reject` (sólo en su listener, con la sesión RECOVERY de la propuesta, crítica e
+  idempotente; `reason` `MANUAL_COMPARISON_FAILED` y la `newKey` comparada): el borrador queda REJECTED (con la
+  migración 0011) y la propuesta ya no lo toma, su U′ queda REVOKED con el registro OPAQUE de la Password U′ retirado, y
+  quedan la auditoría `U_REPLACEMENT_REJECTED`, la notificación `U_REPLACEMENT_REJECTED`, el email «Posible sustitución
+  de tu clave U nueva» (uno por ventana de 1 h y usuario, aparte de los de R; el resto en
+  `u-replacement-rejections-summary`), la alerta `USER_KEY_SUBSTITUTION_SUSPECTED` y la métrica. Ya rechazado → su
+  estado; otra U′ registrada en el mismo borrador, un borrador que ya no lo es o con la rotación hacia esa U′ en curso →
+  409 (este último con `U_REPLACEMENT_REJECTION_REFUSED` y la alerta). Un registro nuevo de U′ es un borrador nuevo.
 - **Migración excepcional** (`POST /wallets/{id}/migration/prepare`, firma la credencial sana): casos de operadores
   con doble aprobación por la CLI y autorización on-chain de la Governance Safe ([runbook](../../docs/runbooks/exceptional-migration.md)).
 - **Pérdida de S** y **upgrade del Guard**: [runbook de S](../../docs/runbooks/executor-key-loss.md) y

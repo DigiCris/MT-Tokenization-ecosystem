@@ -32,6 +32,7 @@ const SAFE_TEMPLATES: TemplateName[] = [
   'executor-rotation-requested',
   'recovery-started',
   'recovery-enrollment-rejected',
+  'u-replacement-rejected',
   'high-value-challenge',
   'high-value-executed',
   'safe-config-modified',
@@ -65,6 +66,7 @@ const WITH_ORIGIN: TemplateName[] = [
   'rotation-proposed',
   'recovery-started',
   'recovery-enrollment-rejected',
+  'u-replacement-rejected',
   'high-value-challenge',
 ];
 
@@ -310,6 +312,63 @@ describe('contenido obligatorio', () => {
     expect(single).toContain(
       'La plataforma descartó ese pedido: no va a usar para crear tu Safe ninguna dirección que haya llegado por él.',
     );
+  });
+
+  it('rechazo del borrador del reemplazo de U (ESC-41): posible sustitución, dirección recibida, de dónde copiarla y qué hacer', () => {
+    const { subject, text } = render('u-replacement-rejected');
+    expect(subject).toBe('Posible sustitución de tu clave U nueva');
+    expect(text).toMatch(/^Cancelamos un pedido para reemplazar tu clave de usuario \(U\)$/m);
+    expect(text).toContain(
+      'La dirección de la clave U nueva que copiaste de la app Wallet no coincidió con la que recibió la plataforma',
+    );
+    expect(text).toContain('la app Recovery canceló el pedido y no va a firmar el reemplazo hacia esa dirección');
+    expect(text).toContain('alguien haya intentado cambiar tu clave U nueva en el camino');
+    expect(text).toContain('Acción: Cancelación del reemplazo de tu clave de usuario (U)');
+    expect(text).toContain('Motivo: la dirección copiada de la app Wallet no coincidió');
+    expect(text).toContain(`Dirección que recibió la plataforma: ${groupedAddress(NEW_KEY)}`);
+    // La plataforma no la propone, se empieza de nuevo desde la Wallet y la dirección se copia sólo de ahí (ESC-41).
+    expect(text).toContain(
+      'no va a proponer el reemplazo de tu clave U hacia ninguna dirección que haya llegado por él',
+    );
+    expect(text).toContain('empezá de nuevo desde la app Wallet («Perdí mi Password U»)');
+    expect(text).toContain('copiá la dirección de la clave U nueva sólo de ahí, nunca de un email ni de un chat');
+    expect(text).toContain('Si la habías copiado bien, avisá a soporte.');
+    expect(text).toMatch(/^Si no fuiste vos: si no estabas reemplazando tu clave U, .+ Avisá a soporte/m);
+    expect(text).toContain('cancelala desde la app Recovery');
+    // Recovery firma su producto; sin Safe conocida no hay fila de Safe.
+    expect(render('u-replacement-rejected', { product: 'Recovery' }).text).toContain('— MT Wallet Recovery.');
+    const noSafe = renderTemplate(
+      'u-replacement-rejected',
+      { ...TEMPLATE_FIXTURES['u-replacement-rejected'], safe: null },
+      CTX,
+    ).text;
+    expect(noSafe).not.toMatch(/^Safe: /m);
+  });
+
+  it('resumen de los rechazos de U′ retenidos de la ventana: cuántos, motivos, Safe y desde cuándo', () => {
+    const { subject, text } = render('u-replacement-rejections-summary');
+    expect(subject).toBe('Más pedidos de tu clave U nueva cancelados');
+    expect(text).toContain('Cancelamos 2 pedidos más para reemplazar tu clave de usuario (U)');
+    expect(text).toContain(
+      'la app Recovery canceló 2 pedidos más porque la dirección de la clave U nueva no coincidió',
+    );
+    expect(text).toContain('Para no llenarte de emails te los mandamos juntos');
+    expect(text).toContain('Pedidos cancelados: 2');
+    expect(text).toContain('Motivos: la dirección copiada de la app Wallet no coincidió');
+    expect(text).toContain(`Safe: ${groupedAddress(SAFE)}`);
+    expect(text).toMatch(/^Primero: 17\/10\/2026, 12:04 \(America\/Argentina\/Buenos_Aires\)$/m);
+    expect(text).toMatch(/^Último \(UTC\): 17\/10\/2026, 15:40 UTC$/m);
+    expect(text).toContain(
+      'La plataforma descartó esos pedidos: no va a proponer el reemplazo de tu clave U hacia ninguna dirección que haya llegado por ellos.',
+    );
+    const single = renderTemplate(
+      'u-replacement-rejections-summary',
+      { ...TEMPLATE_FIXTURES['u-replacement-rejections-summary'], count: 1, safe: null },
+      CTX,
+    ).text;
+    expect(single).toContain('Cancelamos otro pedido para reemplazar tu clave de usuario (U)');
+    expect(single).toContain('La plataforma descartó ese pedido');
+    expect(single).not.toMatch(/^Safe: /m);
   });
 
   it('cada oración del "si no fuiste vos" empieza en mayúscula', () => {

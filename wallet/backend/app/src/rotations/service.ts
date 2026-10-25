@@ -8,7 +8,8 @@
 // U' del flujo U_REPLACEMENT (registro OPAQUE pendiente + KeyAcceptance), R' del enrollment de reemplazo (con su
 // KeyAcceptance), S' creada por el signer para esta wallet (con su SignerKeyAttestation) y el sucesor del Guard del
 // PolicyRegistry. El estado posterior (propuesta confirmada, madura, cancelada o ejecutada, con sus efectos) lo aplica
-// la sincronización del worker desde los eventos on-chain (rotations/sync.ts).
+// la sincronización del worker desde los eventos on-chain (rotations/sync.ts). Un borrador de U que la app Recovery
+// rechazó (REJECTED, recovery/u-replacement.ts) ya no se propone: hace falta que la Wallet registre otra U′.
 import type { Kysely, Selectable, Transaction } from 'kysely';
 import { encodeFunctionData, getAddress, isAddressEqual, type Address, type Hex } from 'viem';
 import { ApiError } from '../api/errors.ts';
@@ -47,6 +48,7 @@ export const ROTATION_STATUSES = [
   'EXECUTED',
   'CANCELLED',
   'FAILED',
+  'REJECTED',
 ] as const satisfies readonly RotationRow['status'][];
 
 /** RotationKind del timelock por rol de rotación. */
@@ -96,6 +98,8 @@ export interface RotationView {
   requestReason: RotationRow['request_reason'];
   /** SignerKeyAttestation de S′ (JWS EdDSA) para que la app la verifique con la clave fijada ([F-SEC-08]). */
   newKeyAttestation: string | null;
+  /** Sólo en un borrador de U rechazado (REJECTED): por qué lo canceló la app Recovery ([F-LNK-04]). */
+  rejectionReason: RotationRow['rejection_reason'];
 }
 
 export interface RotationDeps {
@@ -137,6 +141,43 @@ function cancelTypedData(chainId: number, timelock: Address, proposalId: Hex, sa
   };
 }
 
+/** RotationTimelock de la rotación (filas anteriores a P15: el del sistema). */
+function timelockOf(row: Pick<RotationRow, 'timelock'>, snapshot: BackendPolicySnapshot): Address {
+  return row.timelock === null ? snapshot.contracts.rotationTimelock : bufferToAddress(row.timelock);
+}
+
+/** La rotación como la ven las dos apps (la lista y las rutas que devuelven una, como el rechazo del borrador de U). */
+export function rotationView(row: RotationRow, safe: Address | null, snapshot: BackendPolicySnapshot): RotationView {
+  const proposalId = row.proposal_id === null ? null : bufferToHex(row.proposal_id);
+  const pending = row.status === 'PENDING_TIMELOCK' || row.status === 'READY_TO_EXECUTE';
+  return {
+    id: row.id,
+    walletId: row.wallet_id,
+    role: row.role,
+    oldKey: bufferToAddress(row.old_key),
+    newKey: bufferToAddress(row.new_key),
+    status: row.status,
+    origin: row.origin,
+    initiatedBy: row.initiated_by,
+    proposalId,
+    executableAt: row.executable_at?.toISOString() ?? null,
+    cancelledBy: row.cancelled_by,
+    proposeOperationId: row.propose_operation_id,
+    executeOperationId: row.execute_operation_id,
+    proposedAt: row.proposed_at?.toISOString() ?? null,
+    executedAt: row.executed_at?.toISOString() ?? null,
+    failureReason: row.failure_reason,
+    createdAt: row.created_at.toISOString(),
+    cancelTypedData:
+      pending && proposalId !== null && safe !== null
+        ? cancelTypedData(snapshot.chainId, timelockOf(row, snapshot), proposalId, safe)
+        : null,
+    requestReason: row.request_reason,
+    newKeyAttestation: row.role === 'S' ? row.new_key_attestation : null,
+    rejectionReason: row.status === 'REJECTED' ? row.rejection_reason : null,
+  };
+}
+
 export class RotationService {
   readonly #d: RotationDeps;
 
@@ -144,40 +185,12 @@ export class RotationService {
     this.#d = deps;
   }
 
-  /** RotationTimelock de la rotación (filas anteriores a P15: el del sistema). */
   #timelockOf(row: Pick<RotationRow, 'timelock'>): Address {
-    return row.timelock === null ? this.#d.snapshot().contracts.rotationTimelock : bufferToAddress(row.timelock);
+    return timelockOf(row, this.#d.snapshot());
   }
 
   #view(row: RotationRow, safe: Address | null): RotationView {
-    const snapshot = this.#d.snapshot();
-    const proposalId = row.proposal_id === null ? null : bufferToHex(row.proposal_id);
-    const pending = row.status === 'PENDING_TIMELOCK' || row.status === 'READY_TO_EXECUTE';
-    return {
-      id: row.id,
-      walletId: row.wallet_id,
-      role: row.role,
-      oldKey: bufferToAddress(row.old_key),
-      newKey: bufferToAddress(row.new_key),
-      status: row.status,
-      origin: row.origin,
-      initiatedBy: row.initiated_by,
-      proposalId,
-      executableAt: row.executable_at?.toISOString() ?? null,
-      cancelledBy: row.cancelled_by,
-      proposeOperationId: row.propose_operation_id,
-      executeOperationId: row.execute_operation_id,
-      proposedAt: row.proposed_at?.toISOString() ?? null,
-      executedAt: row.executed_at?.toISOString() ?? null,
-      failureReason: row.failure_reason,
-      createdAt: row.created_at.toISOString(),
-      cancelTypedData:
-        pending && proposalId !== null && safe !== null
-          ? cancelTypedData(snapshot.chainId, this.#timelockOf(row), proposalId, safe)
-          : null,
-      requestReason: row.request_reason,
-      newKeyAttestation: row.role === 'S' ? row.new_key_attestation : null,
-    };
+    return rotationView(row, safe, this.#d.snapshot());
   }
 
   /** GET /wallets/{id}/rotations (sesión de cuenta). */
@@ -316,6 +329,8 @@ export class RotationService {
         };
         let rotationId: string;
         if (material.draftId !== null) {
+          // El borrador se leyó fuera de la transacción: si Recovery lo rechazó en el medio (REJECTED, con el lock de la
+          // fila), ya no es DRAFT y la propuesta no se arma.
           const updated = await trx
             .updateTable('rotation_requests')
             .set(values)
@@ -383,7 +398,20 @@ export class RotationService {
         .orderBy('created_at', 'desc')
         .executeTakeFirst();
       if (!draft?.key_acceptance || draft.opaque_record_id === null) {
-        throw new ApiError('CONFLICT', { detail: 'registrá primero la clave U nueva (reemplazo de U)' });
+        // Un borrador que la app Recovery rechazó ([F-LNK-04]) no se propone: la Wallet tiene que registrar otra U′.
+        const latest = await this.#d.db
+          .selectFrom('rotation_requests')
+          .select('status')
+          .where('wallet_id', '=', wallet.id)
+          .where('role', '=', 'U')
+          .orderBy('created_at', 'desc')
+          .executeTakeFirst();
+        throw new ApiError('CONFLICT', {
+          detail:
+            draft === undefined && latest?.status === 'REJECTED'
+              ? 'la app Recovery canceló el reemplazo de U: registrá otra clave U nueva desde la app Wallet'
+              : 'registrá primero la clave U nueva (reemplazo de U)',
+        });
       }
       const newKey = bufferToAddress(draft.new_key);
       await this.#assertAcceptance(wallet.id, 'U', newKey, draft.key_acceptance);

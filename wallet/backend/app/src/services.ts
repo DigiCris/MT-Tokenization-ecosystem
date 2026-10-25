@@ -161,7 +161,10 @@ export interface WalletServices {
   balances: BalanceService;
   /** P18.T08: transfers indexados de la Safe (actividad). */
   transfers: TransferService;
-  /** P15: rotaciones asistidas (propuesta, ejecución y relay de cancelación) y registro de U' (perdí U). */
+  /**
+   * P15: rotaciones asistidas (propuesta, ejecución y relay de cancelación) y registro de U' (perdí U), con el rechazo
+   * del borrador por la app Recovery si U′ no coincide ([F-LNK-04]).
+   */
   rotations: RotationService;
   uReplacement: UReplacementService;
   /** P15.T06: migración excepcional (casos de operadores y prepare del MIGRATION_TRANSFER). */
@@ -262,6 +265,7 @@ export function createWalletServices(input: {
       emails: account.emails,
       snapshot: onchain.snapshot,
       metrics,
+      logger: logger.child({ component: 'u-replacement' }),
     }),
     migrations: new MigrationService({
       db,

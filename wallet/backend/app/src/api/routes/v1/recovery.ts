@@ -1,7 +1,8 @@
 // Grupo `recovery` de [B-API] (P12, P15): enrollment de la clave de recuperación R y reemplazo de U. Cada listener
 // expone sólo sus rutas ([B-AUTHZ] 3): Wallet crea el enrollment (ONBOARDING, o OPERATIONS para reemplazar R), lo
 // rechaza si no puede confirmar la R ([F-LNK-02], P17.MAN), incorpora la autorización de U y registra U'
-// (U_REPLACEMENT, [W-07]); Recovery registra la Enrollment Key y envía R (o R') con su prueba de control; ambos
+// (U_REPLACEMENT, [W-07]); Recovery registra la Enrollment Key, envía R (o R') con su prueba de control y rechaza el
+// borrador de U′ si no coincide con la que muestra la Wallet ([F-LNK-04], con la sesión RECOVERY de la propuesta); ambos
 // consultan el estado.
 import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -13,7 +14,7 @@ import {
   WALLET_REJECTION_REASONS,
   type EnrollmentService,
 } from '../../../recovery/enrollment.ts';
-import type { UReplacementService } from '../../../recovery/u-replacement.ts';
+import { U_REPLACEMENT_REJECTION_REASONS, type UReplacementService } from '../../../recovery/u-replacement.ts';
 import {
   AddressSchema,
   Bytes32Schema,
@@ -23,6 +24,7 @@ import {
   StorageFlagsSchema,
 } from '../../../wallets/schemas.ts';
 import { errorResponses } from '../../errors.ts';
+import { RotationViewSchema } from './rotations.ts';
 import { walletActor } from './wallets.ts';
 
 /** KeyAcceptance [W-01] de una clave nueva (U' o R'): nonce de 32 bytes y firma EIP-712 de la clave nueva. */
@@ -295,6 +297,42 @@ export const recoveryRoutes: FastifyPluginCallbackZod<RecoveryRoutesOptions> = (
         const actor = walletActor(request);
         await app.enforceRateLimit(request, 'operation-create', { user: actor.userId });
         return enrollments.submit(actor, request.params.id, request.body);
+      },
+    );
+
+    app.post(
+      '/recovery/u-replacement/:id/reject',
+      {
+        // La misma autenticación y el mismo alcance que la propuesta del reemplazo (R con la sesión RECOVERY).
+        config: { auth: 'account', idempotency: true, platformSession: { scopes: ['RECOVERY'], critical: true } },
+        schema: {
+          operationId: 'rejectReplacementUserKey',
+          tags,
+          summary:
+            'Recovery cancela el borrador del reemplazo de U porque la U′ no coincidió con la que el usuario copió de la app Wallet ([F-LNK-04]): REJECTED con el motivo (ya no se propone), U′ revocada, auditoría, aviso, email de seguridad (uno por ventana y usuario; el resto en un resumen) y alerta; idempotente. 409 si la Wallet registró otra U′ en el borrador, si la rotación ya no es un borrador o si está en curso (se cancela con R); 404 si no es un borrador de U de la wallet de la sesión',
+          security: criticalSecurity,
+          headers: CriticalRequestHeadersSchema,
+          params: z.object({ id: z.uuid() }),
+          body: z
+            .object({
+              reason: z
+                .enum(U_REPLACEMENT_REJECTION_REASONS)
+                .describe(
+                  'MANUAL_COMPARISON_FAILED: la dirección copiada de la app Wallet no coincidió en los intentos de la comparación',
+                ),
+              newKey: AddressSchema.describe(
+                'La U′ del borrador que comparó Recovery: si la Wallet registró otra en el mismo borrador, 409 (se compara de nuevo)',
+              ),
+            })
+            .strict(),
+          response: { 200: RotationViewSchema, ...errorResponses(401, 403, 404, 409, 415, 422) },
+        },
+      },
+      async (request) => {
+        const actor = walletActor(request);
+        // El total de operaciones, no el cupo de recovery: el rechazo no le quita al usuario la propuesta de otra U′.
+        await app.enforceRateLimit(request, 'operation-create', { user: actor.userId });
+        return options.uReplacement.reject(actor, request.params.id, request.body);
       },
     );
   }

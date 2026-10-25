@@ -94,6 +94,25 @@ export interface TemplateParams {
     firstAt: string;
     lastAt: string;
   };
+  /** La app Recovery canceló un borrador del reemplazo de U porque la U′ no coincidió ([F-LNK-04]). */
+  'u-replacement-rejected': {
+    reason: UReplacementRejection;
+    /** Dirección de la U′ del borrador: la que recibió la plataforma. */
+    newKey: string;
+    safe: string | null;
+    occurredAt: string;
+    origin: RequestOrigin;
+  };
+  /** Los avisos de rechazo de U′ retenidos durante la ventana del usuario (un email por ventana), juntos. */
+  'u-replacement-rejections-summary': {
+    count: number;
+    /** Motivos distintos, en el orden en que llegaron. */
+    reasons: UReplacementRejection[];
+    /** Safe, si todos son de la misma wallet. */
+    safe: string | null;
+    firstAt: string;
+    lastAt: string;
+  };
   'high-value-challenge': {
     code: string;
     safe: string;
@@ -142,6 +161,8 @@ export const TEMPLATE_NAMES = [
   'recovery-started',
   'recovery-enrollment-rejected',
   'recovery-enrollment-rejections-summary',
+  'u-replacement-rejected',
+  'u-replacement-rejections-summary',
   'high-value-challenge',
   'high-value-executed',
   'cooperation-paused',
@@ -225,6 +246,26 @@ function rejectionOutcome(purpose: 'ONBOARDING' | 'REPLACEMENT', plural: boolean
       ? ' Si te llega un aviso de una rotación de tu clave R que no esperabas, cancelala desde la app.'
       : '';
   return `La plataforma descartó ${which}: ${use}. Para seguir, generá un pedido nuevo desde la app Wallet.${rotation}`;
+}
+
+/** Por qué la app Recovery canceló un borrador del reemplazo de U ([F-LNK-04]). */
+export type UReplacementRejection = 'MANUAL_COMPARISON_FAILED';
+
+const U_REJECTION_INTRO: Record<UReplacementRejection, string> = {
+  MANUAL_COMPARISON_FAILED:
+    'La dirección de la clave U nueva que copiaste de la app Wallet no coincidió con la que recibió la plataforma, así que la app Recovery canceló el pedido y no va a firmar el reemplazo hacia esa dirección.',
+};
+const U_REJECTION_REASON: Record<UReplacementRejection, string> = {
+  MANUAL_COMPARISON_FAILED: 'la dirección copiada de la app Wallet no coincidió',
+};
+/**
+ * Qué pasa con la dirección de los pedidos cancelados y cómo seguir. La dirección de la clave U nueva se copia sólo de
+ * la app Wallet, que la generó: la de un email o un chat puede ser la de quien intentó cambiarla (ESC-41).
+ */
+function uRejectionOutcome(plural: boolean): string {
+  const which = plural ? 'esos pedidos' : 'ese pedido';
+  const by = plural ? 'ellos' : 'él';
+  return `La plataforma descartó ${which}: no va a proponer el reemplazo de tu clave U hacia ninguna dirección que haya llegado por ${by}. Para seguir, empezá de nuevo desde la app Wallet («Perdí mi Password U») y copiá la dirección de la clave U nueva sólo de ahí, nunca de un email ni de un chat. Si la habías copiado bien, avisá a soporte.`;
 }
 
 /**
@@ -329,6 +370,8 @@ const CHANGE_PASSWORD_HINT =
   'cambiá tu contraseña de cuenta, revisá tus sesiones activas en la app y revocá las que no reconozcas.';
 /** La misma indicación como oración nueva (después de un punto). */
 const CHANGE_PASSWORD_SENTENCE = `${CHANGE_PASSWORD_HINT.charAt(0).toUpperCase()}${CHANGE_PASSWORD_HINT.slice(1)}`;
+/** «Si no fuiste vos» de los emails del rechazo del borrador del reemplazo de U. */
+const U_REJECTION_IF_NOT_YOU = `si no estabas reemplazando tu clave U, ${CHANGE_PASSWORD_HINT} Avisá a soporte y, si te llega un aviso de una rotación de tu clave U que no esperabas, cancelala desde la app Recovery.`;
 
 type Renderers = { [K in TemplateName]: (p: TemplateParams[K], ctx: TemplateContext) => Content };
 
@@ -575,6 +618,39 @@ const RENDERERS: Renderers = {
         ...timeRows(ctx, 'Último', p.lastAt),
       ],
       ifNotYou: `si no estabas registrando tu clave R, ${CHANGE_PASSWORD_HINT} No abras enlaces de regreso de la app Recovery que te lleguen por email o por chat.`,
+    };
+  },
+  'u-replacement-rejected': (p, ctx) => ({
+    subject: 'Posible sustitución de tu clave U nueva',
+    heading: 'Cancelamos un pedido para reemplazar tu clave de usuario (U)',
+    intro: `${U_REJECTION_INTRO[p.reason]} Puede ser un error al copiar, pero también que alguien haya intentado cambiar tu clave U nueva en el camino. ${uRejectionOutcome(false)}`,
+    details: [
+      ['Acción', `Cancelación del reemplazo ${ofRole('U')}`],
+      ['Motivo', U_REJECTION_REASON[p.reason]],
+      ['Dirección que recibió la plataforma', groupedAddress(p.newKey)],
+      ['Red', ctx.networkLabel],
+      ...(p.safe === null ? [] : ([['Safe', groupedAddress(p.safe)]] as [string, string][])),
+      ...timeRows(ctx, 'Fecha', p.occurredAt),
+      originRow(p.origin),
+    ],
+    ifNotYou: U_REJECTION_IF_NOT_YOU,
+  }),
+  'u-replacement-rejections-summary': (p, ctx) => {
+    const more = p.count === 1 ? 'otro pedido' : `${String(p.count)} pedidos más`;
+    return {
+      subject: 'Más pedidos de tu clave U nueva cancelados',
+      heading: `Cancelamos ${more} para reemplazar tu clave de usuario (U)`,
+      intro: `Después de nuestro último aviso, la app Recovery canceló ${more} porque la dirección de la clave U nueva no coincidió con la que copiaste de la app Wallet. Para no llenarte de emails te los mandamos juntos: el detalle de cada uno está en los avisos de la app Wallet. Puede ser un error al copiar, pero también que alguien haya intentado cambiar tu clave U nueva en el camino. ${uRejectionOutcome(p.count > 1)}`,
+      details: [
+        ['Acción', `Cancelación de pedidos de reemplazo ${ofRole('U')}`],
+        ['Pedidos cancelados', String(p.count)],
+        ['Motivos', p.reasons.map((reason) => U_REJECTION_REASON[reason]).join('; ')],
+        ['Red', ctx.networkLabel],
+        ...(p.safe === null ? [] : ([['Safe', groupedAddress(p.safe)]] as [string, string][])),
+        ...timeRows(ctx, 'Primero', p.firstAt),
+        ...timeRows(ctx, 'Último', p.lastAt),
+      ],
+      ifNotYou: U_REJECTION_IF_NOT_YOU,
     };
   },
   'high-value-challenge': (p, ctx) => ({

@@ -149,10 +149,14 @@ const WALLET_ONLY_PATHS = [
   // P18.T08: transfers indexados de la Safe (actividad de la app).
   '/api/v1/wallets/{id}/transfers',
 ];
-/** Sólo en el listener de Recovery: Enrollment Key y envío de R, y el grupo de emergencia (R) de P14. */
+/**
+ * Sólo en el listener de Recovery: Enrollment Key y envío de R, el rechazo del borrador de U′ que no coincide
+ * ([F-LNK-04]) y el grupo de emergencia (R) de P14.
+ */
 const RECOVERY_ONLY_PATHS = [
   '/api/v1/recovery/enrollments/{id}/enrollment-key',
   '/api/v1/recovery/enrollments/{id}/submit',
+  '/api/v1/recovery/u-replacement/{id}/reject',
   '/api/v1/wallets/{id}/emergency/whitelist-remove',
   '/api/v1/wallets/{id}/emergency/noop',
   '/api/v1/wallets/{id}/emergency/revoke-approval',
@@ -265,6 +269,27 @@ describe('spec OpenAPI por listener', () => {
         Record<string, { properties?: Record<string, unknown>; required?: string[] }> | undefined;
       expect(schemas?.RecoveryEnrollmentStatus?.properties?.rejectionReason).toBeDefined();
       expect(schemas?.RecoveryEnrollmentStatus?.required).toContain('rejectionReason');
+    },
+  );
+
+  it.each(['WALLET', 'RECOVERY'] as const)(
+    '%s: una rotación trae el estado REJECTED y el motivo del rechazo del borrador de U′ ([F-LNK-04])',
+    async (client) => {
+      const doc = await spec(client);
+      const schemas = doc.components?.schemas as
+        Record<string, { properties?: Record<string, { enum?: string[] }>; required?: string[] }> | undefined;
+      expect(schemas?.Rotation?.properties?.rejectionReason).toBeDefined();
+      expect(schemas?.Rotation?.required).toContain('rejectionReason');
+      expect(schemas?.Rotation?.properties?.status?.enum).toContain('REJECTED');
+      // El rechazo responde con la misma rotación y lleva la PlatformSession de la propuesta (RECOVERY, crítica).
+      const reject = doc.paths['/api/v1/recovery/u-replacement/{id}/reject']?.post;
+      if (client === 'WALLET') {
+        expect(reject).toBeUndefined();
+        return;
+      }
+      expect(reject?.operationId).toBe('rejectReplacementUserKey');
+      expect(JSON.stringify(reject?.responses['200'])).toContain('#/components/schemas/Rotation');
+      expect(JSON.stringify(reject)).toContain('platformSession');
     },
   );
 

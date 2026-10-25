@@ -78,4 +78,6 @@ export const REDIS_DBS = {
   executorRotationRequest: 74,
   // P17.MAN (N10): rechazo de un enrollment de R por la Wallet.
   recoveryEnrollmentReject: 75,
+  // P17.MAN ([F-LNK-04], ESC-41): rechazo del borrador del reemplazo de U por la app Recovery.
+  uReplacementReject: 76,
 } as const;

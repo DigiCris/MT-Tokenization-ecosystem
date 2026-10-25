@@ -7,6 +7,7 @@ import type { FastifyPluginCallbackZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { Client } from '../../../db/schema.ts';
 import { CriticalRequestHeadersSchema } from '../../../platform-session/request-signature.ts';
+import { U_REPLACEMENT_REJECTION_REASONS } from '../../../recovery/u-replacement.ts';
 import { ROTATION_ROLES, ROTATION_STATUSES, type RotationService } from '../../../rotations/service.ts';
 import { errorResponses } from '../../errors.ts';
 import { requestMeta } from './auth.ts';
@@ -23,7 +24,9 @@ export const RotationViewSchema = z
     role: z.enum(ROTATION_ROLES),
     oldKey: Address,
     newKey: Address,
-    status: z.enum(ROTATION_STATUSES),
+    status: z
+      .enum(ROTATION_STATUSES)
+      .describe('REJECTED: borrador del reemplazo de U que la app Recovery canceló (ver rejectionReason)'),
     origin: z.enum(['PLATFORM', 'ONCHAIN']).describe('ONCHAIN: propuesta que no preparó el backend (U+R, otra app)'),
     initiatedBy: z.enum(['U', 'R', 'SAFE']),
     proposalId: z.string().nullable(),
@@ -47,6 +50,12 @@ export const RotationViewSchema = z
       .string()
       .nullable()
       .describe('Rotación de S: SignerKeyAttestation de la S nueva (JWS EdDSA, verificable con la clave fijada)'),
+    rejectionReason: z
+      .enum(U_REPLACEMENT_REJECTION_REASONS)
+      .nullable()
+      .describe(
+        'Sólo con REJECTED: por qué la app Recovery canceló el borrador del reemplazo de U (MANUAL_COMPARISON_FAILED: la dirección copiada de la app Wallet no coincidió, [F-LNK-04])',
+      ),
   })
   .meta({ id: 'Rotation' });
 

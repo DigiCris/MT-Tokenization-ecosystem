@@ -11,6 +11,7 @@ import * as rotationsRecoveryMigration from './0007_rotations_recovery_migration
 import * as executorRotationRequests from './0008_executor_rotation_requests.ts';
 import * as recoveryEnrollmentRejection from './0009_recovery_enrollment_rejection.ts';
 import * as rotationQuarantineRejectionEmail from './0010_rotation_quarantine_rejection_email.ts';
+import * as uReplacementRejection from './0011_u_replacement_rejection.ts';
 
 export const MIGRATIONS: Readonly<Record<string, Migration>> = {
   '0001_initial_schema': initialSchema,
@@ -23,4 +24,5 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
   '0008_executor_rotation_requests': executorRotationRequests,
   '0009_recovery_enrollment_rejection': recoveryEnrollmentRejection,
   '0010_rotation_quarantine_rejection_email': rotationQuarantineRejectionEmail,
+  '0011_u_replacement_rejection': uReplacementRejection,
 };

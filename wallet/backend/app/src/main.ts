@@ -468,7 +468,8 @@ async function startRole(role: Role, config: AppConfig, logger: Logger, metrics:
         { name: 'high-value', runOnce: () => highValue.runOnce() },
         { name: 'rotations', runOnce: () => rotationSync.runOnce() },
         { name: 'migrations', runOnce: () => migrationSync.runOnce() },
-        // Revisión de ADR-033 (BAJO 8): los avisos de rechazo de R retenidos en la ventana del usuario, en un resumen.
+        // Revisión de ADR-033 (BAJO 8): los avisos de rechazo retenidos en la ventana del usuario (enrollments de R y
+        // borradores del reemplazo de U), en un resumen por tipo.
         { name: 'recovery-rejection-digest', runOnce: () => rejectionDigest.runOnce() },
       ],
       logger.child({ component: 'operation-effects' }),

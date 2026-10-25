@@ -28,6 +28,7 @@ export interface Metrics {
   gasTankTransactions: Counter<'purpose' | 'result'>;
   walletOnboarding: Counter<'step' | 'result'>;
   recoveryEnrollmentRejections: Counter<'reason' | 'purpose' | 'alerted'>;
+  uReplacementRejections: Counter<'reason'>;
   walletVerificationFailures: Counter<'item'>;
   operationTransitions: Counter<'to'>;
   operationErrors: Counter<'code'>;
@@ -187,6 +188,12 @@ export function createMetrics(options: { defaultMetrics?: boolean } = {}): Metri
       name: 'mtw_recovery_enrollment_rejections_total',
       help: 'Enrollments de R que la Wallet rechazó porque no pudo confirmar la R ([F-LNK-02]): posible sustitución de R (alerta con alerted="true"; "false" es el aviso tardío de un pedido reemplazado hace más que su vigencia, sin alerta)',
       labelNames: ['reason', 'purpose', 'alerted'],
+      registers,
+    }),
+    uReplacementRejections: new Counter({
+      name: 'mtw_u_replacement_rejections_total',
+      help: 'Borradores del reemplazo de U que la app Recovery rechazó porque la U′ no coincidió con la que el usuario copió de la app Wallet ([F-LNK-04]): posible sustitución de U′ (alerta USER_KEY_SUBSTITUTION_SUSPECTED)',
+      labelNames: ['reason'],
       registers,
     }),
     walletVerificationFailures: new Counter({

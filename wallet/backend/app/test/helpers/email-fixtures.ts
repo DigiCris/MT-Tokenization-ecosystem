@@ -85,6 +85,22 @@ export const TEMPLATE_FIXTURES: { [K in TemplateName]: TemplateParams[K] } = {
     firstAt: AT,
     lastAt: '2026-10-17T15:40:05.000Z',
   },
+  // La app Recovery canceló el borrador del reemplazo de U: la U′ que recibió la plataforma no coincidió.
+  'u-replacement-rejected': {
+    reason: 'MANUAL_COMPARISON_FAILED',
+    newKey: NEW_KEY,
+    safe: SAFE,
+    occurredAt: AT,
+    origin: ORIGIN,
+  },
+  // Los rechazos de U′ retenidos durante la ventana del usuario, juntos: dos borradores de la misma Safe.
+  'u-replacement-rejections-summary': {
+    count: 2,
+    reasons: ['MANUAL_COMPARISON_FAILED'],
+    safe: SAFE,
+    firstAt: AT,
+    lastAt: '2026-10-17T15:40:05.000Z',
+  },
   'high-value-challenge': {
     code: '27182818',
     safe: SAFE,

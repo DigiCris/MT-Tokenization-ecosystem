@@ -33,12 +33,9 @@ import { addressToBuffer, bufferToAddress } from '../../src/lib/bytes.ts';
 import { createMetrics } from '../../src/observability/metrics.ts';
 import type { OperationService } from '../../src/operations/service.ts';
 import { loadPolicySnapshot } from '../../src/policy/snapshot.ts';
-import {
-  ENROLLMENT_TTL_SECONDS,
-  REJECTION_EMAIL_WINDOW_MS,
-  type EnrollmentView,
-} from '../../src/recovery/enrollment.ts';
+import { ENROLLMENT_TTL_SECONDS, type EnrollmentView } from '../../src/recovery/enrollment.ts';
 import { RejectionEmailDigest } from '../../src/recovery/rejection-digest.ts';
+import { REJECTION_EMAIL_WINDOW_MS } from '../../src/recovery/rejection-email.ts';
 import { RotationService } from '../../src/rotations/service.ts';
 import { RotationSync } from '../../src/rotations/sync.ts';
 import { SignerKeyService } from '../../src/signer-client/sharding.ts';

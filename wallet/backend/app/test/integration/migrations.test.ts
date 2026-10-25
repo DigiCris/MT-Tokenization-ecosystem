@@ -27,6 +27,7 @@ const ALL_MIGRATIONS = [
   '0008_executor_rotation_requests',
   '0009_recovery_enrollment_rejection',
   '0010_rotation_quarantine_rejection_email',
+  '0011_u_replacement_rejection',
 ];
 const hash = () => randomBytes(32);
 const sig = () => randomBytes(65);
@@ -182,7 +183,9 @@ describe('0010 sobre datos de 0009', () => {
       await insert(reported, 'RETURN_LINK_UNVERIFIED');
       await insert(superseded, 'SUPERSEDED');
 
-      expect(await migrateToLatest(old.migrator)).toEqual(['0010_rotation_quarantine_rejection_email']);
+      expect(await migrateToLatest(old.migrator)).toEqual(
+        ALL_MIGRATIONS.slice(ALL_MIGRATIONS.indexOf('0010_rotation_quarantine_rejection_email')),
+      );
       const rows = await old.app
         .selectFrom('recovery_metadata')
         .select(['enrollment_id', 'rejection_reported_at', 'rejection_email', 'rejection_emailed_at'])
@@ -865,6 +868,56 @@ describe('esquema [B-DB]', () => {
     expect(await sqlStateOf(event({ applied_at: now, quarantined_at: now, retry_at: now }))).toBe('23514');
     expect(await sqlStateOf(event({ apply_attempts: -1 }))).toBe('23514');
     expect(await sqlStateOf(event({ apply_error: 'x'.repeat(501) }))).toBe('23514');
+  });
+
+  it('0011: un borrador de U rechazado tiene motivo, momento y destino del email coherentes; sólo un borrador de U', async () => {
+    const w = await insertWallet('ACTIVE', await insertUser(db.app));
+    const now = new Date();
+    const rotation = (values: Record<string, unknown>) =>
+      db.app
+        .insertInto('rotation_requests')
+        .values({
+          wallet_id: w.id,
+          role: 'U',
+          old_key: addr(),
+          new_key: addr(),
+          initiated_by: 'R',
+          status: 'REJECTED',
+          rejection_reason: 'MANUAL_COMPARISON_FAILED',
+          rejected_at: now,
+          rejection_email: 'SENT',
+          rejection_emailed_at: now,
+          ...values,
+        })
+        .execute();
+    const draft = { status: 'DRAFT', rejection_reason: null, rejected_at: null, rejection_email: null };
+    // Enviado en el momento o en el resumen, retenido o sin email; y un borrador sin rechazo.
+    for (const values of [
+      {},
+      { rejection_email: 'SUMMARIZED' },
+      { rejection_email: 'HELD', rejection_emailed_at: null },
+      { rejection_email: 'NONE', rejection_emailed_at: null },
+      { ...draft, rejection_emailed_at: null },
+    ]) {
+      expect(await sqlStateOf(rotation(values)), JSON.stringify(values)).toBeUndefined();
+    }
+    for (const values of [
+      // Sin motivo, sin momento o sin destino del email; o un motivo desconocido.
+      { rejection_reason: null },
+      { rejected_at: null },
+      { rejection_email: null, rejection_emailed_at: null },
+      { rejection_reason: 'OTRO' },
+      // El momento del email sólo si salió (en el momento o en el resumen).
+      { rejection_email: 'SENT', rejection_emailed_at: null },
+      { rejection_email: 'HELD' },
+      { rejection_email: 'OTRO' },
+      // El motivo sólo existe en uno REJECTED, y sólo se rechaza un borrador de U.
+      { status: 'DRAFT' },
+      { ...draft, rejection_emailed_at: now },
+      { role: 'S', initiated_by: 'U' },
+    ]) {
+      expect(await sqlStateOf(rotation(values)), JSON.stringify(values)).toBe('23514');
+    }
   });
 
   it('mtw_readonly lee todo salvo hashes y secretos cifrados, y no escribe', async () => {
