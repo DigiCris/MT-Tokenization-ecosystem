@@ -58,8 +58,11 @@ test.beforeEach(async ({ page }) => {
   page.on('pageerror', (error) => pageErrors.push(error));
 });
 
-test.afterEach(() => {
-  expect(pageErrors.map((e) => e.message)).toEqual([]);
+test.afterEach(({ browserName }) => {
+  // WebKit informa como error de página un fetch rechazado por CORS aunque la app maneje el rechazo: el sondeo de
+  // /platform/status (AppShell) contra la API, que en estos tests no está levantada, si coincide con una navegación.
+  const corsNoise = (message: string) => browserName === 'webkit' && / due to access control checks\.$/.test(message);
+  expect(pageErrors.map((e) => e.message).filter((message) => !corsNoise(message))).toEqual([]);
 });
 
 test('arranca con CSP y Trusted Types activos: sólo las violaciones de las pruebas de arranque, ningún reporte', async ({
