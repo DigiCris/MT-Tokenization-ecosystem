@@ -22,7 +22,13 @@ network="${1:-local}"
 deploy_env "$network"
 
 cd "$WALLET_ROOT/contracts"
+# Lo que Anvil no tiene lo pide al RPC de Base con reintentos (hasta 60 s por pedido): forge espera hasta 300 s, no 45.
+rpc_timeout=(--rpc-timeout 300)
 # Fondeo previo en otra invocación: la simulación on-chain de forge usa el estado del bloque en que arranca.
-forge script script/FundForkAccounts.s.sol --rpc-url "$DEPLOY_RPC"
-forge script script/DeployCore.s.sol --rpc-url "$DEPLOY_RPC" --broadcast --slow "$@"
-forge script script/VerifyDeployment.s.sol --rpc-url "$DEPLOY_RPC"
+forge script script/FundForkAccounts.s.sol --rpc-url "$DEPLOY_RPC" "${rpc_timeout[@]}"
+# El broadcast EIP-1559 estima los fees con eth_feeHistory de los últimos 10 bloques; si el rango toca bloques anteriores
+# al fork, Anvil se lo pide al RPC de Base. Con 10 bloques propios minados antes, la estimación no sale del Anvil.
+# Sin Anvil no hay nada que minar: DeployCore igual se niega a transmitir.
+cast rpc anvil_mine 0xa --rpc-url "$DEPLOY_RPC" >/dev/null 2>&1 || true
+forge script script/DeployCore.s.sol --rpc-url "$DEPLOY_RPC" --broadcast --slow "${rpc_timeout[@]}" "$@"
+forge script script/VerifyDeployment.s.sol --rpc-url "$DEPLOY_RPC" "${rpc_timeout[@]}"
