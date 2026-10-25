@@ -8,11 +8,12 @@ import { expect } from 'vitest';
 import type { PreparedOperation } from '../../src/operations/intent.ts';
 import { submissionCanonical, type SubmissionEnvelope } from '../../src/platform-session/request-signature.ts';
 import type { RotationView } from '../../src/rotations/service.ts';
-import { critical, idempotencyKey, stepUp, type Session } from './onboarding.ts';
+import { critical, idempotencyKey, stepUp, until, type Session } from './onboarding.ts';
 import {
+  operationRow,
   sessionOf,
   signSafeTx,
-  statusOf,
+  startWorker,
   submissionBody,
   type ActiveWallet,
   type OperationsEnv,
@@ -110,7 +111,31 @@ export async function signAndExecute(
   const response = await post(wallet, signer, `/operations/${prepared.operationId}/signatures`, body);
   expect(response.statusCode, response.body).toBe(200);
   await env.pipeline().processWallet(wallet.walletId);
-  expect(await statusOf(env, prepared.operationId)).toBe('MINED');
+  await expectMined(env, prepared.operationId);
+}
+
+/** Fallas de red que el scheduler real reintenta con backoff ([B-Q-03]); cualquier otra corta el test. */
+const TRANSIENT_ERRORS = new Set(['RPC_UNAVAILABLE', 'RPC_TIMEOUT', 'SIGNER_UNAVAILABLE']);
+
+/**
+ * MINED después del pipeline. Si quedó en FAILED_RETRYABLE por una falla de red del fork o del signer (en CI los jobs
+ * comparten el RPC remoto), reintenta el worker real: el scheduler la vuelve a QUEUED cuando vence el backoff.
+ */
+async function expectMined(env: OperationsEnv, operationId: string): Promise<void> {
+  let row = await operationRow(env, operationId);
+  if (row.status === 'FAILED_RETRYABLE' && TRANSIENT_ERRORS.has(row.last_error_code ?? '')) {
+    const worker = startWorker(env);
+    try {
+      row = await until(async () => {
+        await worker.schedule();
+        const current = await operationRow(env, operationId);
+        return current.status === 'MINED' || current.status === 'FAILED_FINAL' ? current : undefined;
+      }, 120_000);
+    } finally {
+      await worker.stop();
+    }
+  }
+  expect(row.status, `operación ${operationId}: ${row.last_error_code ?? 'sin código de error'}`).toBe('MINED');
 }
 
 /** Indexa lo minado, lo confirma (2 bloques) y aplica los eventos del timelock y la madurez. */
