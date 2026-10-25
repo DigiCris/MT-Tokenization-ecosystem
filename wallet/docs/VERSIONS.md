@@ -103,7 +103,7 @@ Versiones adicionales fijadas en esta verificación (no estaban en la tabla §3.
 
 ### Versiones efectivas de `backend/app` (edad mínima de publicación)
 
-La política de [supply chain](#supply-chain) (`minimumReleaseAge: 10080`, 7 días) no instala versiones publicadas hace menos de una semana. Al crear `backend/app` (P08, 2026-10-17) estas versiones de la tabla todavía no tenían 7 días: se fijó la última versión de la misma línea que sí los cumplía. La versión de la tabla se adopta en el primer cambio de dependencias del proyecto posterior a su fecha de elegibilidad, con el mismo control de edad. **Adoptadas el 2026-10-25**, en el primer cambio de dependencias posterior a su elegibilidad (los parches de [seguridad del 2026-10-25](#parches-de-seguridad-osv-2026-10-25)): todas las de la tabla salvo `nodemailer`, que va directo a una versión corregida (ver esa sección).
+La política de [supply chain](#supply-chain) (`minimumReleaseAge: 10080`, 7 días) no instala versiones publicadas hace menos de una semana. Al crear `backend/app` (P08, 2026-10-17) estas versiones de la tabla todavía no tenían 7 días: se fijó la última versión de la misma línea que sí los cumplía. La versión de la tabla se adopta en el primer cambio de dependencias del proyecto posterior a su fecha de elegibilidad, con el mismo control de edad. **Adoptadas el 2026-10-25**, en el primer cambio de dependencias posterior a su elegibilidad (los parches de [seguridad del 2026-10-25](#parches-de-seguridad-osv-2026-10-25)): todas las de la tabla, salvo `nodemailer`, que pasa a la 10.1.4 corregida (ver esa sección).
 
 | Paquete | Tabla (publicada) | Elegible desde | Fijada en `backend/app` (publicada) | Integridad (lockfile) |
 |---|---|---|---|---|
@@ -111,7 +111,7 @@ La política de [supply chain](#supply-chain) (`minimumReleaseAge: 10080`, 7 dí
 | `@fastify/helmet` | 13.2.0 (2026-10-13) | 2026-10-20 | 13.2.0 (2026-10-13) | `sha512-2u41U5hR9o1u3HUHLT3Njp7vWuWw+XXw8qCBwVY17pRQAN179YYKiU9f7/qEn1ITabgNTkq/Yk6gmrYPSraagA==` |
 | `zod` | 4.6.7 (2026-10-12) | 2026-10-19 | 4.6.7 (2026-10-12) | `sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==` |
 | `bullmq` | 6.3.15 (2026-10-14) | 2026-10-21 | 6.3.15 (2026-10-14) | `sha512-J6EZH/DhfGnsIafSK2FfNJ6XtSAQnD4YM1vts5+jT4usLYkxV2uU72oKNpmyxUQl9U4sFEvK5MO5SJ+dGlwOLQ==` |
-| `nodemailer` | 10.1.2 (2026-10-16) | 2026-10-23 | 10.0.16 (2026-10-07) | `sha512-VL9xKErxN+el77o8eBOuYKUPMyEx7F9hfnDCuiUKJRp9v3wnWMOudYgP/SWbwSHy8rUL4cylobuXtki1LpQS7A==` |
+| `nodemailer` | 10.1.2 (2026-10-16) | 2026-10-23 | 10.1.4 (2026-10-18): por encima de la tabla, por los advisories de la [sección de seguridad](#parches-de-seguridad-osv-2026-10-25) | `sha512-EsMnOR2oRv4LGnWvHgcVYkkQ4O2j8KO4WTw6l+PHR4sOXo8SAgIraxtEnGDmotjbhv0hDsu3IuDIFZm8iXwO4A==` |
 | `viem` | 2.57.7 (2026-10-14) | 2026-10-21 | 2.57.7 (2026-10-14) | `sha512-x3UqqrcQuESaRVK6a0BvNmoNP0SVhu913uxEAxYLJx1lNYnj6ylTntfUdakCUKjk1+T+63gkdwFGJQ2O5C/nRw==` |
 | `vitest` | 5.0.5 (2026-10-15) | 2026-10-22 | 5.0.5 (2026-10-15) | `sha512-cPODOMF8YnkiiYtDdHo6n4wWmBrOBBbOIYH2d33M4l3CdNn72h+qMmO6uXffUN6A5AZFXNND/d+krS9mgkXRfg==` |
 | `testcontainers` | 12.2.1 (2026-10-13) | 2026-10-20 | 12.2.1 (2026-10-13) | `sha512-JfbCyOvLdzatwgqUI3AvYCwRW0P5mCkKQVBPO8U5qSH1efC2kHvnfWmi9VHloy1rAFG2MEqWZObRH4bq0gU1kQ==` |
@@ -237,10 +237,10 @@ Cada uno se corrige con la versión que lo resuelve, con el mismo control de [ed
 | GHSA-xjj6-f33q-929c (7.5), GHSA-4qv8-2p9j-2685 (5.9) y GHSA-f72v-6w45-q472 (5.9) | `undici` 8.11.2 (transitiva) | `backend/app`, `backend/signer` y los dos frontends | 8.12.2 (2026-10-15) | aplicado (2026-10-25) |
 | GHSA-rxp7-6hxx-x8q5 (6.3) | `ip-address` 10.7.3 (transitiva) | `backend/app` | 10.7.4 (2026-10-11) | aplicado (2026-10-25) |
 | GHSA-389g-gv7q-r4x8 (3.7) | `fastify` 5.12.5 | los tres backends | 5.12.7 (la de la tabla) | aplicado (2026-10-25) |
-| GHSA-85x2-q946-cp5h, GHSA-8c8m-p3m8-cjg8 y GHSA-m943-m63m-w62w (6.5) | `nodemailer` 10.0.16 | `backend/app` | 10.1.4 (publicada el 2026-10-18 11:59 UTC) | pendiente de la edad mínima: elegible desde el 2026-10-25 11:59 UTC |
+| GHSA-85x2-q946-cp5h, GHSA-8c8m-p3m8-cjg8 y GHSA-m943-m63m-w62w (6.5) | `nodemailer` 10.0.16 | `backend/app` | 10.1.4 (publicada el 2026-10-18 11:59 UTC) | aplicado (2026-10-25, apenas cumplió los 7 días) |
 | GHSA-333x-w4r6-6crp (3.7), GHSA-w74x-v6f9-j3xg (6.1), GHSA-wjr9-j795-jxcr (4.8) y GHSA-xhq7-xmqj-769h (3.7) | `fast-uri` 3.1.8 y 4.2.2 (transitivas de Fastify) | los tres backends | 3.1.9 y 4.2.3 (publicadas el 2026-10-19 cerca de las 23 UTC) | pendiente de la edad mínima: elegibles desde el 2026-10-26 23:05 UTC |
 
-Mientras `nodemailer` y `fast-uri` no cumplan los 7 días, OSV-Scanner sigue fallando por ellos: no se agrega ninguna
+Mientras `fast-uri` no cumpla los 7 días, OSV-Scanner sigue fallando por él: no se agrega ninguna
 excepción ni se saltea la edad mínima, y se actualizan apenas son elegibles (registro en §13 del planner).
 
 ## Herramientas de seguridad y de infraestructura

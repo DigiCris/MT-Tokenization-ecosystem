@@ -50,7 +50,7 @@
     "ioredis": "6.0.0",
     "jose": "6.2.12",
     "kysely": "0.29.6",
-    "nodemailer": "10.0.16",
+    "nodemailer": "10.1.4",
     "otpauth": "9.5.2",
     "pg": "8.23.1",
     "pino": "10.4.0",
