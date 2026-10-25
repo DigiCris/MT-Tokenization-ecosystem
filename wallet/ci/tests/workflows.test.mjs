@@ -97,9 +97,11 @@ test('el único broadcast de CI es DeployCore sobre el Anvil efímero de la red 
     assert.doesNotMatch(text, /--broadcast|docker push|ssh /, `${f}: sin broadcast ni publicación directa`);
     if (/scripts\/deploy-core/.test(text)) {
       assert.equal(f, 'deploy-ephemeral.sh', `${f}: sólo deploy-ephemeral.sh invoca deploy-core`);
-      assert.match(text, /^rpc="http:\/\/127\.0\.0\.1:\$port"$/m, 'RPC local del Anvil efímero');
-      assert.match(text, /^export LOCAL_SEED LOCAL_RPC_URL="\$rpc"/m, 'deploy contra ese RPC');
-      assert.match(text, /scripts\/deploy-core" ci$/m, 'red ci');
+      // Cada intento (con su reintento ante fallas de red del fork) arma el RPC y despliega dentro de una función.
+      assert.match(text, /^\s*rpc="http:\/\/127\.0\.0\.1:\$port"$/m, 'RPC local del Anvil efímero');
+      assert.doesNotMatch(text, /^\s*rpc=(?!"http:\/\/127\.0\.0\.1:\$port"$)/m, 'ningún otro valor para el RPC');
+      assert.match(text, /^\s*export LOCAL_SEED LOCAL_RPC_URL="\$rpc"/m, 'deploy contra ese RPC');
+      assert.match(text, /scripts\/deploy-core" ci(?: |$)/m, 'red ci');
     }
   }
   // DeployCore se niega a transmitir fuera de Anvil.
