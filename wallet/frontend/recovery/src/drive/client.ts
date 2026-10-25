@@ -208,12 +208,26 @@ export class DriveClient {
   async uploadVerified(name: string, content: Uint8Array): Promise<{ file: DriveFile; replaced: boolean }> {
     const existing = await this.list(name);
     const [target, ...stale] = existing;
-    const file = target ? await this.update(target.id, content) : await this.create(name, content);
+    const replaced = target ? await this.#replace(target.id, content) : null;
+    const file = replaced ?? (await this.create(name, content));
     const stored = await this.download(file.id);
     if (!equalBytes(stored, content)) {
       throw new DriveError('MISMATCH', 'El archivo en Drive no coincide con lo subido: no se dio por guardado');
     }
     for (const old of stale) await this.remove(old.id);
-    return { file, replaced: target !== undefined };
+    return { file, replaced: replaced !== null };
+  }
+
+  /**
+   * Reemplaza el contenido de un archivo listado; null si desapareció entre el listado y la subida (borrado desde otro
+   * dispositivo o desde la configuración de Google): entonces se crea de nuevo en lugar de fallar.
+   */
+  async #replace(id: string, content: Uint8Array): Promise<DriveFile | null> {
+    try {
+      return await this.update(id, content);
+    } catch (error) {
+      if (error instanceof DriveError && error.code === 'NOT_FOUND') return null;
+      throw error;
+    }
   }
 }

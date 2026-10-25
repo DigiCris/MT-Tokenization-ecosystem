@@ -24,7 +24,7 @@ const envelope = parseEnvelope(
 );
 
 /** Drive en memoria con la semántica de la API (ids, appDataFolder, multipart) para probar el cliente. */
-function fakeDrive(options: { corrupt?: boolean } = {}) {
+function fakeDrive(options: { corrupt?: boolean; beforePatch?: (id: string) => void } = {}) {
   const files = new Map<string, { name: string; content: Uint8Array; modifiedTime: string }>();
   let next = 1;
   const calls: { method: string; url: URL; headers: Record<string, string>; init: RequestInit }[] = [];
@@ -48,6 +48,10 @@ function fakeDrive(options: { corrupt?: boolean } = {}) {
       return new Response(new Uint8Array(content));
     }
     if (method === 'DELETE' && id) return new Response(null, { status: files.delete(id) ? 204 : 404 });
+    if (method === 'PATCH' && id) {
+      options.beforePatch?.(id);
+      if (!files.has(id)) return new Response(null, { status: 404 });
+    }
     if (method === 'POST' || method === 'PATCH') {
       const type = (init.headers as Record<string, string>)['Content-Type'] ?? '';
       const boundary = /boundary=(.+)$/.exec(type)?.[1] ?? '';
@@ -141,6 +145,16 @@ describe('DriveClient', () => {
     expect([...drive.files.values()].filter((f) => f.name === 'b.json')).toHaveLength(1);
     const corrupt = fakeDrive({ corrupt: true });
     await expect(corrupt.client.uploadVerified('c.json', utf8('tres'))).rejects.toMatchObject({ code: 'MISMATCH' });
+  });
+
+  it('uploadVerified: si el archivo listado desaparece antes de reemplazarlo (404), lo crea de nuevo', async () => {
+    // Otro dispositivo (o la configuración de Google) lo borra entre el listado y el reemplazo.
+    const drive = fakeDrive({ beforePatch: (id) => drive.files.delete(id) });
+    await drive.client.create('d.json', utf8('viejo'));
+    const result = await drive.client.uploadVerified('d.json', utf8('nuevo'));
+    expect(result.replaced).toBe(false);
+    const stored = [...drive.files.values()].filter((f) => f.name === 'd.json');
+    expect(stored.map((f) => new TextDecoder().decode(f.content))).toEqual(['nuevo']);
   });
 });
 

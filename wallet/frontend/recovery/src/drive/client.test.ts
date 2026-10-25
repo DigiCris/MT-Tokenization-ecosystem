@@ -14,7 +14,9 @@ if (!vector) throw new Error('el vector de sobres no tiene el de R');
 const envelope = parseRecoveryEnvelope(vector.envelope);
 
 /** Drive en memoria con la semántica de la API (ids, appDataFolder, multipart, páginas) para probar el cliente. */
-function fakeDrive(options: { corrupt?: boolean; pageSize?: number; status?: number } = {}) {
+function fakeDrive(
+  options: { corrupt?: boolean; pageSize?: number; status?: number; beforePatch?: (id: string) => void } = {},
+) {
   const files = new Map<string, { name: string; content: Uint8Array; modifiedTime: string }>();
   let next = 1;
   const calls: { method: string; url: URL; init: RequestInit }[] = [];
@@ -41,6 +43,10 @@ function fakeDrive(options: { corrupt?: boolean; pageSize?: number; status?: num
       return new Response(new Uint8Array(options.corrupt ? utf8('alterado') : file.content));
     }
     if (method === 'DELETE' && id) return new Response(null, { status: files.delete(id) ? 204 : 404 });
+    if (method === 'PATCH' && id) {
+      options.beforePatch?.(id);
+      if (!files.has(id)) return new Response(null, { status: 404 });
+    }
     const body = new Uint8Array(await new Response(init.body).arrayBuffer());
     const text = new TextDecoder().decode(body);
     const boundary = /boundary=(\S+)/.exec((init.headers as Record<string, string>)['Content-Type'] ?? '')?.[1] ?? '';
@@ -81,6 +87,17 @@ describe('cliente de Drive', () => {
     expect((await good.uploadVerified('x.json', utf8('{"v":2}'))).replaced).toBe(true);
     const bad = new DriveClient(() => 't', fakeDrive({ corrupt: true }).fetcher);
     await expect(bad.uploadVerified('x.json', utf8('{"v":1}'))).rejects.toMatchObject({ code: 'MISMATCH' });
+  });
+
+  it('subir: si el archivo listado desaparece antes de reemplazarlo (404), lo crea de nuevo', async () => {
+    // Otro dispositivo (o la configuración de Google) lo borra entre el listado y el reemplazo.
+    const drive = fakeDrive({ beforePatch: (id) => drive.files.delete(id) });
+    const client = new DriveClient(() => 't', drive.fetcher);
+    await client.create('y.json', utf8('viejo'));
+    const result = await client.uploadVerified('y.json', utf8('nuevo'));
+    expect(result.replaced).toBe(false);
+    const stored = [...drive.files.values()].filter((f) => f.name === 'y.json');
+    expect(stored.map((f) => new TextDecoder().decode(f.content))).toEqual(['nuevo']);
   });
 
   it.each([
