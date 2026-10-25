@@ -5,7 +5,7 @@
 // Tercera revisión independiente: una dirección se rotula como dirección de la clave (o del contrato, en un guard),
 // «tu» sólo para las claves del usuario y «en Base» en lugar de «on-chain».
 import { describe, expect, it } from 'vitest';
-import { dualTime, escapeHtml, groupedAddress, networkLabel, tokenAmount } from '../../src/email/format.ts';
+import { deviceText, dualTime, escapeHtml, groupedAddress, networkLabel, tokenAmount } from '../../src/email/format.ts';
 import { renderTemplate, TEMPLATE_NAMES, type TemplateContext, type TemplateName } from '../../src/email/templates.ts';
 import { DESTINATION, NEW_KEY, OLD_KEY, SAFE, TEMPLATE_FIXTURES } from '../helpers/email-fixtures.ts';
 
@@ -104,6 +104,23 @@ describe('formato', () => {
     expect(networkLabel('staging', 'Base fork staging — chainId 8453')).toBe('Base fork staging — chainId 8453');
   });
 
+  it('dispositivo con nombres conocidos, nunca el user-agent crudo (lo elige quien hace el pedido)', () => {
+    expect(deviceText('Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0')).toBe('Firefox en Linux');
+    expect(
+      deviceText(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0',
+      ),
+    ).toBe('Edge en Windows');
+    expect(
+      deviceText(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1',
+      ),
+    ).toBe('Safari en iOS');
+    expect(deviceText('Soporte de MT Wallet: llamá al +54 11 5555-0000 (Chrome/1 Android)')).toBe('Chrome en Android');
+    expect(deviceText('Soporte de MT Wallet: llamá al +54 11 5555-0000')).toBe('dispositivo desconocido');
+    expect(deviceText('Mozilla/5.0 (Windows NT 10.0)')).toBe('navegador desconocido en Windows');
+  });
+
   it('escapa HTML', () => {
     expect(escapeHtml(`<a href="x" onclick='y'>&</a>`)).toBe(
       '&lt;a href=&quot;x&quot; onclick=&#39;y&#39;&gt;&amp;&lt;/a&gt;',
@@ -162,7 +179,8 @@ describe('contenido obligatorio', () => {
   });
 
   it.each(WITH_ORIGIN)('%s: IP y dispositivo de origen', (name) => {
-    expect(render(name).text).toContain('Origen: IP 203.0.113.0/24 · Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0');
+    expect(render(name).text).toContain('Origen: IP 203.0.113.0/24 · Firefox en Linux');
+    expect(render(name).text).not.toContain('Mozilla/5.0');
   });
 
   it('rotaciones: dirección de la clave actual y de la nueva completas y plazo de ejecución', () => {

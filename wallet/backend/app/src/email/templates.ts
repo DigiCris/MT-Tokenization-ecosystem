@@ -5,11 +5,14 @@
 // formato de las apps (email/format.ts): la app pide compararlos con el email. Una dirección se rotula como dirección
 // («Dirección de la clave nueva»: la dirección no es la clave) y sin jerga («en Base», no «on-chain»).
 import type { AppEnv } from '../config/env.ts';
-import { dualTime, escapeHtml, groupedAddress, tokenAmount } from './format.ts';
+import { deviceText, dualTime, escapeHtml, groupedAddress, tokenAmount } from './format.ts';
 
 export interface RequestOrigin {
   ipPrefix: string | null;
+  /** Se muestra como navegador y sistema conocidos (deviceText), nunca crudo. */
   userAgent: string | null;
+  /** Una propuesta que no pasó por la plataforma (se hizo directamente en Base): no hay IP ni dispositivo. */
+  channel?: 'ONCHAIN';
 }
 
 export interface TemplateContext {
@@ -257,8 +260,9 @@ const ACTOR_NAMES: Record<'U' | 'R' | 'SAFE', string> = {
 };
 
 function originRow(origin: RequestOrigin): [string, string] {
+  if (origin.channel === 'ONCHAIN') return ['Origen', 'propuesta directamente en Base, sin pasar por la plataforma'];
   const parts = [origin.ipPrefix ? `IP ${origin.ipPrefix}` : 'IP no disponible'];
-  if (origin.userAgent) parts.push(origin.userAgent.slice(0, 160));
+  if (origin.userAgent) parts.push(deviceText(origin.userAgent));
   return ['Origen', parts.join(' · ')];
 }
 

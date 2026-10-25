@@ -53,3 +53,37 @@ const HTML_ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch] ?? ch);
 }
+
+const BROWSERS: readonly [RegExp, string][] = [
+  // Los que se basan en Chromium también dicen "Chrome/": van antes.
+  [/\bEdg(?:e|A|iOS)?\//, 'Edge'],
+  [/\bOPR\/|\bOpera\b/, 'Opera'],
+  [/\bSamsungBrowser\//, 'Samsung Internet'],
+  [/\bFirefox\/|\bFxiOS\//, 'Firefox'],
+  [/\bChrome\/|\bCriOS\//, 'Chrome'],
+  [/\bVersion\/[\d.]+.*\bSafari\//, 'Safari'],
+];
+
+const SYSTEMS: readonly [RegExp, string][] = [
+  // Un iPhone o un Android también nombran otros sistemas ("like Mac OS X", "Linux"): van antes.
+  [/\biPhone\b|\biPad\b|\biPod\b/, 'iOS'],
+  [/\bAndroid\b/, 'Android'],
+  [/\bCrOS\b/, 'ChromeOS'],
+  [/\bWindows\b/, 'Windows'],
+  [/\bMacintosh\b|\bMac OS X\b/, 'macOS'],
+  [/\bLinux\b/, 'Linux'],
+];
+
+/**
+ * El dispositivo del pedido con nombres conocidos ("Firefox en Linux"), como en la lista de sesiones de la app. El
+ * user-agent lo elige quien hace el pedido (un atacante puede poner "Soporte: llamá al …"): nunca va crudo en un email.
+ */
+export function deviceText(userAgent: string | null): string {
+  if (userAgent === null) return 'dispositivo desconocido';
+  const pick = (list: readonly [RegExp, string][]) => list.find(([pattern]) => pattern.test(userAgent))?.[1] ?? null;
+  const browser = pick(BROWSERS);
+  const system = pick(SYSTEMS);
+  if (browser !== null && system !== null) return `${browser} en ${system}`;
+  if (browser !== null) return browser;
+  return system === null ? 'dispositivo desconocido' : `navegador desconocido en ${system}`;
+}
