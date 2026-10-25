@@ -3,8 +3,10 @@
 // 0x fijo y un 0x tipeado ignorado—; si no coincide se dicen qué grupos fallaron (nunca qué se esperaba) y, con casi
 // ninguno, que no parece un error de tipeo; a los 3 intentos ese borrador (rotación y U′) queda bloqueado en la
 // pestaña, y otra U′ registrada por la Wallet es otra comparación. Pegar la dirección completa la reparte en los grupos.
+// El borrador que la plataforma canceló (REJECTED) se muestra bloqueado al volver, y esta app no firma hacia su U′.
 import { getAddress, type Address } from 'viem';
 import { describe, expect, it } from 'vitest';
+import type { Rotation } from '../api/recovery-api.ts';
 import { addressGroups } from '../ui/AddressText.tsx';
 import {
   ADDRESS_GROUPS,
@@ -13,14 +15,24 @@ import {
   cleanGroup,
   COMPARE_ATTEMPTS,
   compareNewKey,
+  currentDraft,
   emptyGroups,
   groupsText,
   MISMATCH_TEXT,
   mismatchedGroups,
   pasteIntoGroups,
+  REFUSED_PROPOSAL_TEXT,
+  refusedTarget,
+  rejectedText,
+  REPORT_CHANGED_TEXT,
+  REPORT_FAILED_TEXT,
+  REPORT_UNCONFIRMED_TEXT,
+  REPORTED_TEXT,
+  REPORTING_TEXT,
   REREAD_ERROR_TEXT,
   retryText,
   sameDraft,
+  STILL_BLOCKED_TEXT,
   type UserKeyDraft,
 } from './compare.ts';
 
@@ -155,5 +167,99 @@ describe('lo que se tipea o se pega en los grupos', () => {
     expect(pasteIntoGroups(emptyGroups(), 0, '0x5a3c')).toEqual(['5a3c', '', '', '', '', '', '', '', '', '']);
     // Sólo espacios: el grupo queda vacío.
     expect(pasteIntoGroups(emptyGroups(), 1, '   ')).toEqual(emptyGroups());
+  });
+});
+
+/** Una rotación de U como la lista el backend (de la más nueva a la más vieja), ya validada. */
+const rotation = (overrides: Partial<Rotation>): Rotation => ({
+  id: `rot-list-${String(++next)}`,
+  walletId: 'w1',
+  role: 'U',
+  oldKey: getAddress('0x000000000000000000000000000000000000dEaD'),
+  newKey: U_NEW,
+  status: 'DRAFT',
+  origin: 'PLATFORM',
+  initiatedBy: 'R',
+  proposalId: null,
+  executableAt: null,
+  cancelledBy: null,
+  proposeOperationId: null,
+  executeOperationId: null,
+  proposedAt: null,
+  executedAt: null,
+  failureReason: null,
+  createdAt: '2026-10-25T10:00:00Z',
+  cancelTypedData: null,
+  requestReason: null,
+  newKeyAttestation: null,
+  rejectionReason: null,
+  ...overrides,
+});
+
+describe('el borrador que muestra la pantalla y el rechazo de la plataforma', () => {
+  it('el borrador vigente; si no hay, el último pedido si la plataforma lo canceló y no hubo otra rotación de U', () => {
+    const draft = rotation({});
+    const rejected = rotation({ status: 'REJECTED', newKey: U_OTHER, rejectionReason: 'MANUAL_COMPARISON_FAILED' });
+    // Un registro nuevo en la Wallet después del rechazo es otro borrador: se compara de nuevo.
+    expect(currentDraft([draft, rejected])).toEqual({ draft: { id: draft.id, newKey: U_NEW }, rejection: null });
+    expect(currentDraft([rejected])).toEqual({
+      draft: { id: rejected.id, newKey: U_OTHER },
+      rejection: { reason: 'MANUAL_COMPARISON_FAILED' },
+    });
+    // Un motivo que esta versión no conoce, o un backend anterior que no lo manda: igual bloqueado.
+    expect(currentDraft([{ ...rejected, rejectionReason: 'UNKNOWN' }])?.rejection).toEqual({ reason: 'UNKNOWN' });
+    expect(currentDraft([{ ...rejected, rejectionReason: null }])?.rejection).toEqual({ reason: null });
+    // Después del rechazo hubo otra rotación de U (ya ejecutada): no hay pedido que mostrar.
+    expect(currentDraft([rotation({ status: 'EXECUTED', initiatedBy: 'R' }), rejected])).toBeNull();
+    // Otras rotaciones (de S, o de U propuestas por U) no son el pedido de la Wallet; sin rotaciones, tampoco.
+    expect(currentDraft([rotation({ role: 'S' })])).toBeNull();
+    expect(currentDraft([rotation({ initiatedBy: 'U' })])).toBeNull();
+    expect(currentDraft([rotation({ status: 'REJECTED', initiatedBy: 'U' })])).toBeNull();
+    expect(currentDraft(null)).toBeNull();
+    expect(currentDraft([])).toBeNull();
+  });
+
+  it('esta app no firma hacia la U′ de un borrador cancelado ni de uno bloqueado en la pestaña', () => {
+    const swapped = getAddress('0x9999999999999999999999999999999999999999');
+    const rejected = rotation({ status: 'REJECTED', newKey: swapped, rejectionReason: 'MANUAL_COMPARISON_FAILED' });
+    expect(refusedTarget(swapped, [rejected])).toBe(true);
+    expect(refusedTarget(swapped.toLowerCase() as Address, [rejected])).toBe(true);
+    expect(refusedTarget(U_NEW, [rejected])).toBe(false);
+    expect(refusedTarget(swapped, [rotation({ newKey: swapped })])).toBe(false);
+    expect(refusedTarget(swapped, [rotation({ role: 'S', status: 'REJECTED', newKey: swapped })])).toBe(false);
+    expect(refusedTarget('no-es-una-direccion' as Address, [rejected])).toBe(false);
+    // Bloqueado en la pestaña (aunque el aviso no haya llegado): tampoco.
+    const blocked = getAddress('0x8888888888888888888888888888888888888888');
+    const d = draft(blocked);
+    expect(refusedTarget(blocked, null)).toBe(false);
+    for (let i = 0; i < COMPARE_ATTEMPTS; i++) compareNewKey(d, groups(U_NEW));
+    expect(refusedTarget(blocked, null)).toBe(true);
+    expect(REFUSED_PROPOSAL_TEXT).toContain('esta app no la va a ejecutar');
+    expect(REFUSED_PROPOSAL_TEXT).toContain('Cancelala con tu clave R desde «Rotaciones» y avisá a soporte.');
+  });
+
+  it('los textos del bloqueo dicen que esta app no firma, que alguien pudo cambiarla y qué hacer, sin datos del backend', () => {
+    const rejected = rejectedText('MANUAL_COMPARISON_FAILED');
+    expect(rejected).toMatch(/^Este pedido quedó cancelado porque la dirección de la clave U nueva no coincidió/);
+    expect(rejected).toContain('esta app no va a firmar el reemplazo de tu clave U hacia esa dirección');
+    expect(rejected).toContain('Si la copiaste bien de la app Wallet, alguien pudo haberla cambiado en el camino.');
+    expect(rejected).toMatch(/empezá de nuevo desde la app Wallet \(«Perdí mi Password U»\) y avisá a soporte\.$/);
+    // Un motivo desconocido: el mismo bloqueo, sin el código.
+    expect(rejectedText('UNKNOWN')).toMatch(/^Este pedido de reemplazo de tu clave U quedó cancelado: esta app no va/);
+    expect(rejectedText(null)).toBe(rejectedText('UNKNOWN'));
+    for (const text of [
+      rejected,
+      rejectedText('UNKNOWN'),
+      REPORTING_TEXT,
+      REPORTED_TEXT,
+      REPORT_FAILED_TEXT,
+      REPORT_UNCONFIRMED_TEXT,
+      REPORT_CHANGED_TEXT,
+      STILL_BLOCKED_TEXT,
+    ]) {
+      expect(text).not.toMatch(/0x|UNKNOWN|MANUAL_COMPARISON_FAILED/);
+    }
+    expect(STILL_BLOCKED_TEXT).toContain('Esta app igual no va a firmar hacia esa dirección');
+    expect(REPORT_FAILED_TEXT).toBe('No se pudo avisar a la plataforma.');
   });
 });

@@ -1,10 +1,14 @@
 // `/recover-u` (P19.T04): reemplazar U perdida por U′. La Wallet registró U′ (con su KeyAcceptance) y dejó la rotación
 // en borrador para que R la proponga. Acá: U′ pendiente, que se confirma comparándola con la que muestra la Wallet
-// antes de firmar nada (ConfirmNewUserKey: la del backend no se muestra hasta que coincide, [F-LNK-04]); R firma la
-// propuesta que arma la app con la U′ confirmada (R + S, timelock de 48 h), cuenta regresiva con la hora de la cadena y,
-// al madurar, R firma la ejecución (swapOwner con el owner anterior leído de la cadena).
+// antes de firmar nada (ConfirmNewUserKey: la del backend no se muestra hasta que coincide, [F-LNK-04]); si no
+// coincide en los intentos, la app le avisa a la plataforma, que cancela el borrador (REJECTED) y al volver se muestra
+// bloqueado. R firma la propuesta que arma la app con la U′ confirmada (R + S, timelock de 48 h), cuenta regresiva con
+// la hora de la cadena y, al madurar, R firma la ejecución (swapOwner con el owner anterior leído de la cadena), salvo
+// que la propuesta vaya hacia una U′ que no coincidió.
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import { isAddress, isAddressEqual, type Address } from 'viem';
+import { ApiError } from '../api/client.ts';
 import type { Rotation } from '../api/recovery-api.ts';
 import { api, pinned, reader } from '../app/services.ts';
 import {
@@ -24,14 +28,8 @@ import { RecoveryGate, type RecoveryContext } from '../session/RecoveryGate.tsx'
 import { AddressText } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
 import { Notice, useAsyncAction } from '../ui/forms.tsx';
-import { sameDraft, type UserKeyDraft } from './compare.ts';
+import { currentDraft, REFUSED_PROPOSAL_TEXT, refusedTarget, sameDraft, type UserKeyDraft } from './compare.ts';
 import { ConfirmNewUserKey } from './ConfirmNewUserKey.tsx';
-
-/** El borrador de la rotación de U que dejó la Wallet con «Perdí mi Password U» (lo propone R). */
-function userKeyDraft(rotations: readonly Rotation[] | null): UserKeyDraft | null {
-  const draft = rotations?.find((r) => r.role === 'U' && r.status === 'DRAFT' && r.initiatedBy === 'R');
-  return draft ? { id: draft.id, newKey: draft.newKey } : null;
-}
 
 function RecoverU({ ctx }: { ctx: RecoveryContext }) {
   const { platform, signer, walletId, safe, checked } = ctx;
@@ -60,18 +58,49 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
     };
   }, [walletId, safe, timelock, reload]);
 
-  const draft = userKeyDraft(rotations);
-  // La U′ confirmada vale sólo para ese mismo borrador: si la Wallet registró otra, hay que volver a comparar.
+  const current = currentDraft(rotations);
+  const draft = current?.draft ?? null;
+  // La U′ confirmada vale sólo para ese mismo borrador y mientras siga sin cancelar: si la Wallet registró otra, hay que
+  // volver a comparar.
   const confirmedKey: Address | null =
-    confirmed !== null && draft !== null && sameDraft(confirmed, draft) ? confirmed.newKey : null;
+    confirmed !== null && draft !== null && current?.rejection === null && sameDraft(confirmed, draft)
+      ? confirmed.newKey
+      : null;
   const live =
     rotations?.find((r) => r.role === 'U' && ['PENDING_TIMELOCK', 'READY_TO_EXECUTE'].includes(r.status)) ?? null;
+  // Una propuesta en el timelock hacia una U′ que no coincidió (cancelada o bloqueada en esta pestaña) no se ejecuta.
+  const refused = pending !== null && refusedTarget(pending.newValue, rotations);
 
   const reread = useCallback(async () => {
     const { items } = await api.rotations(walletId);
     setRotations(items);
-    return userKeyDraft(items);
+    const latest = currentDraft(items);
+    // Uno que la plataforma ya canceló no se vuelve a comparar: la pantalla lo muestra bloqueado.
+    return latest !== null && latest.rejection === null ? latest.draft : null;
   }, [walletId]);
+
+  // Los intentos se agotaron: la plataforma cancela este borrador (con la U′ comparada, para no cancelar otra que la
+  // Wallet haya registrado en el mismo borrador mientras tanto).
+  const report = useCallback(
+    async (target: UserKeyDraft): Promise<boolean> => {
+      try {
+        const rotation = await api.rejectUserKeyReplacement(platform.auth, target.id, {
+          reason: 'MANUAL_COMPARISON_FAILED',
+          newKey: target.newKey,
+        });
+        if (rotation.status === 'REJECTED' && sameDraft({ id: rotation.id, newKey: rotation.newKey }, target)) {
+          setRotations((items) => items?.map((r) => (r.id === rotation.id ? rotation : r)) ?? items);
+          return true;
+        }
+      } catch (caught) {
+        // 409: la Wallet registró otra U′ en el mismo borrador o ya no es un borrador; se vuelve a leer más abajo.
+        if (!(caught instanceof ApiError) || caught.status !== 409) throw caught;
+      }
+      setReload((n) => n + 1);
+      return false;
+    },
+    [platform.auth],
+  );
 
   const propose = useAsyncAction(
     useCallback(async () => {
@@ -96,6 +125,7 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
   const execute = useAsyncAction(
     useCallback(async () => {
       if (!pending) return;
+      if (refusedTarget(pending.newValue, rotations)) throw new Error(REFUSED_PROPOSAL_TEXT);
       const rotation =
         live ??
         (await api.rotations(walletId)).items.find((r) => r.proposalId?.toLowerCase() === pending.id.toLowerCase());
@@ -113,7 +143,7 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
         });
       });
       setReview({ title: 'Revisá la ejecución del reemplazo de tu clave de usuario (U)', item });
-    }, [pending, live, walletId, platform, safe]),
+    }, [pending, rotations, live, walletId, platform, safe]),
   );
 
   if (review) {
@@ -151,22 +181,39 @@ function RecoverU({ ctx }: { ctx: RecoveryContext }) {
             Propuesta en el timelock: reemplazar U por la clave con la dirección{' '}
             <AddressText address={pending.newValue} />
           </p>
-          <p>
-            {mature
-              ? 'Se puede ejecutar.'
-              : `Se puede ejecutar desde el ${pending.executableAt.toLocaleString('es-AR')} (hora de la red).`}
-          </p>
-          {execute.error && <Notice tone="error">{execute.error}</Notice>}
-          {mature && (
-            <button type="button" className="button" disabled={execute.pending} onClick={() => void execute.run()}>
-              Ejecutar el reemplazo
-            </button>
+          {refused ? (
+            <div className="stack" data-u-refused="">
+              <Notice tone="error">{REFUSED_PROPOSAL_TEXT}</Notice>
+              <p>
+                <Link to="/rotations">Ir a Rotaciones</Link>
+              </p>
+            </div>
+          ) : (
+            <>
+              <p>
+                {mature
+                  ? 'Se puede ejecutar.'
+                  : `Se puede ejecutar desde el ${pending.executableAt.toLocaleString('es-AR')} (hora de la red).`}
+              </p>
+              {execute.error && <Notice tone="error">{execute.error}</Notice>}
+              {mature && (
+                <button type="button" className="button" disabled={execute.pending} onClick={() => void execute.run()}>
+                  Ejecutar el reemplazo
+                </button>
+              )}
+            </>
           )}
         </div>
       ) : draft ? (
         <div className="stack" data-draft-u={draft.id}>
           {confirmedKey === null ? (
-            <ConfirmNewUserKey draft={draft} reread={reread} onConfirmed={setConfirmed} />
+            <ConfirmNewUserKey
+              draft={draft}
+              rejection={current?.rejection ?? null}
+              reread={reread}
+              report={report}
+              onConfirmed={setConfirmed}
+            />
           ) : (
             <>
               <Notice tone="success">

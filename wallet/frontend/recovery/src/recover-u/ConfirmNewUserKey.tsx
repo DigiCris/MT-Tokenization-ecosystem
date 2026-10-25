@@ -2,8 +2,12 @@
 // backend no se muestra hasta que coincide con la que el usuario copia de la app Wallet. Los 10 grupos con el 0x fijo
 // antes del primero (un 0x tipeado o pegado se ignora), pegar la dirección completa la reparte en los grupos, y antes
 // de aceptar se vuelve a leer el borrador (la Wallet pudo registrar otra U′). Con los intentos agotados, el borrador
-// queda bloqueado en esta pestaña con el motivo y qué hacer.
-import { useState } from 'react';
+// queda bloqueado con el motivo y qué hacer, y la app le avisa a la plataforma para que lo cancele (si el aviso no
+// llega, el bloqueo sigue y se puede reintentar). Un borrador que la plataforma ya canceló se muestra bloqueado de
+// entrada, sin formulario. Ningún texto del backend llega a la pantalla.
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ApiError } from '../api/client.ts';
+import { describeError } from '../ui/errors.ts';
 import { Notice } from '../ui/forms.tsx';
 import {
   ADDRESS_GROUPS,
@@ -11,34 +15,114 @@ import {
   BLOCKED_TEXT,
   cleanGroup,
   compareNewKey,
+  draftKey,
   emptyGroups,
   MISMATCH_TEXT,
   pasteIntoGroups,
+  rejectedText,
+  REPORT_CHANGED_TEXT,
+  REPORT_FAILED_TEXT,
+  REPORT_UNCONFIRMED_TEXT,
+  REPORTED_TEXT,
+  REPORTING_TEXT,
   REREAD_ERROR_TEXT,
   retryText,
   sameDraft,
+  STILL_BLOCKED_TEXT,
+  type CurrentDraft,
   type UserKeyDraft,
 } from './compare.ts';
 
+/** La respuesta al aviso a la plataforma de un borrador bloqueado en esta pestaña (sin respuesta: se está avisando). */
+type Report = { draft: UserKeyDraft; state: 'done' } | { draft: UserKeyDraft; state: 'failed'; text: string };
+
+/** Por qué no llegó el aviso, con textos de esta app: por el código del backend o, sin respuesta, la red. */
+function reportFailure(error: unknown): string {
+  const why = error instanceof ApiError ? describeError(error) : 'Revisá tu conexión.';
+  return `${REPORT_FAILED_TEXT} ${why} ${STILL_BLOCKED_TEXT}`;
+}
+
 export function ConfirmNewUserKey({
   draft,
+  rejection,
   reread,
+  report,
   onConfirmed,
 }: {
   draft: UserKeyDraft;
+  /** Si la plataforma ya canceló este borrador (REJECTED), por qué; null si sigue en borrador. */
+  rejection: CurrentDraft['rejection'];
   /** El borrador vigente según la plataforma (null si ya no hay): se relee antes de aceptar la comparación. */
   reread: () => Promise<UserKeyDraft | null>;
+  /**
+   * Avisa a la plataforma que la U′ de este borrador no coincidió: true si lo canceló (la pantalla pasa a recibir el
+   * borrador rechazado), false si el pedido cambió (otra U′ en el mismo borrador, o ya no es un borrador).
+   */
+  report: (draft: UserKeyDraft) => Promise<boolean>;
   onConfirmed: (confirmed: UserKeyDraft) => void;
 }) {
   const [typed, setTyped] = useState<string[]>(emptyGroups);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mismatch, setMismatch] = useState<{ draft: UserKeyDraft; groups: number[]; left: number } | null>(null);
+  const [notice, setNotice] = useState<Report | null>(null);
+  // Los borradores ya avisados en esta pantalla: el aviso automático sale una vez; después, sólo el reintento.
+  const reported = useRef(new Set<string>());
+  const blockedHere = attemptsLeft(draft) === 0;
 
-  if (attemptsLeft(draft) === 0) {
+  const send = useCallback(
+    async (target: UserKeyDraft) => {
+      let outcome: Report;
+      try {
+        outcome = (await report(target))
+          ? { draft: target, state: 'done' }
+          : { draft: target, state: 'failed', text: REPORT_CHANGED_TEXT };
+      } catch (caught) {
+        outcome = { draft: target, state: 'failed', text: reportFailure(caught) };
+      }
+      setNotice(outcome);
+    },
+    [report],
+  );
+
+  // Con los intentos agotados en esta pestaña y el borrador todavía sin cancelar en la plataforma, se avisa.
+  useEffect(() => {
+    const key = draftKey(draft);
+    if (!blockedHere || rejection !== null || reported.current.has(key)) return;
+    reported.current.add(key);
+    void send(draft);
+  }, [blockedHere, rejection, draft, send]);
+
+  if (blockedHere || rejection !== null) {
+    const current = notice !== null && sameDraft(notice.draft, draft) ? notice : null;
     return (
-      <div className="stack" data-u-blocked="">
-        <Notice tone="error">{BLOCKED_TEXT}</Notice>
+      <div className="stack">
+        <div data-u-blocked="">
+          <Notice tone="error">{blockedHere ? BLOCKED_TEXT : rejectedText(rejection?.reason ?? null)}</Notice>
+        </div>
+        {rejection !== null ? (
+          <p data-u-report="reported">{REPORTED_TEXT}</p>
+        ) : current === null ? (
+          <p data-u-report="sending" role="status">
+            {REPORTING_TEXT}
+          </p>
+        ) : (
+          // Sin respuesta, con un error o sin que la plataforma confirme la cancelación: el bloqueo de esta pestaña
+          // sigue igual y el usuario puede reintentar el aviso.
+          <div className="stack" data-u-report="failed">
+            <Notice tone="warning">{current.state === 'failed' ? current.text : REPORT_UNCONFIRMED_TEXT}</Notice>
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => {
+                setNotice(null);
+                void send(draft);
+              }}
+            >
+              Reintentar el aviso a la plataforma
+            </button>
+          </div>
+        )}
       </div>
     );
   }

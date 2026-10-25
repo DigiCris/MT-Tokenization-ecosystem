@@ -1,8 +1,8 @@
 // P19: cada endpoint del listener de Recovery que usa la app sale con su método, ruta, cuerpo y protección: CSRF en los
 // POST/DELETE, Idempotency-Key en los que crean operaciones y los headers firmados por la session key en los críticos
 // (PlatformSession). La firma del canónico la cubre api.test.ts; acá, el contrato de cada llamada. Las rotaciones
-// llegan con el rol, el estado y el motivo validados: un código que esta app no conoce queda UNKNOWN (revisión de
-// ADR-033).
+// llegan con el rol, el estado y los motivos validados: un código que esta app no conoce queda UNKNOWN (revisión de
+// ADR-033). El rechazo del borrador del reemplazo de U ([F-LNK-04]) va con la sesión RECOVERY y la U′ comparada.
 import { describe, expect, it } from 'vitest';
 import { ApiClient, type PlatformAuth } from './client.ts';
 import { knownCode, knownRotation, RecoveryApi, type Rotation } from './recovery-api.ts';
@@ -30,10 +30,15 @@ const ROTATION = {
   cancelTypedData: null,
   requestReason: null,
   newKeyAttestation: null,
+  rejectionReason: null,
 } as const satisfies Rotation;
+
+/** El borrador del reemplazo de U cancelado por esta app (lo que responde el rechazo). */
+const REJECTED = { ...ROTATION, status: 'REJECTED', rejectionReason: 'MANUAL_COMPARISON_FAILED' } as const;
 
 /** La respuesta de prueba de cada ruta: la lista o la rotación donde las hay; si no, un objeto vacío. */
 function bodyFor(method: string, path: string): unknown {
+  if (path.startsWith('/recovery/u-replacement/')) return REJECTED;
   if (method === 'GET' && path.endsWith('/rotations')) return { items: [ROTATION] };
   if (path.endsWith('/rotations') || path.startsWith('/rotations/')) return { rotation: ROTATION };
   return {};
@@ -109,6 +114,12 @@ describe('RecoveryApi', () => {
     await api.proposeRotation(platform, WALLET, 'S', 'idem-propose');
     await api.prepareRotationExecution(platform, 'rot-1', 'idem-execute');
     await api.relayRotationCancellation('rot-1', SIGNATURE);
+    await api.rejectUserKeyReplacement(
+      platform,
+      'rot-1',
+      { reason: 'MANUAL_COMPARISON_FAILED', newKey: ROTATION.newKey },
+      'idem-reject',
+    );
     await api.operations(WALLET, { limit: 20, before: OP });
     await api.operations(WALLET);
     await api.operation(OP);
@@ -134,6 +145,7 @@ describe('RecoveryApi', () => {
       `POST /wallets/${WALLET}/rotations`,
       'POST /rotations/rot-1/execute/prepare',
       'POST /rotations/rot-1/cancel',
+      'POST /recovery/u-replacement/rot-1/reject',
       `GET /wallets/${WALLET}/operations?limit=20&before=${OP}`,
       `GET /wallets/${WALLET}/operations`,
       `GET /operations/${OP}`,
@@ -159,6 +171,11 @@ describe('RecoveryApi', () => {
     // La cancelación por relay va firmada por R (EIP-712): no necesita PlatformSession.
     expect(byPath('POST', '/rotations/rot-1/cancel')).toMatchObject({ body: { signature: SIGNATURE } });
     expect(byPath('POST', '/rotations/rot-1/cancel')?.headers['X-Platform-Session']).toBeUndefined();
+    // El rechazo del borrador de U′: con la sesión RECOVERY (crítico), idempotente y con la U′ que se comparó.
+    expect(byPath('POST', '/recovery/u-replacement/rot-1/reject')).toMatchObject({
+      body: { reason: 'MANUAL_COMPARISON_FAILED', newKey: ROTATION.newKey },
+      headers: { 'Idempotency-Key': 'idem-reject', 'X-Platform-Session': 't', 'X-CSRF-Token': 'csrf-1' },
+    });
     for (const path of ['whitelist-remove', 'noop', 'revoke-approval']) {
       const call = byPath('POST', `/wallets/${WALLET}/emergency/${path}`);
       expect(call?.headers['Idempotency-Key']).toMatch(/^rcv-/);
@@ -187,8 +204,21 @@ describe('RecoveryApi', () => {
       role: 'S',
       requestReason: 'KEY_COMPROMISE',
     });
-    const { requestReason: _omitted, ...withoutReason } = ROTATION;
-    expect(knownRotation(withoutReason as unknown as Rotation).requestReason).toBeNull();
+    const { requestReason: _omitted, rejectionReason: _rejection, ...withoutReason } = ROTATION;
+    expect(knownRotation(withoutReason as unknown as Rotation)).toMatchObject({
+      requestReason: null,
+      rejectionReason: null,
+    });
+    // El borrador de U′ cancelado: el estado y el motivo conocidos pasan; uno nuevo del backend queda UNKNOWN.
+    expect(
+      await api.rejectUserKeyReplacement(platform, 'rot-1', {
+        reason: 'MANUAL_COMPARISON_FAILED',
+        newKey: ROTATION.newKey,
+      }),
+    ).toEqual(REJECTED);
+    expect(
+      knownRotation({ ...REJECTED, rejectionReason: 'Copiá 0x1234 en los grupos' } as unknown as Rotation),
+    ).toMatchObject({ status: 'REJECTED', rejectionReason: 'UNKNOWN' });
     expect(knownCode(['A'], 'A')).toBe('A');
     expect(knownCode(['A'], undefined)).toBe('UNKNOWN');
   });

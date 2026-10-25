@@ -1,8 +1,9 @@
 // Endpoints del listener de Recovery (P12/P15) que usa la app: cuenta, step-up (PlatformSession ENROLLMENT/RECOVERY con
-// la session key propia), enrollment de R, rotaciones (U, S y la cancelación por relay), operaciones firmadas por R,
-// emergencia, migración y notificaciones. Los tipos siguen las respuestas del backend; lo que se firma la app lo
-// reconstruye por su cuenta (nada de una SafeTx se toma del backend sin verificarlo). Los códigos de las rotaciones que
-// se muestran con texto propio (rol, estado, motivo) se validan al recibirlos (knownRotation).
+// la session key propia), enrollment de R, rotaciones (U, S y la cancelación por relay), el rechazo del borrador del
+// reemplazo de U ([F-LNK-04]), operaciones firmadas por R, emergencia, migración y notificaciones. Los tipos siguen las
+// respuestas del backend; lo que se firma la app lo reconstruye por su cuenta (nada de una SafeTx se toma del backend
+// sin verificarlo). Los códigos de las rotaciones que se muestran con texto propio (rol, estado, motivos) se validan al
+// recibirlos (knownRotation).
 import type { Address, Hex } from 'viem';
 import { newIdempotencyKey, type ApiClient, type PlatformAuth } from './client.ts';
 import type { P256PublicJwk } from './session-key.ts';
@@ -13,6 +14,9 @@ export const ROTATION_ROLES = ['U', 'R', 'S', 'GUARD', 'MODULE_GUARD'] as const;
 export type RotationRole = (typeof ROTATION_ROLES)[number];
 export const EXECUTOR_ROTATION_REASONS = ['SHARD_MIGRATION', 'HSM_MIGRATION', 'KEY_COMPROMISE', 'MAINTENANCE'] as const;
 export type ExecutorRotationReason = (typeof EXECUTOR_ROTATION_REASONS)[number];
+/** Por qué esta app cancela un borrador del reemplazo de U: la U′ no coincidió con la de la app Wallet ([F-LNK-04]). */
+export const U_REPLACEMENT_REJECTION_REASONS = ['MANUAL_COMPARISON_FAILED'] as const;
+export type UReplacementRejectionReason = (typeof U_REPLACEMENT_REJECTION_REASONS)[number];
 
 /**
  * Un código que esta versión de la app no conoce, en un campo que la pantalla muestra con su propio texto (un backend
@@ -177,10 +181,11 @@ export const ROTATION_STATUSES = [
   'EXECUTED',
   'CANCELLED',
   'FAILED',
+  'REJECTED',
 ] as const;
 export type RotationStatus = (typeof ROTATION_STATUSES)[number];
 
-/** Rotación del backend: el rol, el estado y el motivo llegan validados (knownRotation). */
+/** Rotación del backend: el rol, el estado y los motivos llegan validados (knownRotation). */
 export interface Rotation {
   id: string;
   walletId: string;
@@ -203,16 +208,23 @@ export interface Rotation {
   /** Rotación de S pedida por la plataforma: motivo del borrador del operador. */
   requestReason: ExecutorRotationReason | UnknownCode | null;
   newKeyAttestation: string | null;
+  /** Sólo con REJECTED: por qué esta app canceló el borrador del reemplazo de U (un backend anterior no lo manda). */
+  rejectionReason: UReplacementRejectionReason | UnknownCode | null;
 }
 
-/** Una rotación del backend con el rol, el estado y el motivo validados: los que esta app no conoce quedan UNKNOWN. */
+/** Un código opcional: null si no viene; si viene, uno conocido o UNKNOWN. */
+function optionalCode<T extends string>(known: readonly T[], value: unknown): T | UnknownCode | null {
+  return value === null || value === undefined ? null : knownCode(known, value);
+}
+
+/** Una rotación del backend con el rol, el estado y los motivos validados: los que esta app no conoce quedan UNKNOWN. */
 export function knownRotation(rotation: Rotation): Rotation {
-  const reason: unknown = rotation.requestReason;
   return {
     ...rotation,
     role: knownCode(ROTATION_ROLES, rotation.role),
     status: knownCode(ROTATION_STATUSES, rotation.status),
-    requestReason: reason === null || reason === undefined ? null : knownCode(EXECUTOR_ROTATION_REASONS, reason),
+    requestReason: optionalCode(EXECUTOR_ROTATION_REASONS, rotation.requestReason),
+    rejectionReason: optionalCode(U_REPLACEMENT_REJECTION_REASONS, rotation.rejectionReason),
   };
 }
 
@@ -353,6 +365,25 @@ export class RecoveryApi {
       relay: { status: string; signer: Address; role: 'U' | 'R' };
     }>('POST', `/rotations/${enc(rotationId)}/cancel`, { body: { signature } });
     return { ...result, rotation: knownRotation(result.rotation) };
+  }
+
+  /**
+   * La U′ del borrador del reemplazo de U no coincidió con la que el usuario copió de la app Wallet ([F-LNK-04]): la
+   * plataforma cancela ese borrador (REJECTED). Va con la sesión RECOVERY de la propuesta y la U′ comparada: si la
+   * Wallet registró otra en el mismo borrador, responde 409.
+   */
+  async rejectUserKeyReplacement(
+    platform: PlatformAuth,
+    rotationId: string,
+    input: { reason: UReplacementRejectionReason; newKey: Address },
+    idempotencyKey = newIdempotencyKey(),
+  ) {
+    const rotation = await this.client.request<Rotation>('POST', `/recovery/u-replacement/${enc(rotationId)}/reject`, {
+      platform,
+      body: input,
+      idempotencyKey,
+    });
+    return knownRotation(rotation);
   }
 
   // --- Operaciones ---------------------------------------------------------------------------------------------------

@@ -4,14 +4,16 @@
 // dirección que muestra la Wallet (acá, el dato del test, nunca la pantalla de Recovery); con un grupo mal copiado se
 // le dice cuál, sin revelar la dirección. Ya confirmada, R firma la propuesta que arma la app hacia esa U′ (R + S,
 // timelock de 48 h), ve la cuenta regresiva con la hora de la cadena y, a las 48 h, firma la ejecución: U′ queda como
-// owner de la Safe y como U del Guard.
+// owner de la Safe y como U del Guard. Si la U′ del borrador no coincide en los 3 intentos, Recovery le avisa a la
+// plataforma, que cancela el borrador (REJECTED): en otra pestaña aparece bloqueado de entrada, y una U′ nueva que
+// registre la Wallet es otro borrador que se compara de nuevo.
 import { expect, test } from '@playwright/test';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { increaseTime, safeState } from './helpers/chain.ts';
 import { sealRecovery, type SealedRecovery } from './helpers/envelope.ts';
 import { activeWallet, replaceUserKey, type ActiveWallet, type UserKey } from './helpers/onboard.ts';
 import { advanceRateLimitWindows } from './helpers/stack.ts';
-import { addressGroupsOf, settled, throughGate, typeAddressGroups } from './helpers/ui.ts';
+import { addressGroupsOf, openFromHome, settled, throughGate, typeAddressGroups } from './helpers/ui.ts';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -86,4 +88,70 @@ test('R confirma U′ copiada de la Wallet (antes no se muestra), propone U → 
   expect(onchain.owners).toContain(newUser.account.address);
   expect(onchain.owners).not.toContain(wallet.user.account.address);
   expect(onchain.roles.userKey).toBe(newUser.account.address);
+});
+
+test('U′ que no coincide en 3 intentos: Recovery cancela el borrador en la plataforma, otra pestaña lo muestra bloqueado y una U′ nueva de la Wallet es otra comparación', async ({
+  browser,
+}) => {
+  test.setTimeout(600_000);
+  const key = generatePrivateKey();
+  const recovery = privateKeyToAccount(key);
+  const owner = await activeWallet('recover-u-rejected', recovery);
+  const ownerSealed = await sealRecovery(recovery, key, owner.walletId);
+  const first = await replaceUserKey(owner);
+  advanceRateLimitWindows();
+  // La dirección que el usuario copia de la app Wallet es otra que la U′ del borrador (una U′ cambiada en el camino).
+  const fromWallet = addressGroupsOf(privateKeyToAccount(generatePrivateKey()).address);
+
+  const page = await browser.newPage();
+  try {
+    await page.goto('/recover-u');
+    await throughGate(page, owner.account.email, ownerSealed);
+    const draft = page.locator(`[data-draft-u="${first.rotationId}"]`);
+    await expect(draft.getByLabel('Grupo 1 de 10', { exact: true })).toBeVisible({ timeout: 60_000 });
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await typeAddressGroups(page, fromWallet);
+      await page.getByRole('button', { name: 'Confirmar la dirección de la clave U nueva' }).click();
+      if (attempt < 3) await expect(draft.locator('[data-mismatch-groups]')).toBeVisible();
+    }
+    await expect(draft.locator('[data-u-blocked]')).toContainText(
+      'esta app no va a firmar el reemplazo de tu clave U hacia esa dirección',
+    );
+    await expect(draft.locator('[data-u-report="reported"]')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: 'Confirmar la dirección de la clave U nueva' })).toHaveCount(0);
+    await expect(page.locator(`[data-address="${first.newUser.account.address}"]`)).toHaveCount(0);
+  } finally {
+    await page.close();
+  }
+  // La plataforma lo canceló con el motivo.
+  const listed = await owner.account.wallet.request<{
+    items: { id: string; status: string; rejectionReason: string | null }[];
+  }>('GET', `/wallets/${owner.walletId}/rotations`);
+  expect(listed.items.find((r) => r.id === first.rotationId)).toMatchObject({
+    status: 'REJECTED',
+    rejectionReason: 'MANUAL_COMPARISON_FAILED',
+  });
+
+  // Otra pestaña, sin la memoria de la anterior: el borrador cancelado aparece bloqueado de entrada, sin formulario.
+  advanceRateLimitWindows();
+  const again = await browser.newPage();
+  try {
+    await again.goto('/recover-u');
+    await throughGate(again, owner.account.email, ownerSealed);
+    const blocked = again.locator(`[data-draft-u="${first.rotationId}"]`);
+    await expect(blocked.locator('[data-u-blocked]')).toContainText('Este pedido quedó cancelado', { timeout: 60_000 });
+    await expect(blocked.locator('[data-u-report="reported"]')).toBeVisible();
+    await expect(again.getByLabel('Grupo 1 de 10', { exact: true })).toHaveCount(0);
+
+    // La Wallet registra otra U′: es otro borrador y Recovery vuelve a pedir la comparación.
+    advanceRateLimitWindows();
+    const second = await replaceUserKey(owner);
+    expect(second.rotationId).not.toBe(first.rotationId);
+    await openFromHome(again, 'Recuperar mi clave de usuario (U)');
+    const fresh = again.locator(`[data-draft-u="${second.rotationId}"]`);
+    await expect(fresh.getByLabel('Grupo 1 de 10', { exact: true })).toBeVisible({ timeout: 60_000 });
+    await expect(fresh.locator('[data-u-blocked]')).toHaveCount(0);
+  } finally {
+    await again.close();
+  }
 });
