@@ -138,7 +138,11 @@ export async function enrollInRecovery(
   await recovery.getByRole('button', { name: 'Ya las anoté' }).click();
   await expect(recovery.getByRole('heading', { name: 'Confirmá tu Password R' })).toBeVisible();
   // En el paso de cifrado, recordar el sobre en este dispositivo viene marcado (como en la Wallet).
-  const rememberBox = recovery.getByLabel(/^Recordar el sobre cifrado de R en este dispositivo/);
+  // Texto exacto: Recovery deja un espacio antes del texto de sus casillas y una regex con «^» no las encuentra.
+  const rememberBox = recovery.getByLabel(
+    'Recordar el sobre cifrado de R en este dispositivo (nunca la clave ni la Password R). Si el dispositivo es compartido, desmarcalo.',
+    { exact: true },
+  );
   await expect(rememberBox).toBeChecked();
   await snap('confirmar-password-r');
   for (const field of await recovery.getByLabel(/^Palabra \d$/).all()) {
