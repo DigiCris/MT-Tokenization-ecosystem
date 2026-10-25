@@ -108,7 +108,7 @@ test('viaje de OAuth completo desde /enroll: vuelve con el mismo k, la URL limpi
   const passwordList = page.getByRole('list', { name: 'Password R' }).locator('.words__word');
   await expect(passwordList).toHaveCount(5);
   const passwordWords = await passwordList.allTextContents();
-  await page.getByLabel('Anoté las 5 palabras en un lugar seguro').check();
+  await page.getByLabel('Anoté las 5 palabras en orden y las guardo fuera de este dispositivo.').check();
   await page.getByRole('button', { name: 'Ya las anoté' }).click();
   for (const field of await page.getByLabel(/^Palabra \d$/).all()) {
     const position = Number((await field.getAttribute('name'))?.replace('word-', ''));

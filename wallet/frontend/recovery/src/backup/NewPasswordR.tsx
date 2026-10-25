@@ -1,7 +1,8 @@
 // Password R nueva ([F-KEY-02]): la app genera 5 palabras, el usuario las anota y confirma 2 al azar (posiciones nuevas
 // cada vez que pasa a confirmar; si se equivoca, puede volver a verlas). La usan la creación de R (P19.T03) y el
-// re-cifrado de R restaurada desde las 17 palabras (P19.T08).
-import { useCallback, useState } from 'react';
+// re-cifrado de R restaurada desde las 17 palabras (P19.T08). La confirmación es el paso donde se cifra R: quien la usa
+// puede sumar ahí sus opciones (la creación de R, recordar el sobre en este dispositivo).
+import { useCallback, useState, type ReactNode } from 'react';
 import { confirmationPositions, confirmsPassword, newPasswordR } from '../crypto/password.ts';
 import { loadWordlist } from '../crypto/wordlist.ts';
 import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
@@ -12,12 +13,15 @@ export function NewPasswordR({
   error,
   generateLabel,
   confirmLabel,
+  confirmOptions,
   onConfirmed,
 }: {
   pending: boolean;
   error: string | null;
   generateLabel: string;
   confirmLabel: string;
+  /** Opciones del cifrado, junto al botón que cifra. */
+  confirmOptions?: ReactNode;
   onConfirmed: (words: string[]) => void;
 }) {
   const [words, setWords] = useState<string[] | null>(null);
@@ -62,7 +66,7 @@ export function NewPasswordR({
               setNoted(event.currentTarget.checked);
             }}
           />{' '}
-          Anoté las 5 palabras en un lugar seguro
+          Anoté las 5 palabras en orden y las guardo fuera de este dispositivo.
         </label>
         <button
           type="button"
@@ -113,6 +117,7 @@ export function NewPasswordR({
             }}
           />
         ))}
+        {confirmOptions}
         {(confirmError ?? error) && <Notice tone="error">{confirmError ?? error}</Notice>}
         <div className="actions">
           <button type="submit" className="button" disabled={pending}>

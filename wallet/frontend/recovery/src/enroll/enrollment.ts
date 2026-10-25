@@ -3,12 +3,14 @@
 // control de R (EIP-712, recupera exactamente R), la KeyAcceptance de R′ en un reemplazo y el enlace de regreso a la
 // Wallet con R para que la confirme. `k` es el secreto del pedido que generó la Wallet (ADR-033): Recovery no lo usa ni
 // lo manda a su backend, sólo lo devuelve en el fragmento del enlace de regreso, y con él la Wallet sabe que ese enlace
-// lo armó esta app a partir de su pedido (un backend comprometido conoce el pedido y su R′, pero nunca `k`).
+// lo armó esta app a partir de su pedido (un backend comprometido conoce el pedido y su R′, pero nunca `k`). También,
+// cuándo vence el pedido y qué queda de R en este dispositivo al enviarla ([F-KEY-07], tercera revisión de P17.MAN).
 import { getAddress, isAddress, type Address, type Hex } from 'viem';
-import type { EnrollmentObject, EnrollmentSubmission, StorageFlags } from '../api/recovery-api.ts';
+import type { EnrollmentObject, EnrollmentStatus, EnrollmentSubmission, StorageFlags } from '../api/recovery-api.ts';
 import { canonicalize } from '../api/jcs.ts';
 import { signP256 } from '../api/session-key.ts';
 import { hexToBytes, bytesToHex } from '../crypto/encoding.ts';
+import type { RecoveryEnvelope } from '../crypto/envelope.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NONCE = /^0x[0-9a-f]{64}$/;
@@ -23,13 +25,17 @@ export class EnrollmentError extends Error {
 export interface EnrollLink {
   enrollmentId: string;
   nonce: Hex;
-  /** `k` del enlace de ida (null si la Wallet no lo mandó: entonces el regreso sólo se confirma a mano). */
+  /**
+   * `k` del enlace de ida (null si no lo trae: la Wallet actual siempre lo manda, así que lo armó una Wallet anterior a
+   * ADR-033 o alguien lo sacó del enlace). Sin `k` no hay enlace de regreso: la dirección se copia a mano en la Wallet.
+   */
   secret: string | null;
 }
 
 /**
  * `#eid=<uuid>&n=<0x + 64 hex>&k=<22 base64url>` del enlace de la Wallet; null si el fragmento no es un pedido válido
- * (también si trae un `k` mal formado). Sin `k` el pedido sigue valiendo: la Wallet lo confirma a mano.
+ * (también si trae un `k` mal formado). Sin `k` el pedido sigue valiendo, pero la pantalla final no ofrece el enlace de
+ * regreso (ver `returnLink`): pide copiar la dirección en la Wallet, en la comparación manual.
  */
 export function parseEnrollFragment(fragment: string): EnrollLink | null {
   const params = new URLSearchParams(fragment.replace(/^#/, ''));
@@ -138,8 +144,11 @@ export function submission(input: {
 
 /**
  * [F-LNK-02]: enlace de regreso a la Wallet con R en el fragmento, para confirmarla en la pestaña que espera:
- * `…/onboarding/confirm-recovery#eid=<id>&r=<R>&k=<k>`, con el mismo `k` del enlace de ida (sin `k`, la Wallet no lo
- * acepta como enlace de esta app y la dirección se confirma a mano).
+ * `…/onboarding/confirm-recovery#eid=<id>&r=<R>&k=<k>`, con el mismo `k` del enlace de ida. Sin `k` la Wallet no lo
+ * acepta: la pestaña del pedido lo toma como un enlace falsificado, cancela el pedido (ya no se confirma por ningún
+ * camino, tampoco a mano) y se lo informa a la plataforma (`RETURN_LINK_UNVERIFIED`, con el email de posible
+ * sustitución); sin esa pestaña, la que abre el enlace también cancela el pedido. Por eso, con un enlace de ida sin `k`,
+ * la pantalla final no lo muestra y pide copiar la dirección en la pestaña del pedido.
  */
 export function returnLink(
   walletOrigin: string,
@@ -163,4 +172,46 @@ export function connectorIdFor(id: string): string {
     .slice(0, 63);
   if (!/^[a-z0-9][a-z0-9.-]{1,62}$/.test(normalized)) throw new EnrollmentError('conector inválido');
   return normalized;
+}
+
+/**
+ * Cuándo vence el pedido de la Wallet, con la hora que informa el backend (`expiresAt`, 15 minutos desde que la Wallet
+ * lo generó, no desde que se abrió acá: puede llegar con pocos minutos), en el huso del dispositivo salvo que se pase
+ * otro.
+ */
+export function requestExpiryText(expiresAt: string, timeZone?: string): string {
+  const time = new Date(expiresAt).toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    ...(timeZone === undefined ? {} : { timeZone }),
+  });
+  return `Este pedido de la app Wallet vence a las ${time}: enviá la dirección antes.`;
+}
+
+/** Los sobres recordados en este dispositivo (src/storage/envelope-cache.ts: IndexedDB, uno por wallet). */
+export interface EnvelopeStore {
+  remember: (envelope: RecoveryEnvelope) => Promise<void>;
+  forget: (walletId: string) => Promise<void>;
+}
+
+/**
+ * «Recordar el sobre cifrado de R en este dispositivo» ([F-KEY-07]) al enviar la dirección de una R creada en este
+ * navegador: con la casilla marcada se guarda sólo el sobre cifrado (nunca R ni la Password R), en lugar del que
+ * hubiera recordado de esa wallet. Se guarda recién con la dirección enviada, así un pedido que vence o se abandona no
+ * deja el sobre de una R que no se va a usar. Sin marcar no se guarda nada; en el onboarding, además, se borra el que
+ * hubiera quedado de un pedido anterior (la wallet todavía no tiene R vigente: era de una R que ya no se usa), y en un
+ * reemplazo de R no se toca (puede ser el de la R vigente). Devuelve si quedó recordado.
+ */
+export async function keepEnvelopeOnDevice(
+  envelope: RecoveryEnvelope,
+  choice: { remember: boolean; purpose: EnrollmentStatus['purpose'] },
+  store: EnvelopeStore,
+): Promise<boolean> {
+  if (choice.remember) {
+    await store.remember(envelope);
+    return true;
+  }
+  if (choice.purpose === 'ONBOARDING') await store.forget(envelope.walletId);
+  return false;
 }

@@ -1,6 +1,8 @@
 // Step-up de Recovery ([B-PSES-03], [F-SES-02]): código por email (+ TOTP o código de recuperación si la cuenta lo
 // tiene) → PlatformSession ENROLLMENT o RECOVERY de 15 min, atada a una session key P-256 nueva y no extraíble. Cada
-// step-up revoca las PlatformSessions anteriores de la cuenta (el backend rota la sesión y su CSRF).
+// step-up revoca las PlatformSessions anteriores de la cuenta (el backend rota la sesión y su CSRF). En el enrollment
+// el plazo que manda es el del pedido de la Wallet (vence 15 min después de generarlo, antes que la verificación): la
+// pantalla del pedido muestra a qué hora (tercera revisión de P17.MAN, hallazgo 3).
 import { useCallback, useState } from 'react';
 import type { StepUpScope } from '../api/recovery-api.ts';
 import { api } from '../app/services.ts';
@@ -12,6 +14,12 @@ import type { PlatformSession } from './store.ts';
 const SCOPE_TEXT: Record<StepUpScope, string> = {
   ENROLLMENT: 'registrar tu clave de recuperación',
   RECOVERY: 'firmar con tu clave de recuperación',
+};
+
+/** Cuánto hay para terminar una vez verificado. */
+const AFTER_TEXT: Record<StepUpScope, string> = {
+  ENROLLMENT: 'Una vez verificado, enviá la dirección antes de que venza el pedido de la app Wallet.',
+  RECOVERY: 'Una vez verificado, tenés 15 minutos para terminar.',
 };
 
 export function StepUp({
@@ -60,7 +68,7 @@ export function StepUp({
       <p>
         Para {SCOPE_TEXT[scope]} {pending ? 'te mandamos' : 'te vamos a mandar'} un código por email
         {needsSecond ? ' y te pedimos tu segundo factor' : ''}.{pending ? ` ${codeExpiryText(pending.expiresAt)}` : ''}{' '}
-        Una vez verificado, tenés 15 minutos para terminar.
+        {AFTER_TEXT[scope]}
       </p>
       {!pending ? (
         <>

@@ -44,9 +44,9 @@ export function HomePage() {
         <p className="eyebrow">Clave de recuperación · R</p>
         <h1 id="home-title">La llave de recuperación de tu wallet</h1>
         <p className="lead">
-          MT Recovery guarda y usa tu clave de recuperación (R), separada de la app Wallet: otra dirección web, otros
-          backups y otra password. Con R podés reemplazar una clave perdida, cancelar rotaciones que no pediste y, junto
-          con tu clave de usuario (U), operar tu Safe sin la plataforma.
+          MT Recovery usa tu clave de recuperación (R), separada de la app Wallet: otra dirección web, otros backups y
+          otra password. Con R podés reemplazar una clave perdida, cancelar rotaciones que no pediste y, junto con tu
+          clave de usuario (U), operar tu Safe sin la plataforma.
         </p>
         <ul className="facts">
           <li>

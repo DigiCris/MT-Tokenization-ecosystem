@@ -5,9 +5,16 @@
 // con R y el secreto `k` del pedido (ADR-033: sólo viaja en los fragmentos, nunca al backend; durante el viaje de OAuth
 // de Drive queda en el estado de ese viaje, que se borra al volver o si se abandona). Lo que viaja y se muestra es la
 // dirección de R (la clave nunca sale de esta app): los textos lo dicen así, y piden copiarla en la Wallet si está en
-// otro dispositivo, porque la Wallet no la muestra hasta que coincide ([F-LNK-02]).
+// otro dispositivo, porque la Wallet no la muestra hasta que coincide ([F-LNK-02]). Sin `k` en el enlace de ida no hay
+// enlace de regreso (la Wallet lo cancelaría): sólo la dirección para copiar a mano.
+//
+// Tercera revisión de P17.MAN: la pantalla dice cuándo vence el pedido (15 min desde que lo generó la Wallet, puede
+// llegar con poco tiempo), y lo que dice de dónde queda R es cierto en cada caso: con el sobre recordado en este
+// dispositivo (la casilla del cifrado, [F-KEY-07]; se guarda al enviar la dirección), sin recordarlo (R vive en la
+// pestaña hasta que se bloquea y después hacen falta sus backups) o con una wallet externa.
 import { useCallback, useEffect, useState } from 'react';
 import type { Address, Hex } from 'viem';
+import { ApiError } from '../api/client.ts';
 import type { EnrollmentStatus, StorageFlags } from '../api/recovery-api.ts';
 import { generateSessionKey, type SessionKey } from '../api/session-key.ts';
 import { api } from '../app/services.ts';
@@ -20,6 +27,7 @@ import { keyAcceptance, recoveryProofOfControl } from '../crypto/typed-data.ts';
 import type { ExternalSession } from '../external-wallet/types.ts';
 import { useSensitiveScreen, useSession } from '../session/context.tsx';
 import { StepUp } from '../session/StepUp.tsx';
+import { forgetEnvelope, rememberEnvelope } from '../storage/envelope-cache.ts';
 import { AddressText } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
 import { Notice, useAsyncAction } from '../ui/forms.tsx';
@@ -30,12 +38,23 @@ import {
   connectorIdFor,
   enrollReturnPath,
   enrollmentObject,
+  keepEnvelopeOnDevice,
   parseEnrollFragment,
+  requestExpiryText,
   returnLink,
   signEnrollmentObject,
   submission,
   type EnrollLink,
 } from './enrollment.ts';
+import {
+  R_EXTERNAL_TEXT,
+  R_KEEP_FAILED_TEXT,
+  R_KEPT_TEXT,
+  R_NOT_KEPT_TEXT,
+  RETURN_QR_TEXT,
+  RETURN_WITH_SECRET_TEXT,
+  RETURN_WITHOUT_SECRET_TEXT,
+} from './texts.ts';
 
 /** El pedido del fragmento, leído una sola vez al cargar la página (y sacado de la URL y del historial). */
 function readLink(): EnrollLink | null {
@@ -63,8 +82,19 @@ function rejectedText(reason: EnrollmentStatus['rejectionReason']): string {
 }
 
 type KeyChoice =
-  | { kind: 'internal'; unlocked: UnlockedRecovery; flags: StorageFlags }
+  | { kind: 'internal'; unlocked: UnlockedRecovery; flags: StorageFlags; remember: boolean }
   | { kind: 'external'; session: ExternalSession };
+
+/** Qué quedó de R en este dispositivo al enviar su dirección. */
+type Kept = 'external' | 'remembered' | 'not-remembered' | 'remember-failed';
+
+/** Lo enviado: la dirección de R y qué quedó en el dispositivo (la clave misma ya no hace falta en esta pantalla). */
+interface Sent {
+  recoveryKey: Address;
+  kept: Kept;
+}
+
+const envelopeStore = { remember: rememberEnvelope, forget: forgetEnvelope };
 
 export function EnrollPage() {
   useSensitiveScreen();
@@ -92,7 +122,7 @@ export function EnrollPage() {
   const [enrollmentKey, setEnrollmentKey] = useState<SessionKey | null>(null);
   const [mode, setMode] = useState<'choose' | 'internal' | 'external'>('choose');
   const [choice, setChoice] = useState<KeyChoice | null>(null);
-  const [sent, setSent] = useState<{ recoveryKey: Address } | null>(null);
+  const [sent, setSent] = useState<Sent | null>(null);
 
   useEffect(() => {
     if (link === null || session.status !== 'account') return;
@@ -122,7 +152,15 @@ export function EnrollPage() {
     useCallback(async () => {
       if (!link || !platform) return;
       const key = enrollmentKey ?? (await generateSessionKey());
-      await api.registerEnrollmentKey(platform.auth, link.enrollmentId, key.publicJwk);
+      try {
+        await api.registerEnrollmentKey(platform.auth, link.enrollmentId, key.publicJwk);
+      } catch (error) {
+        // Vencido antes de crear R: no hay ninguna R que descartar (el texto del código es el del envío).
+        if (error instanceof ApiError && error.code === 'ENROLLMENT_EXPIRED') {
+          throw new Error(STATUS_TEXT.EXPIRED, { cause: error });
+        }
+        throw error;
+      }
       setEnrollmentKey(key);
     }, [link, platform, enrollmentKey]),
   );
@@ -171,8 +209,24 @@ export function EnrollPage() {
         keyAcceptance: acceptance,
       });
       const result = await api.submitEnrollment(platform.auth, link.enrollmentId, body);
+      // Con la dirección enviada, el sobre cifrado queda en este dispositivo sólo si se pidió ([F-KEY-07]); si el
+      // navegador no deja guardarlo, se dice (la pantalla final no puede afirmar que quedó).
+      let kept: Kept = 'external';
+      if (choice.kind === 'internal') {
+        const wanted = { remember: choice.remember, purpose: enrollment.purpose };
+        try {
+          kept = (await keepEnvelopeOnDevice(choice.unlocked.envelope, wanted, envelopeStore))
+            ? 'remembered'
+            : 'not-remembered';
+        } catch {
+          kept = choice.remember ? 'remember-failed' : 'not-remembered';
+        }
+      }
       setEnrollment(result);
-      setSent({ recoveryKey });
+      setSent({ recoveryKey, kept });
+      // La pantalla final ya no necesita R: queda sólo la de la sesión, que se descarta al bloquear, por inactividad o
+      // al cerrar la pestaña.
+      setChoice(null);
     }, [link, platform, enrollment, enrollmentKey, choice, session.user]),
   );
 
@@ -199,33 +253,36 @@ export function EnrollPage() {
   if (loadError) return <Notice tone="error">{loadError}</Notice>;
   if (enrollment === null || link === null) return <p className="muted">Leyendo el pedido…</p>;
 
-  const recoveryLink = sent ? returnLink(appConfig.walletOrigin, link, sent.recoveryKey) : null;
-  if (recoveryLink && sent) {
+  if (sent) {
+    // Sin el `k` del enlace de ida, un enlace de regreso sólo cancelaría el pedido en la Wallet: no se ofrece.
+    const recoveryLink = link.secret === null ? null : returnLink(appConfig.walletOrigin, link, sent.recoveryKey);
     return (
-      <section className="card stack" aria-labelledby="enroll-done-title">
+      <section className="card stack" aria-labelledby="enroll-done-title" data-kept={sent.kept}>
         <h1 id="enroll-done-title">Dirección de tu clave R enviada</h1>
         <p>
-          Tu clave R queda en esta app: a la plataforma sólo le llegó su dirección. Volvé a la app Wallet para
-          confirmarla.
+          {sent.kept === 'external' ? R_EXTERNAL_TEXT : sent.kept === 'remembered' ? R_KEPT_TEXT : R_NOT_KEPT_TEXT}{' '}
+          Volvé a la app Wallet para confirmarla.
         </p>
-        <p>
-          Si la Wallet está en este dispositivo, abrí «Volver a la Wallet»: la dirección se confirma sola en la pestaña
-          donde generaste el pedido. Si está en otro dispositivo, copiá ahí esta dirección completa, grupo por grupo (da
-          igual mayúsculas o minúsculas):
-        </p>
+        {sent.kept === 'remember-failed' && <Notice tone="warning">{R_KEEP_FAILED_TEXT}</Notice>}
+        <p>{recoveryLink === null ? RETURN_WITHOUT_SECRET_TEXT : RETURN_WITH_SECRET_TEXT}</p>
         <p data-recovery-key={sent.recoveryKey}>
           <AddressText address={sent.recoveryKey} copy />
         </p>
-        <p>
-          <a href={recoveryLink} data-return-link={recoveryLink}>
-            Volver a la Wallet
-          </a>
-        </p>
-        <QrCanvas text={recoveryLink} label="QR para volver a la Wallet con la dirección de tu clave R" />
-        <p className="muted">
-          El enlace y el QR sirven sólo para el pedido que abriste desde la app Wallet. No los mandes por chat ni por
-          email, y no abras enlaces de regreso que te lleguen por esos medios.
-        </p>
+        {recoveryLink !== null && (
+          <>
+            <p>
+              <a href={recoveryLink} data-return-link={recoveryLink}>
+                Volver a la Wallet
+              </a>
+            </p>
+            <p>{RETURN_QR_TEXT}</p>
+            <QrCanvas text={recoveryLink} label="QR para volver a la Wallet con la dirección de tu clave R" />
+            <p className="muted">
+              El enlace y el QR sirven sólo para el pedido que abriste desde la app Wallet. No los mandes por chat ni
+              por email, y no abras enlaces de regreso que te lleguen por esos medios.
+            </p>
+          </>
+        )}
       </section>
     );
   }
@@ -248,8 +305,11 @@ export function EnrollPage() {
           {enrollment.purpose === 'REPLACEMENT' ? 'Reemplazar tu clave de recuperación' : 'Activar Recovery'}
         </h1>
         <p>
-          La app Wallet pidió registrar tu clave de recuperación (R). R vive en esta app, separada de la Wallet: con U y
-          R podés operar tu Safe sin la plataforma.
+          La app Wallet pidió registrar tu clave de recuperación (R). R se crea y se usa en esta app, separada de la
+          Wallet: con U y R podés operar tu Safe sin la plataforma.
+        </p>
+        <p data-request-expires={enrollment.expiresAt}>
+          <strong>{requestExpiryText(enrollment.expiresAt)}</strong>
         </p>
       </section>
       {!platformOk && (
@@ -257,8 +317,8 @@ export function EnrollPage() {
           <h2 id="enroll-drive-title">Backup en tu Google Drive (opcional)</h2>
           <DriveConnect returnTo={enrollReturnPath(link)}>
             Si querés guardar el sobre cifrado de R en la carpeta privada de Recovery en tu Drive, conectalo ahora,
-            antes de verificar tu identidad. Igual vas a necesitar un backup fuera de la plataforma (archivo, QR o
-            palabras).
+            antes de verificar tu identidad. Igual vas a necesitar un backup que no dependa de la plataforma ni de Drive
+            (archivo, QR o las 17 palabras).
           </DriveConnect>
         </section>
       )}
@@ -266,8 +326,8 @@ export function EnrollPage() {
       {platformOk && register.error && <Notice tone="error">{register.error}</Notice>}
       {platformOk && enrollmentKey !== null && choice === null && mode === 'choose' && (
         <section className="card stack" aria-labelledby="choose-title">
-          <h2 id="choose-title">¿Dónde va a vivir tu clave R?</h2>
-          <div className="actions">
+          <h2 id="choose-title">¿Cómo vas a tener tu clave R?</h2>
+          <div className="stack">
             <button
               type="button"
               className="button"
@@ -277,6 +337,12 @@ export function EnrollPage() {
             >
               Crear una clave R en este navegador
             </button>
+            <p className="muted">
+              Esta app genera R, la cifra con una Password R de 5 palabras y te pide al menos un backup (archivo, QR o
+              las 17 palabras); si querés, también recuerda el sobre cifrado en este dispositivo.
+            </p>
+          </div>
+          <div className="stack">
             <button
               type="button"
               className="button button--secondary"
@@ -286,6 +352,10 @@ export function EnrollPage() {
             >
               Usar una wallet externa
             </button>
+            <p className="muted">
+              R es una cuenta común (EOA) de una wallet tuya, como MetaMask o Coinbase Wallet: la clave queda en esa
+              wallet y firma desde ahí. Sus backups son los de esa wallet.
+            </p>
           </div>
         </section>
       )}
@@ -313,6 +383,9 @@ export function EnrollPage() {
           </p>
           <p className="muted">
             Tu clave R no sale de esta app: se envía sólo su dirección, con una firma que prueba que la controlás.
+          </p>
+          <p>
+            <strong>{requestExpiryText(enrollment.expiresAt)}</strong>
           </p>
           {!platformOk && <Notice tone="warning">La verificación venció: hacela de nuevo para enviar.</Notice>}
           {submit.error && <Notice tone="error">{submit.error}</Notice>}

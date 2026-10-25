@@ -120,14 +120,22 @@ export function enrollmentStepUpRoutes(codeExpiresAt: string): MockRoute[] {
   ];
 }
 
-/** Lo que informa el backend de un enrollment de R: pendiente o con la R que "recibió". */
-export function enrollmentView(id: string, recoveryKey: string | null, keyRegistered = recoveryKey !== null) {
+/**
+ * Lo que informa el backend de un enrollment de R: pendiente o con la R que "recibió". Vence a los 15 minutos, o a la
+ * hora fija que se pida (para comprobar el texto del vencimiento).
+ */
+export function enrollmentView(
+  id: string,
+  recoveryKey: string | null,
+  keyRegistered = recoveryKey !== null,
+  expiresAt = new Date(Date.now() + 15 * 60_000).toISOString(),
+) {
   return {
     id,
     walletId: WALLET_ID,
     purpose: 'ONBOARDING',
     status: recoveryKey === null ? 'REQUESTED' : 'SUBMITTED',
-    expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    expiresAt,
     enrollmentKeyRegistered: keyRegistered,
     recoveryKey,
     rType: recoveryKey === null ? null : 'INTERNAL',

@@ -436,6 +436,22 @@ legend {
   font-weight: var(--mtw-font-weight-bold);
 }
 
+/* Las 17 palabras de R: columnas anchas (3 o 4 en una pantalla grande, una en el celular) para que una palabra larga
+   no baje debajo de su número; las de la lista miden hasta 28 letras. */
+.words--17 {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+}
+
+.words--17 .words__item {
+  white-space: nowrap;
+}
+
+/* Título de lo que se imprime (de qué app y qué clave es): se ve también en pantalla. */
+.print-title {
+  margin: 0;
+  font-weight: var(--mtw-font-weight-bold);
+}
+
 .list,
 .rotations,
 .review {

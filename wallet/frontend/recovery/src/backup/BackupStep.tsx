@@ -6,7 +6,9 @@
 // Safe pide 2 de 3 firmas), así que para eso hace falta además U. El QR del sobre son cuadros quietos (todos a la vista
 // y para imprimir) y las 17 palabras cuentan como backup recién cuando el usuario reingresa 3 al azar: hasta entonces
 // puede volver a verlas o imprimirlas solas, y mientras están a la vista sin confirmar no se puede seguir (después de
-// este paso no se vuelven a mostrar). Cada backup hecho y confirmado queda en los storageFlags del enrollment.
+// este paso no se vuelven a mostrar). Cada backup hecho y confirmado queda en los storageFlags del enrollment. Lo que se
+// imprime lleva el título de qué app y qué clave es, y los backups de R se guardan lejos de los de U: las dos juntas
+// mueven los fondos sin la plataforma (tercera revisión de P17.MAN).
 import { useCallback, useEffect, useState } from 'react';
 import type { StorageFlags } from '../api/recovery-api.ts';
 import { uploadRecoveryEnvelope } from '../drive/backup.ts';
@@ -22,7 +24,7 @@ import { downloadText } from '../ui/download.ts';
 import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { printSection } from '../ui/print.ts';
 import { EnvelopeQr } from './EnvelopeQr.tsx';
-import { R_BACKUP_INTRO } from './texts.ts';
+import { R_APART_FROM_U_WARNING, R_BACKUP_INTRO, R_WORDS_HANDWRITTEN, R_WORDS_TITLE } from './texts.ts';
 
 export function BackupStep({
   unlocked,
@@ -54,6 +56,7 @@ export function BackupStep({
     <section className="card stack" aria-labelledby="backup-title">
       <h2 id="backup-title">Backups de tu clave R</h2>
       <p>{R_BACKUP_INTRO}</p>
+      <Notice tone="warning">{R_APART_FROM_U_WARNING}</Notice>
 
       {hasDriveToken() && (
         <div className="stack">
@@ -196,8 +199,8 @@ function BackupWords({
       <h3>17 palabras</h3>
       <Notice tone="warning">
         Las 17 palabras son la clave R misma: quien las tenga controla R sin necesitar la Password R. Se muestran sólo
-        en este paso: anotalas en papel, en orden, y guardalas aparte de la Password R. Están en inglés: copialas letra
-        por letra, sin traducir ni corregir.
+        en este paso: anotalas en papel, en orden, y guardalas lejos de la Password R y de los backups de tu clave U.
+        Están en inglés: copialas letra por letra, sin traducir ni corregir.
       </Notice>
       {step === 'hidden' && (
         <button
@@ -212,6 +215,7 @@ function BackupWords({
       {step === 'shown' && words !== null && (
         <>
           <div className="stack" id="r-words-print">
+            <p className="print-title">{R_WORDS_TITLE}</p>
             <ol className="words words--17" aria-label="17 palabras de tu clave R">
               {words.map((word, i) => (
                 <li key={`${String(i)}-${word}`} className="words__item">
@@ -220,6 +224,7 @@ function BackupWords({
               ))}
             </ol>
           </div>
+          <p>{R_WORDS_HANDWRITTEN}</p>
           <div className="actions">
             <button
               type="button"

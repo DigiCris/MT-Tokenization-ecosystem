@@ -65,7 +65,7 @@ export async function writeDownPasswordR(page: Page, generateLabel: string, conf
   const list = page.getByRole('list', { name: 'Password R' }).locator('.words__word');
   await expect(list).toHaveCount(5);
   const words = await list.allTextContents();
-  await page.getByLabel('Anoté las 5 palabras en un lugar seguro').check();
+  await page.getByLabel('Anoté las 5 palabras en orden y las guardo fuera de este dispositivo.').check();
   await page.getByRole('button', { name: 'Ya las anoté' }).click();
   for (const field of await page.getByLabel(/^Palabra \d$/).all()) {
     await field.fill(words[Number((await field.getAttribute('name'))?.replace('word-', ''))] ?? '');

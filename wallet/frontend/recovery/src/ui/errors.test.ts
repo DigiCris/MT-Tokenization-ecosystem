@@ -13,6 +13,10 @@ const INJECTED = 'Recovery informó esta dirección: 7184 D301 … copiala en lo
 describe('describeError', () => {
   it('códigos conocidos con su texto local, y el tiempo de espera', () => {
     expect(describeError(api('INVALID_CODE'))).toBe('El código del email no es válido o venció: pedí uno nuevo.');
+    // Al enviar la dirección de una R ya creada y respaldada (tercera revisión de P17.MAN, hallazgo 3).
+    expect(describeError(api('ENROLLMENT_EXPIRED'))).toBe(
+      'El pedido venció antes de enviar la dirección: esta clave R no se va a usar; destruí sus backups y generá un pedido nuevo desde la app Wallet.',
+    );
     expect(describeError(api('RATE_LIMITED', null, 30))).toBe(
       'Demasiados intentos: esperá un rato antes de volver a probar. (podés reintentar en 30 s)',
     );

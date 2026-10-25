@@ -1,6 +1,8 @@
 // R interna (P19.T03): la app genera R ([F-KEY-01]) y la Password R de 5 palabras ([F-KEY-02]); el usuario las anota y
 // confirma 2 al azar; R se sella en `R.enc` con Argon2id (worker) y queda desbloqueada en memoria (sobre + K_R no
-// exportable; los bytes de R se borran). Después vienen los backups.
+// exportable; los bytes de R se borran). Después vienen los backups. En el paso de cifrado se elige si recordar el sobre
+// cifrado en este dispositivo ([F-KEY-07], marcado por defecto como en la Wallet): se guarda recién al enviar la
+// dirección (enrollment.ts, keepEnvelopeOnDevice).
 import { useCallback, useState } from 'react';
 import type { StorageFlags } from '../api/recovery-api.ts';
 import { argon2 } from '../app/services.ts';
@@ -13,16 +15,18 @@ import { newPrivateKey } from '../crypto/secp256k1.ts';
 import type { UnlockedRecovery } from '../crypto/session.ts';
 import { useSessionStore } from '../session/context.tsx';
 import { useAsyncAction } from '../ui/forms.tsx';
+import { NEW_R_PER_REQUEST_TEXT, REMEMBER_R_LABEL } from './texts.ts';
 
 export function CreateRecoveryKey({
   walletId,
   onReady,
 }: {
   walletId: string;
-  onReady: (result: { unlocked: UnlockedRecovery; flags: StorageFlags }) => void;
+  onReady: (result: { unlocked: UnlockedRecovery; flags: StorageFlags; remember: boolean }) => void;
 }) {
   const store = useSessionStore();
   const [unlocked, setUnlocked] = useState<UnlockedRecovery | null>(null);
+  const [remember, setRemember] = useState(true);
 
   const seal = useAsyncAction(
     useCallback(
@@ -50,7 +54,7 @@ export function CreateRecoveryKey({
       <BackupStep
         unlocked={unlocked}
         onDone={(flags) => {
-          onReady({ unlocked, flags });
+          onReady({ unlocked, flags, remember });
         }}
       />
     );
@@ -63,11 +67,25 @@ export function CreateRecoveryKey({
         La app genera tu clave R y una Password R de 5 palabras. R nunca sale de este navegador sin cifrar y la
         plataforma no puede usarla.
       </p>
+      <p>{NEW_R_PER_REQUEST_TEXT}</p>
       <NewPasswordR
         generateLabel="Generar mi clave R"
         confirmLabel="Confirmar y cifrar"
         pending={seal.pending}
         error={seal.error}
+        confirmOptions={
+          <label className="check">
+            <input
+              type="checkbox"
+              name="remember-r"
+              checked={remember}
+              onChange={(event) => {
+                setRemember(event.currentTarget.checked);
+              }}
+            />{' '}
+            {REMEMBER_R_LABEL}
+          </label>
+        }
         onConfirmed={(words) => void seal.run(words)}
       />
     </section>

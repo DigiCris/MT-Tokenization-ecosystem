@@ -23,7 +23,9 @@ const API_TEXT: Record<string, string> = {
   SCOPE_NOT_ALLOWED: 'Esta verificación no sirve para esta acción o esta wallet: verificá tu identidad de nuevo.',
   WALLET_NOT_ACTIVE: 'La wallet no está activa para esta acción.',
   SAFE_CONFIG_MODIFIED: 'La Safe se modificó fuera de la plataforma: usá el modo soberano.',
-  ENROLLMENT_EXPIRED: 'El pedido de la Wallet venció: generá uno nuevo desde la app Wallet.',
+  // Lo devuelve el envío de la dirección (con R ya creada y respaldada); antes de crear R, /enroll muestra el estado.
+  ENROLLMENT_EXPIRED:
+    'El pedido venció antes de enviar la dirección: esta clave R no se va a usar; destruí sus backups y generá un pedido nuevo desde la app Wallet.',
   KEY_NOT_ALLOWED: 'Esa clave no se puede usar como clave de recuperación (ya está en uso o no es una cuenta común).',
   SIGNATURE_INVALID: 'La firma no es válida para esta operación.',
   POLICY_REJECTED: 'Las reglas de la plataforma no permiten esta operación.',

@@ -15,7 +15,14 @@ const envelope = parseRecoveryEnvelope(vector.envelope);
 
 /** Drive en memoria con la semántica de la API (ids, appDataFolder, multipart, páginas) para probar el cliente. */
 function fakeDrive(
-  options: { corrupt?: boolean; pageSize?: number; status?: number; beforePatch?: (id: string) => void } = {},
+  options: {
+    corrupt?: boolean;
+    pageSize?: number;
+    status?: number;
+    beforePatch?: (id: string) => void;
+    /** Antes de borrar: otro dispositivo lo borra, o Drive responde otro status. */
+    beforeDelete?: (id: string) => number | undefined;
+  } = {},
 ) {
   const files = new Map<string, { name: string; content: Uint8Array; modifiedTime: string }>();
   let next = 1;
@@ -42,7 +49,11 @@ function fakeDrive(
       if (!file) return new Response(null, { status: 404 });
       return new Response(new Uint8Array(options.corrupt ? utf8('alterado') : file.content));
     }
-    if (method === 'DELETE' && id) return new Response(null, { status: files.delete(id) ? 204 : 404 });
+    if (method === 'DELETE' && id) {
+      const forced = options.beforeDelete?.(id);
+      if (forced !== undefined) return new Response(null, { status: forced });
+      return new Response(null, { status: files.delete(id) ? 204 : 404 });
+    }
     if (method === 'PATCH' && id) {
       options.beforePatch?.(id);
       if (!files.has(id)) return new Response(null, { status: 404 });
@@ -98,6 +109,29 @@ describe('cliente de Drive', () => {
     expect(result.replaced).toBe(false);
     const stored = [...drive.files.values()].filter((f) => f.name === 'y.json');
     expect(stored.map((f) => new TextDecoder().decode(f.content))).toEqual(['nuevo']);
+  });
+
+  it('subir: una copia vieja que ya no está al limpiarla (404) no convierte en error el backup verificado', async () => {
+    // Otra subida (o dispositivo) borra la copia vieja entre el listado y la limpieza.
+    const drive = fakeDrive({
+      beforeDelete: (id) => {
+        drive.files.delete(id);
+        return undefined;
+      },
+    });
+    const client = new DriveClient(() => 't', drive.fetcher);
+    await client.create('z.json', utf8('copia vieja'));
+    await client.create('z.json', utf8('la más reciente'));
+    const result = await client.uploadVerified('z.json', utf8('nuevo'));
+    expect(result.replaced).toBe(true);
+    const stored = [...drive.files.values()].filter((f) => f.name === 'z.json');
+    expect(stored.map((f) => new TextDecoder().decode(f.content))).toEqual(['nuevo']);
+    // Cualquier otro error al borrar sigue siendo un error.
+    const forbidden = fakeDrive({ beforeDelete: () => 403 });
+    const other = new DriveClient(() => 't', forbidden.fetcher);
+    await other.create('z.json', utf8('copia vieja'));
+    await other.create('z.json', utf8('la más reciente'));
+    await expect(other.uploadVerified('z.json', utf8('nuevo'))).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it.each([

@@ -1,23 +1,41 @@
 // P19.T03: el fragmento del enlace de la Wallet (con el secreto k del pedido, ADR-033), el objeto del enrollment
 // firmado por la Enrollment Key (verificable con su JWK, como lo verifica el backend), las firmas estrictas de wallets
-// externas y el enlace de regreso [F-LNK-02] con el mismo k.
+// externas y el enlace de regreso [F-LNK-02] con el mismo k. Tercera revisión de P17.MAN: cuándo vence el pedido, el
+// sobre de R recordado en este dispositivo sólo con la casilla marcada (nunca R ni la Password R) y los textos de la
+// pantalla final según quede o no el sobre.
 import { keccak256, recoverAddress, toBytes, type Hex } from 'viem';
 import { describe, expect, it } from 'vitest';
 import p256Vectors from '../../test/vectors/wire/p256.json' with { type: 'json' };
 import { canonicalize } from '../api/jcs.ts';
 import { generateSessionKey, verifyP256 } from '../api/session-key.ts';
+import { bytesToBase64Url, bytesToHex, toBufferSource } from '../crypto/encoding.ts';
+import { sealRecoveryKey, type RecoveryEnvelope } from '../crypto/envelope.ts';
+import type { Argon2 } from '../crypto/kdf.ts';
 import { addressOfKey, signDigest } from '../crypto/secp256k1.ts';
 import {
   connectorIdFor,
   EnrollmentError,
   enrollmentObject,
   enrollReturnPath,
+  keepEnvelopeOnDevice,
   parseEnrollFragment,
+  requestExpiryText,
   returnLink,
   signEnrollmentObject,
   strictSignature,
   submission,
 } from './enrollment.ts';
+import {
+  NEW_R_PER_REQUEST_TEXT,
+  R_EXTERNAL_TEXT,
+  R_KEEP_FAILED_TEXT,
+  R_KEPT_TEXT,
+  R_NOT_KEPT_TEXT,
+  REMEMBER_R_LABEL,
+  RETURN_QR_TEXT,
+  RETURN_WITH_SECRET_TEXT,
+  RETURN_WITHOUT_SECRET_TEXT,
+} from './texts.ts';
 
 const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
 const R_KEY = toBytes(keccak256(toBytes('mtw-recovery-key')));
@@ -33,7 +51,7 @@ describe('enlace de la Wallet', () => {
       nonce: NONCE,
       secret: K,
     });
-    // Sin k el pedido sigue valiendo (la Wallet confirma la dirección a mano).
+    // Sin k el pedido sigue valiendo (sin enlace de regreso: la dirección se copia a mano en la Wallet).
     expect(parseEnrollFragment(`#eid=${EID}&n=${NONCE}`)).toEqual({ enrollmentId: EID, nonce: NONCE, secret: null });
     for (const bad of [
       '',
@@ -65,7 +83,7 @@ describe('enlace de la Wallet', () => {
       r: '0x7184D30100a188c9F869ccB6883392534ecD6C9d',
       k: K,
     });
-    // Sin k en el enlace de ida, el de regreso tampoco lo trae (la Wallet confirma a mano).
+    // Sin k en el enlace de ida, el de regreso tampoco lo traería (la Wallet lo cancelaría: la pantalla no lo ofrece).
     const withoutSecret = new URL(
       returnLink('https://wallet.example', { enrollmentId: EID, secret: null }, addressOfKey(R_KEY)),
     );
@@ -185,5 +203,132 @@ describe('envío del enrollment', () => {
     expect(connectorIdFor('walletConnect')).toBe('walletconnect');
     expect(connectorIdFor('com.coinbase.wallet')).toBe('com.coinbase.wallet');
     expect(() => connectorIdFor('!')).toThrow(EnrollmentError);
+  });
+});
+
+describe('vencimiento del pedido (hallazgo 3)', () => {
+  it('la hora en que vence el pedido de la Wallet, la que informa el backend, en el huso del dispositivo', () => {
+    expect(requestExpiryText('2026-10-25T15:25:00.000Z', 'America/Argentina/Buenos_Aires')).toBe(
+      'Este pedido de la app Wallet vence a las 12:25: enviá la dirección antes.',
+    );
+    expect(requestExpiryText('2026-10-25T15:05:00Z', 'UTC')).toBe(
+      'Este pedido de la app Wallet vence a las 15:05: enviá la dirección antes.',
+    );
+    expect(requestExpiryText('2026-10-25T15:05:00Z')).toMatch(/vence a las \d{2}:\d{2}: enviá la dirección antes\.$/);
+  });
+});
+
+describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07], bloqueante)', () => {
+  /** Argon2id de prueba (rápido): el sobre se arma con el código de la app, sin pagar 64 MiB. */
+  const fastArgon2: Argon2 = async ({ password, salt }) =>
+    new Uint8Array(await crypto.subtle.digest('SHA-256', toBufferSource(new Uint8Array([...password, ...salt]))));
+  const WALLET = '7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5';
+  const PASSWORD_R = 'acorn violet marble tundra zebra';
+
+  /** Lo que guardaría el storage, como lo guarda envelope-cache.ts (el JSON del sobre por wallet). */
+  function fakeStore() {
+    const stored = new Map<string, string>();
+    const forgotten: string[] = [];
+    return {
+      stored,
+      forgotten,
+      store: {
+        remember: (envelope: RecoveryEnvelope) => {
+          stored.set(envelope.walletId, JSON.stringify(envelope));
+          return Promise.resolve();
+        },
+        forget: (walletId: string) => {
+          forgotten.push(walletId);
+          stored.delete(walletId);
+          return Promise.resolve();
+        },
+      },
+    };
+  }
+
+  async function sealed() {
+    const key = R_KEY.slice();
+    const opened = await sealRecoveryKey(
+      key,
+      PASSWORD_R,
+      { platformId: 'mtw', walletId: WALLET, keyVersion: 1 },
+      fastArgon2,
+    );
+    return opened.envelope;
+  }
+
+  it('con la casilla marcada queda sólo el sobre cifrado: nunca R ni la Password R', async () => {
+    const envelope = await sealed();
+    const { stored, forgotten, store } = fakeStore();
+    expect(await keepEnvelopeOnDevice(envelope, { remember: true, purpose: 'ONBOARDING' }, store)).toBe(true);
+    expect(forgotten).toEqual([]);
+    const saved = stored.get(WALLET) ?? '';
+    expect(JSON.parse(saved)).toEqual(envelope);
+    // Ni la clave (hex con o sin 0x, base64url) ni la Password R (completa o sus palabras) aparecen en lo guardado.
+    const keyHex = bytesToHex(R_KEY).slice(2);
+    for (const secret of [
+      keyHex,
+      keyHex.toUpperCase(),
+      bytesToBase64Url(R_KEY),
+      PASSWORD_R,
+      ...PASSWORD_R.split(' '),
+    ]) {
+      expect(saved).not.toContain(secret);
+    }
+  });
+
+  it('sin marcar no se guarda nada; en el onboarding se borra el sobre de un pedido anterior, en un reemplazo no', async () => {
+    const envelope = await sealed();
+    const onboarding = fakeStore();
+    onboarding.stored.set(WALLET, '{"de":"un pedido anterior"}');
+    expect(await keepEnvelopeOnDevice(envelope, { remember: false, purpose: 'ONBOARDING' }, onboarding.store)).toBe(
+      false,
+    );
+    expect(onboarding.forgotten).toEqual([WALLET]);
+    expect(onboarding.stored.size).toBe(0);
+    const replacement = fakeStore();
+    replacement.stored.set(WALLET, '{"de":"la R vigente"}');
+    expect(await keepEnvelopeOnDevice(envelope, { remember: false, purpose: 'REPLACEMENT' }, replacement.store)).toBe(
+      false,
+    );
+    expect(replacement.forgotten).toEqual([]);
+    expect(replacement.stored.get(WALLET)).toBe('{"de":"la R vigente"}');
+  });
+
+  it('si el dispositivo no deja guardarlo, el error llega a quien lo pidió (la pantalla no dice que quedó)', async () => {
+    const envelope = await sealed();
+    const failing = {
+      remember: () => Promise.reject(new Error('IndexedDB no disponible')),
+      forget: () => Promise.resolve(),
+    };
+    await expect(keepEnvelopeOnDevice(envelope, { remember: true, purpose: 'ONBOARDING' }, failing)).rejects.toThrow(
+      'IndexedDB',
+    );
+  });
+
+  it('textos de la pantalla final: ciertos con el sobre recordado, sin recordarlo y con una wallet externa', () => {
+    expect(REMEMBER_R_LABEL).toBe(
+      'Recordar el sobre cifrado de R en este dispositivo (nunca la clave ni la Password R). Si el dispositivo es compartido, desmarcalo.',
+    );
+    // Nada dice que R «vive» o «queda» en la app sin el sobre recordado.
+    expect(R_NOT_KEPT_TEXT).toContain('Esta app no la guarda');
+    expect(R_NOT_KEPT_TEXT).toContain('al cerrar la pestaña, al tocar «Bloquear» o después de 5 minutos sin uso');
+    expect(R_NOT_KEPT_TEXT).toContain('uno de sus backups (el archivo o el QR con la Password R, o las 17 palabras)');
+    expect(R_KEPT_TEXT).toContain('Queda cifrada en este dispositivo (sólo se abre con tu Password R)');
+    expect(R_KEPT_TEXT).toContain('igual necesitás sus backups fuera de él');
+    expect(R_KEEP_FAILED_TEXT).toContain('No se pudo recordar el sobre cifrado de R');
+    expect(R_EXTERNAL_TEXT).toContain('wallet externa');
+    for (const text of [R_KEPT_TEXT, R_NOT_KEPT_TEXT, R_EXTERNAL_TEXT]) {
+      expect(text).toContain('a la plataforma sólo le llegó su dirección');
+      expect(text).not.toMatch(/vive en esta app|queda en esta app/);
+    }
+    // Los 10 grupos son los que siguen al «0x»; sin k no hay enlace de regreso.
+    expect(RETURN_WITH_SECRET_TEXT).toContain('los 10 grupos que siguen al «0x»');
+    expect(RETURN_WITHOUT_SECRET_TEXT).toContain('acá no hay enlace de regreso');
+    expect(RETURN_WITHOUT_SECRET_TEXT).toContain('los 10 grupos que siguen al «0x»');
+    expect(RETURN_QR_TEXT).toMatch(/^Si la Wallet está en tu celular, escaneá este QR con él/);
+    expect(NEW_R_PER_REQUEST_TEXT).toBe(
+      'Cada pedido crea una clave R nueva: si creaste otra para un pedido anterior, destruí sus backups.',
+    );
   });
 });
