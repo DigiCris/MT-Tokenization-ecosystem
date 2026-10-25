@@ -134,12 +134,15 @@ export async function enrollInRecovery(
   const downloading = recovery.waitForEvent('download');
   await recovery.getByRole('button', { name: 'Descargar el archivo cifrado' }).click();
   expect(JSON.parse(await downloadedText(await downloading))).toMatchObject({ role: 'R' });
-  await recovery.getByLabel(/^Guardé el archivo fuera de este dispositivo/).check();
+  // Recovery deja un espacio antes del texto de sus casillas: el string exacto lo ignora; una expresión con ^ no.
+  await recovery
+    .getByLabel('Guardé el archivo fuera de este dispositivo (sin la Password R al lado).', { exact: true })
+    .check();
   if (options.allBackups === true) {
     await recovery.getByRole('button', { name: 'Mostrar el QR' }).click();
     await expect(recovery.getByRole('img', { name: /^QR del sobre cifrado de R, parte 1 de/ })).toBeVisible();
     await snap('backup-qr');
-    await recovery.getByLabel(/^Guardé o imprimí (el QR|las \d+ partes del QR)/).check();
+    await recovery.getByLabel(/Guardé o imprimí (el QR|las \d+ partes del QR) fuera de este dispositivo/).check();
     await recovery.getByRole('button', { name: 'Mostrar las 17 palabras' }).click();
     const list = recovery.getByRole('list', { name: '17 palabras de tu clave R' });
     await expect(list.locator('.words__word')).toHaveCount(17);

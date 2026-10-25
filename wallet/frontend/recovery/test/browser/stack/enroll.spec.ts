@@ -81,7 +81,10 @@ test('R interna: Password R, backups en Drive y archivo, prueba de control y Saf
     expect(new TextDecoder().decode(await drive.download(stored?.id ?? ''))).toBe(serializeRecoveryEnvelope(envelope));
     // Drive no cuenta como backup independiente de la plataforma: hace falta el archivo (o QR o palabras).
     await expect(page.getByText('Falta al menos un backup: archivo, QR o las 17 palabras.')).toBeVisible();
-    await page.getByLabel(/^Guardé el archivo fuera de este dispositivo \(sin la Password R al lado\)\.$/).check();
+    // Recovery deja un espacio antes del texto de la casilla: el string exacto lo ignora; una expresión con ^ no.
+    await page
+      .getByLabel('Guardé el archivo fuera de este dispositivo (sin la Password R al lado).', { exact: true })
+      .check();
     await page.getByRole('button', { name: 'Continuar' }).click();
     await page.getByRole('button', { name: 'Firmar y enviar' }).click();
     await expect(page.getByRole('heading', { name: 'Dirección de tu clave R enviada' })).toBeVisible({
