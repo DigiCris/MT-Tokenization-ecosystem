@@ -30,7 +30,9 @@ todo pedido abortado se informa al backend.
 - **Recovery** ([F-LNK-02]): lee `k` del fragmento (que saca de la URL al leerlo, como `eid` y `n`), no lo usa ni lo
   manda a su backend y lo devuelve en el fragmento del enlace de regreso y de su QR:
   `https://wallet…/onboarding/confirm-recovery#eid=<id>&r=<R>&k=<k>`. Un `k` mal formado invalida el enlace de ida; sin
-  `k`, el pedido sigue y el regreso tampoco lo trae (la Wallet lo confirma a mano).
+  `k`, el pedido sigue pero Recovery no ofrece enlace ni QR de regreso: la Wallet tomaría un regreso sin `k` como
+  falsificado y cancelaría el pedido (ver «Pestaña del pedido»). La pantalla final pide copiar la dirección a mano, en
+  sus 10 grupos, en la pestaña del pedido (tercera revisión de P17.MAN).
 - **Excepción: el viaje de OAuth de Drive en Recovery.** El consentimiento de Google es una redirección de página
   completa, así que lo único que sobrevive es el estado del viaje en el sessionStorage de la pestaña
   (`src/drive/oauth-state.ts`, uno de los dos módulos con Web Storage permitido): en `/enroll`, su ruta de regreso lleva
@@ -138,9 +140,9 @@ todo pedido abortado se informa al backend.
   si se cierra sin una sesión válida), y el aviso keepalive de `pagehide` no sale si la sesión ya venció o si el
   navegador no lo manda; el aborto local no depende de eso.
 - Orden de despliegue: Recovery antes que Wallet. Una Recovery anterior no devuelve `k` y la Wallet nueva abortaría su
-  enlace de regreso (falso positivo de sustitución); una Wallet anterior no manda `k` y la Recovery nueva arma el regreso
-  sin `k`, que esa Wallet no exige. El backend (migración 0010) va antes que la Wallet nueva: el aviso de rechazo nuevo
-  usa sus columnas.
+  enlace de regreso (falso positivo de sustitución); con una Wallet anterior, que no manda `k`, la Recovery nueva no
+  ofrece el regreso y la dirección se confirma con la comparación manual (está en las dos versiones). El backend
+  (migración 0010) va antes que la Wallet nueva: el aviso de rechazo nuevo usa sus columnas.
 - Un enlace de regreso abierto en una pestaña sin el pedido ya no confirma R: el usuario vuelve a la pestaña del pedido
   o genera otro, y Recovery crea otra R (la app lo avisa).
 - La app Recovery muestra por qué se rechazó un pedido (`rejectionReason` en el estado del enrollment).
@@ -162,8 +164,9 @@ todo pedido abortado se informa al backend.
   confirman; un pedido cancelado o reemplazado desde otro lado se cierra; dejar el pedido tras una comparación fallida
   lo informa; en una pestaña sin el pedido lo explica enseguida, también en el reemplazo de R con la wallet activa; `k`
   no viaja en rutas, cuerpos ni headers, tampoco en los rechazos) y `frontend/recovery/test/browser/enroll-backups.spec.ts`
-  y `enroll-drive-oauth.spec.ts` (el regreso lleva el mismo `k`, también después del viaje de OAuth de Drive; el estado
-  del viaje se borra al volver y al abandonarlo; ningún pedido a la API lleva `k`).
+  y `enroll-drive-oauth.spec.ts` (el regreso lleva el mismo `k`, también después del viaje de OAuth de Drive; con un
+  enlace de ida sin `k` no hay enlace ni QR de regreso y la pantalla pide copiar la dirección; el estado del viaje se
+  borra al volver y al abandonarlo; ningún pedido a la API lleva `k`).
 - Stack: `frontend/wallet/test/browser/stack/recovery-activation.spec.ts` (REJECTED con el motivo en el backend real,
   también por el aviso keepalive al recargar), `replace-recovery.spec.ts` (confirmación por enlace en el reemplazo de R;
   con la rotación propuesta el rechazo da 409 y la ejecución on-chain deja el pedido CONFIRMED),
