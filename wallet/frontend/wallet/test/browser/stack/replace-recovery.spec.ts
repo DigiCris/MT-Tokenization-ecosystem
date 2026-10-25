@@ -45,7 +45,7 @@ test('reemplazar Recovery: R′ confirmada, propuesta firmada por U y ejecución
   const replacement = await submitRecovery(wallet, { ...request, walletId: wallet.wallet.id });
   await confirmGroupsManually(page, replacement.address);
   await page.getByRole('button', { name: 'Revisar la propuesta' }).click();
-  await expect(page.getByText(/Proponer reemplazar tu clave de recuperación \(R\)/)).toBeVisible();
+  await expect(page.getByText(/Proponer reemplazar la dirección de tu clave de recuperación \(R\)/)).toBeVisible();
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(page.getByText(/Propuesta enviada: se puede ejecutar dentro de 48 h/)).toBeVisible({ timeout: 240_000 });
   await backendKnowsProposal(wallet, 'R');

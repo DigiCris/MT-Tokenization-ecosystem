@@ -3,7 +3,9 @@
 // su nombre (label de la whitelist entre «» o contrato del sistema) y la dirección completa al lado; el permiso del swap
 // nombra al contrato de swap de la plataforma; el vencimiento del swap se mide con la hora de la cadena (la última
 // lectura más lo que pasó desde entonces) y se muestra en la del dispositivo; ya ejecutada, la operación se cuenta en
-// pasado; cada estado que se puede ver tiene su ayuda y los motivos van en texto, nunca como código crudo.
+// pasado; cada estado que se puede ver tiene su ayuda y los motivos van en texto, nunca como código crudo. Tercera
+// revisión independiente: una clave o un contrato se nombran por su dirección («la dirección de tu clave…»), cada rol
+// con su artículo («del Guard», «de la clave de la plataforma (S)») y un rol o un estado desconocidos, en genérico.
 import type { Address } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
 import type { OperationState, OperationStatus } from '../api/wallet-api.ts';
@@ -18,13 +20,18 @@ import {
   describeCall,
   describeParts,
   expiryText,
+  isRotationRole,
+  ofRole,
   operationReason,
   partsText,
+  roleText,
   stateLabel,
   STATE_HELP,
   STATE_TEXT,
   swapDeadline,
   SWAP_SIGN_MARGIN_MS,
+  UNKNOWN_ROLE_TEXT,
+  UNKNOWN_STATE_TEXT,
 } from './describe.ts';
 import { addressNames, labelsOf, POOL_NAME, shownLabels } from './names.ts';
 
@@ -69,13 +76,19 @@ describe('texto de las operaciones', () => {
     [{ kind: 'WHITELIST_REMOVE', destination: A }, /Quitar de tu whitelist/],
     [
       { kind: 'ROTATION_PROPOSE', role: 'S', oldValue: A, newValue: A },
-      /Proponer reemplazar la clave de la plataforma \(S\)/,
+      /^Proponer reemplazar la dirección de la clave de la plataforma \(S\) 0x /,
     ],
     [{ kind: 'ROTATION_CANCEL', proposalId: `0x${'1'.repeat(64)}` }, /Cancelar la propuesta/],
-    [{ kind: 'ROTATION_EXECUTE', prevOwner: A, oldOwner: A, newOwner: A }, /Reemplazar en la Safe/],
+    [
+      { kind: 'ROTATION_EXECUTE', prevOwner: A, oldOwner: A, newOwner: A },
+      /^Reemplazar en la Safe la dirección de la clave actual 0x .+ por la de la clave nueva 0x /,
+    ],
     [{ kind: 'GUARD_UPGRADE', target: 'GUARD', newGuard: Z }, /Quitar el Guard de seguridad/],
     [{ kind: 'GUARD_UPGRADE', target: 'MODULE_GUARD', newGuard: A }, /Cambiar el guard de módulos a/],
-    [{ kind: 'GUARD_ROLES_UPDATE', userKey: A, recoveryKey: A, executor: A }, /Registrar en el Guard/],
+    [
+      { kind: 'GUARD_ROLES_UPDATE', userKey: A, recoveryKey: A, executor: A },
+      /^Registrar en el Guard las direcciones de las claves U 0x .+, R 0x .+ y S 0x /,
+    ],
     [{ kind: 'UNKNOWN', reason: 'DELEGATECALL' }, /no se firma/],
   ])('texto de %#', (call, text) => {
     expect(describeCall(call)).toMatch(text);
@@ -145,12 +158,62 @@ describe('texto de las operaciones', () => {
       [{ kind: 'APPROVE', token: 'USDC', spender: A, amount: 1n, spenderIsSwapExecutor: false }, /de tu Safe$/],
       [{ kind: 'ROTATION_PROPOSE', role: 'R', oldValue: A, newValue: A }, /^Propusiste/],
       [{ kind: 'ROTATION_CANCEL', proposalId: `0x${'1'.repeat(64)}` }, /^Cancelaste/],
-      [{ kind: 'ROTATION_EXECUTE', prevOwner: A, oldOwner: A, newOwner: A }, /^Se reemplazó en la Safe/],
+      [
+        { kind: 'ROTATION_EXECUTE', prevOwner: A, oldOwner: A, newOwner: A },
+        /^Se reemplazó en la Safe la dirección de la clave anterior .+ por la de la clave nueva /,
+      ],
       [{ kind: 'GUARD_UPGRADE', target: 'GUARD', newGuard: Z }, /^Se quitó el Guard de seguridad de la Safe$/],
       [{ kind: 'GUARD_UPGRADE', target: 'MODULE_GUARD', newGuard: A }, /^Se cambió el guard de módulos a/],
-      [{ kind: 'GUARD_ROLES_UPDATE', userKey: A, recoveryKey: A, executor: A }, /^Se registraron en el Guard/],
+      [
+        { kind: 'GUARD_ROLES_UPDATE', userKey: A, recoveryKey: A, executor: A },
+        /^Se registraron en el Guard las direcciones de las claves U /,
+      ],
     ];
     for (const [call, text] of pastTense) expect(describeCall(call, done)).toMatch(text);
+  });
+
+  it('una clave o un contrato se nombran por su dirección, con el artículo de cada rol', () => {
+    const Z2: Address = '0x00000000000000000000000000000000000000B2';
+    expect(describeCall({ kind: 'ROTATION_PROPOSE', role: 'U', oldValue: A, newValue: Z2 })).toBe(
+      `Proponer reemplazar la dirección de tu clave de usuario (U) ${groupAddress(A)} por ${groupAddress(Z2)} ` +
+        '(se puede ejecutar a las 48 h y hasta entonces cancelar)',
+    );
+    expect(describeCall({ kind: 'ROTATION_PROPOSE', role: 'GUARD', oldValue: A, newValue: Z2 })).toMatch(
+      /^Proponer reemplazar la dirección del Guard de seguridad 0x /,
+    );
+    expect(
+      describeCall({ kind: 'ROTATION_PROPOSE', role: 'MODULE_GUARD', oldValue: A, newValue: Z2 }, { done: true }),
+    ).toMatch(/^Propusiste reemplazar la dirección del guard de módulos 0x /);
+    expect(describeCall({ kind: 'ROTATION_EXECUTE', prevOwner: A, oldOwner: A, newOwner: Z2 })).toBe(
+      `Reemplazar en la Safe la dirección de la clave actual ${groupAddress(A)} por la de la clave nueva ${groupAddress(Z2)}`,
+    );
+  });
+
+  it('roles: «tu» sólo para las claves del usuario; uno que la app no conoce, genérico (nunca el código)', () => {
+    expect(roleText('U')).toBe('tu clave de usuario (U)');
+    expect(roleText('R')).toBe('tu clave de recuperación (R)');
+    expect(roleText('S')).toBe('la clave de la plataforma (S)');
+    expect(ofRole('S')).toBe('de la clave de la plataforma (S)');
+    expect(ofRole('GUARD')).toBe('del Guard de seguridad');
+    expect(ofRole('MODULE_GUARD')).toBe('del guard de módulos');
+    expect(ofRole('U')).toBe('de tu clave de usuario (U)');
+    for (const raw of ['ROL_NUEVO', 'constructor', '__proto__', 'u', '', 7, null, undefined]) {
+      expect(isRotationRole(raw)).toBe(false);
+      expect(roleText(raw)).toBe(UNKNOWN_ROLE_TEXT);
+    }
+    expect(ofRole('ROL_NUEVO')).toBe(`de ${UNKNOWN_ROLE_TEXT}`);
+    expect(UNKNOWN_ROLE_TEXT).not.toMatch(/ROL_NUEVO/);
+  });
+
+  it('un estado que esta app no conoce: texto genérico, nunca el código', () => {
+    const unknown = {
+      status: 'ESTADO_NUEVO',
+      failureReason: null,
+      lastErrorCode: null,
+      history: [],
+    } as unknown as OperationStatus;
+    expect(stateLabel(unknown)).toBe(UNKNOWN_STATE_TEXT);
+    expect(stateLabel({ ...unknown, status: 'toString' } as unknown as OperationStatus)).toBe(UNKNOWN_STATE_TEXT);
   });
 
   it('el permiso del swap nombra al contrato de swap de la plataforma (un label no lo tapa)', () => {

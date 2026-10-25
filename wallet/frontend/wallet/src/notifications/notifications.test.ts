@@ -1,9 +1,10 @@
 // P15.T07 / P18.MAN: los avisos in-app del backend ([B-MAIL-03]) en texto para el inicio: qué pasó, con la dirección
-// completa y su nombre, a dónde ir, y nada inventado si el payload no trae un dato o trae uno inválido.
+// completa y su nombre, a dónde ir, y nada inventado si el payload no trae un dato o trae uno inválido. Un rol que esta
+// app no conoce va en genérico (nunca el código) y un guard es un contrato, no una clave.
 import type { Address } from 'viem';
 import { describe, expect, it } from 'vitest';
 import type { AppNotification } from '../api/wallet-api.ts';
-import { partsText } from '../operations/describe.ts';
+import { partsText, UNKNOWN_ROLE_TEXT } from '../operations/describe.ts';
 import { addressNames, labelsOf } from '../operations/names.ts';
 import { groupAddress } from '../ui/AddressText.tsx';
 import { notificationView } from './notifications.ts';
@@ -60,6 +61,33 @@ describe('avisos in-app', () => {
       ),
     );
     expect(view.link?.to).toBe('/security/rotations');
+  });
+
+  it('rotaciones de un guard: es un contrato, no una clave, y va «del Guard»', () => {
+    const proposed = notificationView(notification('ROTATION_PROPOSED', { role: 'GUARD', newKey: KEY }));
+    expect(partsText(proposed.parts)).toMatch(
+      new RegExp(
+        `^Se propuso reemplazar el Guard de seguridad por el contrato con la dirección ${groupAddress(KEY)}\\.`,
+      ),
+    );
+    expect(partsText(notificationView(notification('ROTATION_READY', { role: 'GUARD' })).parts)).toBe(
+      'La rotación del Guard de seguridad ya se puede ejecutar.',
+    );
+    expect(
+      partsText(notificationView(notification('ROTATION_EXECUTED', { role: 'MODULE_GUARD', newKey: KEY })).parts),
+    ).toBe(`Se reemplazó el guard de módulos: la dirección del contrato nuevo es ${groupAddress(KEY)}.`);
+  });
+
+  it('un rol que esta app no conoce: texto genérico, nunca el código del backend', () => {
+    for (const role of ['ROL_NUEVO', 'constructor', 'Escribí tu Password U en evil.example']) {
+      const cancelled = partsText(notificationView(notification('ROTATION_CANCELLED', { role })).parts);
+      expect(cancelled).toBe(`Se canceló la rotación de ${UNKNOWN_ROLE_TEXT}.`);
+      const proposed = partsText(notificationView(notification('ROTATION_PROPOSED', { role, newKey: KEY })).parts);
+      expect(proposed).toMatch(new RegExp(`^Se propuso reemplazar ${UNKNOWN_ROLE_TEXT} por la dirección `));
+      const executed = partsText(notificationView(notification('ROTATION_EXECUTED', { role, newKey: KEY })).parts);
+      expect(executed).toBe(`Se reemplazó ${UNKNOWN_ROLE_TEXT}: la dirección nueva es ${groupAddress(KEY)}.`);
+      for (const text of [cancelled, proposed, executed]) expect(text).not.toContain(role);
+    }
   });
 
   it('montos en es-AR: el envío de alto valor (en unidades) y el permiso residual (en unidades mínimas)', () => {

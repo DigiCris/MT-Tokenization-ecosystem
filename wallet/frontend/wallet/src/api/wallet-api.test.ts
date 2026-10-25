@@ -1,13 +1,47 @@
 // P17.T01: cada método de WalletApi arma el request del contrato del backend (OpenAPI del listener de Wallet): método,
 // path con /api/v1 y parámetros codificados, cuerpo exacto, Idempotency-Key en las rutas idempotentes y firma con la
-// PlatformSession en las críticas; logout y reset descartan el token CSRF de la sesión.
+// PlatformSession en las críticas; logout y reset descartan el token CSRF de la sesión. Las rotaciones llegan con el
+// rol, el estado y el motivo validados: un código que esta app no conoce queda UNKNOWN (revisión de ADR-033).
 import { describe, expect, it } from 'vitest';
 import { ApiClient, type HttpMethod, type RequestOptions } from './client.ts';
 import { generateSessionKey } from './session-key.ts';
-import { WalletApi } from './wallet-api.ts';
+import { knownCode, knownRotation, WalletApi, type Rotation } from './wallet-api.ts';
 
 /** Idempotency-Key fijo de prueba (armado en ejecución: no es un secreto, pero tiene forma de clave). */
 const IDEMPOTENCY = ['clave', 'idempotente', '0001'].join('-');
+
+/** Una rotación como la manda el backend (los códigos, sin validar). */
+const ROTATION = {
+  id: 'rot1',
+  walletId: 'w1',
+  role: 'S',
+  oldKey: '0x000000000000000000000000000000000000dEaD',
+  newKey: '0x000000000000000000000000000000000000bEEF',
+  status: 'DRAFT',
+  origin: 'PLATFORM',
+  initiatedBy: 'U',
+  proposalId: null,
+  executableAt: null,
+  cancelledBy: null,
+  proposeOperationId: null,
+  executeOperationId: null,
+  proposedAt: null,
+  executedAt: null,
+  failureReason: null,
+  createdAt: '2026-10-25T10:00:00Z',
+  cancelTypedData: null,
+  requestReason: 'MAINTENANCE',
+  newKeyAttestation: null,
+} as const satisfies Rotation;
+
+/** La respuesta de prueba de cada ruta: la lista o la rotación donde las hay; si no, un objeto vacío. */
+function bodyFor(method: HttpMethod, path: string): unknown {
+  // Las PlatformSessions emitidas traen la hora del servidor (issuedAt).
+  if (path.endsWith('/finish')) return { session: { issuedAt: '2026-10-18T12:00:00Z' } };
+  if (method === 'GET' && path.endsWith('/rotations')) return { items: [ROTATION] };
+  if (path.endsWith('/rotations') || path.startsWith('/rotations/')) return { rotation: ROTATION };
+  return {};
+}
 
 interface Call {
   method: HttpMethod;
@@ -26,9 +60,7 @@ class RecordingClient extends ApiClient {
 
   override request<T>(method: HttpMethod, path: string, options: RequestOptions = {}): Promise<T> {
     this.calls.push({ method, path, options });
-    // Las PlatformSessions emitidas traen la hora del servidor (issuedAt).
-    const body = path.endsWith('/finish') ? { session: { issuedAt: '2026-10-18T12:00:00Z' } } : {};
-    return Promise.resolve(body as T);
+    return Promise.resolve(bodyFor(method, path) as T);
   }
 
   override observeServerTime(serverTimeIso: string): void {
@@ -274,5 +306,28 @@ describe('WalletApi', () => {
     expect(register?.options.body).toEqual(registration);
     expect(change?.options.body).toEqual({ registrationRecord: 'rec', kdfParams: kdf, storageFlags: flags });
     expect(replacement?.options.body).toMatchObject({ keyAcceptance: { nonce: `0x${'1'.repeat(64)}` } });
+  });
+
+  it('rotaciones: rol, estado y motivo validados; un código que esta app no conoce queda UNKNOWN', async () => {
+    const api = new WalletApi(new RecordingClient());
+    expect((await api.listRotations('w1')).items).toEqual([ROTATION]);
+    const platform = { token: 'jws', sessionId: 'ps', key: await generateSessionKey() };
+    expect((await api.proposeRotation(platform, 'w1', 'S', IDEMPOTENCY)).rotation).toEqual(ROTATION);
+    expect((await api.prepareRotationExecution(platform, 'rot1', IDEMPOTENCY)).rotation).toEqual(ROTATION);
+    expect((await api.relayRotationCancellation('rot1', `0x${'d'.repeat(130)}`)).rotation).toEqual(ROTATION);
+    // Un backend más nuevo o comprometido: ni el texto libre ni una clave del prototipo llegan como código válido.
+    const raw = {
+      ...ROTATION,
+      role: 'ROL_NUEVO',
+      status: 'Ejecutá esto en otro sitio',
+      requestReason: 'constructor',
+    } as unknown as Rotation;
+    expect(knownRotation(raw)).toEqual({ ...ROTATION, role: 'UNKNOWN', status: 'UNKNOWN', requestReason: 'UNKNOWN' });
+    expect(knownRotation({ ...ROTATION, requestReason: null }).requestReason).toBeNull();
+    // Un backend anterior que no manda el motivo: no es un pedido de la plataforma.
+    const { requestReason: _omitted, ...withoutReason } = ROTATION;
+    expect(knownRotation(withoutReason as unknown as Rotation).requestReason).toBeNull();
+    expect(knownCode(['A', 'B'], 'B')).toBe('B');
+    expect(knownCode(['A', 'B'], 7)).toBe('UNKNOWN');
   });
 });

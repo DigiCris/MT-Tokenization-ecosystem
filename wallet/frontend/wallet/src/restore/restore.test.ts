@@ -45,6 +45,11 @@ describe('restauración desde las 17 palabras', () => {
     const error = await keyFromWords(words, wordlist, roles(addressOf(other))).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(RestoreError);
     expect((error as Error).message).toContain(addressOf(other));
+    // Una dirección no es la clave: el texto la nombra como dirección de la clave.
+    expect((error as Error).message).toBe(
+      `Estas palabras son de la clave con la dirección ${addressOf(key)}, pero la dirección de la clave U vigente de ` +
+        `tu Safe es ${addressOf(other)}: no se restaura`,
+    );
   });
 
   it('KeyRestore firmado por U con el nonce del step-up; sin nonce no se completa', async () => {

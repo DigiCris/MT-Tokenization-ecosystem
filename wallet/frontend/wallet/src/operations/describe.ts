@@ -2,9 +2,10 @@
 // direcciones completas en grupos de 4 junto al nombre que conoce la app (operations/names.ts). Se arma en partes para
 // que la pantalla destaque monto y token y muestre cada dirección en monoespaciada (CallDescription.tsx); en texto plano
 // queda igual. Lo no reconocido no se firma. Ya ejecutada, la operación se cuenta en pasado. Los estados y sus motivos
-// también tienen texto (P18.MAN): ningún código crudo del backend llega a la pantalla.
+// también tienen texto (P18.MAN): ningún código crudo del backend llega a la pantalla. Una clave o un contrato se
+// nombran por su dirección («la dirección de tu clave de usuario (U)»): la dirección no es la clave.
 import { isAddressEqual, zeroAddress, type Address } from 'viem';
-import type { OperationState, OperationStatus } from '../api/wallet-api.ts';
+import type { OperationState, OperationStatus, RotationRole } from '../api/wallet-api.ts';
 import { formatAmount } from '../assets/amount.ts';
 import type { ChainClock } from '../chain/ChainNow.tsx';
 import type { DecodedCall } from '../chain/decoders.ts';
@@ -12,13 +13,32 @@ import { groupAddress } from '../ui/AddressText.tsx';
 import type { NameOf } from './names.ts';
 import { operationReasonText } from './reasons.ts';
 
-export const ROLE_TEXT: Record<string, string> = {
+/** Cada rol que se rota, con «tu» si es una clave del usuario (U y R) y con su artículo si no (S y los guards). */
+export const ROLE_TEXT: Readonly<Record<RotationRole, string>> = {
   U: 'tu clave de usuario (U)',
   R: 'tu clave de recuperación (R)',
   S: 'la clave de la plataforma (S)',
   GUARD: 'el Guard de seguridad',
   MODULE_GUARD: 'el guard de módulos',
 };
+
+/** Un rol que esta versión de la app no conoce (llega del backend): un texto genérico, nunca el código. */
+export const UNKNOWN_ROLE_TEXT = 'un rol de tu Safe que esta versión de la app no reconoce';
+
+export function isRotationRole(value: unknown): value is RotationRole {
+  return typeof value === 'string' && Object.hasOwn(ROLE_TEXT, value);
+}
+
+/** El rol en texto, con su artículo (el genérico si esta app no lo conoce). */
+export function roleText(role: unknown): string {
+  return isRotationRole(role) ? ROLE_TEXT[role] : UNKNOWN_ROLE_TEXT;
+}
+
+/** «de tu clave de usuario (U)», «de la clave de la plataforma (S)», «del Guard de seguridad». */
+export function ofRole(role: unknown): string {
+  const text = roleText(role);
+  return text.startsWith('el ') ? `del ${text.slice('el '.length)}` : `de ${text}`;
+}
 
 export type DescriptionPart =
   | { kind: 'text'; text: string }
@@ -181,7 +201,7 @@ export function describeParts(call: DecodedCall, ctx: DescribeContext = {}): Des
       ];
     case 'ROTATION_PROPOSE':
       return [
-        text(`${done ? 'Propusiste' : 'Proponer'} reemplazar ${ROLE_TEXT[call.role] ?? call.role} `),
+        text(`${done ? 'Propusiste' : 'Proponer'} reemplazar la dirección ${ofRole(call.role)} `),
         party(call.oldValue),
         text(' por '),
         party(call.newValue),
@@ -191,9 +211,13 @@ export function describeParts(call: DecodedCall, ctx: DescribeContext = {}): Des
       return [text(`${done ? 'Cancelaste' : 'Cancelar'} la propuesta de rotación ${call.proposalId}`)];
     case 'ROTATION_EXECUTE':
       return [
-        text(done ? 'Se reemplazó en la Safe la clave ' : 'Reemplazar en la Safe la clave '),
+        text(
+          done
+            ? 'Se reemplazó en la Safe la dirección de la clave anterior '
+            : 'Reemplazar en la Safe la dirección de la clave actual ',
+        ),
         party(call.oldOwner),
-        text(' por '),
+        text(' por la de la clave nueva '),
         party(call.newOwner),
       ];
     case 'GUARD_UPGRADE': {
@@ -205,7 +229,11 @@ export function describeParts(call: DecodedCall, ctx: DescribeContext = {}): Des
     }
     case 'GUARD_ROLES_UPDATE':
       return [
-        text(done ? 'Se registraron en el Guard las claves U ' : 'Registrar en el Guard las claves U '),
+        text(
+          done
+            ? 'Se registraron en el Guard las direcciones de las claves U '
+            : 'Registrar en el Guard las direcciones de las claves U ',
+        ),
         party(call.userKey),
         text(', R '),
         party(call.recoveryKey),
@@ -293,9 +321,13 @@ function cancelledUnsigned(status: StatusLike): boolean {
   return status.history.length > 0 && !status.history.some((entry) => entry.status === 'USER_SIGNED');
 }
 
+/** Un estado que esta versión de la app no conoce (llega del backend): un texto genérico, nunca el código. */
+export const UNKNOWN_STATE_TEXT = 'Estado que esta versión de la app no reconoce';
+
 /** El estado de una operación en texto, con el matiz que importa ("Cancelada antes de firmar"). */
 export function stateLabel(status: StatusLike): string {
-  return cancelledUnsigned(status) ? 'Cancelada antes de firmar' : STATE_TEXT[status.status];
+  if (cancelledUnsigned(status)) return 'Cancelada antes de firmar';
+  return Object.hasOwn(STATE_TEXT, status.status) ? STATE_TEXT[status.status] : UNKNOWN_STATE_TEXT;
 }
 
 /** Estados en los que importa por qué: la operación no se ejecutó (o se está reintentando). */

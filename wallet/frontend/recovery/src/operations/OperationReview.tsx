@@ -1,6 +1,7 @@
 // Review y firma de operaciones con R (P19): lo que hace cada SafeTx decodificado de los bytes que armó la app (ya
 // comparados con los del backend); R firma cada una y se sigue su estado hasta que se mina, falla o se cancela. Antes
-// de firmar se puede cancelar: lo preparado se cancela en el backend y su nonce queda libre.
+// de firmar se puede cancelar: lo preparado se cancela en el backend y su nonce queda libre. El estado y su motivo van
+// con textos de esta app (status.ts), nunca con lo que escriba el backend.
 import { useState } from 'react';
 import type { OperationStatus } from '../api/recovery-api.ts';
 import { api, pinned } from '../app/services.ts';
@@ -10,24 +11,7 @@ import type { RecoverySigner } from '../signer/recovery-signer.ts';
 import { Notice, useAsyncAction } from '../ui/forms.tsx';
 import { decodeSafeTx } from './decode.ts';
 import { DEAD_STATES, markSigned, releasePrepared, submitRecoverySignature, waitForOperation } from './sign.ts';
-
-export const STATE_TEXT: Record<OperationStatus['status'], string> = {
-  CREATED: 'Esperando la firma de R',
-  USER_SIGNED: 'Firmada',
-  QUEUED: 'En cola',
-  VALIDATING: 'Validando',
-  READY: 'Lista para enviar',
-  SUBMITTED: 'Enviada a Base',
-  MINED: 'Minada',
-  CONFIRMED: 'Confirmada',
-  FINALIZED: 'Final',
-  FAILED_RETRYABLE: 'Reintentando',
-  FAILED_FINAL: 'Falló',
-  REORGED: 'Reorganizada: se reenvía',
-  CANCEL_REQUESTED: 'Cancelación pedida',
-  CANCELLED: 'Cancelada',
-  EXPIRED: 'Vencida',
-};
+import { operationReasonText, stateText } from './status.ts';
 
 export function OperationReview({
   title,
@@ -91,8 +75,8 @@ export function OperationReview({
               </p>
               {status && (
                 <p role="status" className="review__status" data-status={status.status}>
-                  Estado: {STATE_TEXT[status.status]}
-                  {status.failureReason ? ` (${status.failureReason})` : ''}
+                  Estado: {stateText(status.status)}
+                  {status.failureReason ? ` (${operationReasonText(status.failureReason)})` : ''}
                 </p>
               )}
             </li>

@@ -34,7 +34,7 @@ export async function keyFromWords(
   if (!isAddressEqual(current.userKey, address)) {
     zeroize(key);
     throw new RestoreError(
-      `Estas palabras son de la clave ${address}, pero la U vigente de tu Safe es ${current.userKey}: no se restaura`,
+      `Estas palabras son de la clave con la dirección ${address}, pero la dirección de la clave U vigente de tu Safe es ${current.userKey}: no se restaura`,
     );
   }
   return { key, address };

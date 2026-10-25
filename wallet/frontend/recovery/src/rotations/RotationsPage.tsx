@@ -1,10 +1,11 @@
 // `/rotations` (P19.T05): rotaciones pendientes leídas del timelock on-chain. R las cancela con su firma EIP-712
 // (CancelRotation): por el relay del backend, transmitiendo `cancelWithSignature` con su wallet externa (paga el gas) o
 // exportando la calldata para cualquier relayer. R ejecuta las maduras de U y S y propone la S′ que pidió la plataforma
-// (motivo + atestación verificada con la clave fijada en el build).
+// (motivo + atestación verificada con la clave fijada en el build). El motivo llega validado (recovery-api.ts): uno que
+// esta app no conoce se muestra con un texto genérico, nunca con el código.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isAddressEqual, type Hex } from 'viem';
-import type { Rotation } from '../api/recovery-api.ts';
+import type { ExecutorRotationReason, Rotation, UnknownCode } from '../api/recovery-api.ts';
 import { api, pinned, reader } from '../app/services.ts';
 import {
   cancelWithSignatureData,
@@ -14,6 +15,7 @@ import {
   safeNonce,
   safeOwners,
   type PendingProposal,
+  type RotationKind,
 } from '../chain/rotations.ts';
 import { verifyPrepared, type VerifiedOperation } from '../chain/safe-tx.ts';
 import { useChainNow } from '../chain/time.ts';
@@ -29,18 +31,20 @@ import { downloadText } from '../ui/download.ts';
 import { describeError } from '../ui/errors.ts';
 import { Notice, useAsyncAction } from '../ui/forms.tsx';
 
-const KIND_TEXT: Record<string, string> = {
+/** Qué se rota, como título de cada propuesta pendiente (leída de la cadena). */
+const KIND_TEXT: Readonly<Record<RotationKind, string>> = {
   U: 'Clave de usuario (U)',
   R: 'Clave de recuperación (R)',
   S: 'Clave de la plataforma (S)',
   GUARD: 'Guard de seguridad',
   MODULE_GUARD: 'Guard de módulos',
 };
-const REASON_TEXT: Record<string, string> = {
+const REASON_TEXT: Readonly<Record<ExecutorRotationReason | UnknownCode, string>> = {
   SHARD_MIGRATION: 'migración de la clave a otro servidor de firma de la plataforma',
   HSM_MIGRATION: 'migración de la clave a un módulo de hardware (HSM)',
   KEY_COMPROMISE: 'posible compromiso del servidor que guarda la clave',
   MAINTENANCE: 'mantenimiento preventivo de la clave',
+  UNKNOWN: 'esta versión de la app no lo reconoce (abrí la app actualizada para ver el detalle)',
 };
 
 function Rotations({ ctx }: { ctx: RecoveryContext }) {
@@ -156,7 +160,7 @@ function Rotations({ ctx }: { ctx: RecoveryContext }) {
             build: (n) => executeCall(safe, proposal, owners, n),
           });
         });
-        setReview({ title: `Revisá la ejecución de la rotación: ${KIND_TEXT[proposal.kind] ?? proposal.kind}`, item });
+        setReview({ title: `Revisá la ejecución de la rotación: ${KIND_TEXT[proposal.kind]}`, item });
       },
       [rotationFor, platform, safe],
     ),
@@ -206,7 +210,7 @@ function Rotations({ ctx }: { ctx: RecoveryContext }) {
       {request && (
         <section className="card stack" aria-labelledby="s-request-title" data-s-request={request.id}>
           <h2 id="s-request-title">La plataforma pidió rotar su clave (S)</h2>
-          <p>Motivo: {REASON_TEXT[request.requestReason ?? ''] ?? request.requestReason}</p>
+          <p>Motivo: {REASON_TEXT[request.requestReason ?? 'UNKNOWN']}</p>
           <p>
             Dirección de la clave nueva: <AddressText address={request.newKey} />
           </p>
@@ -237,8 +241,8 @@ function Rotations({ ctx }: { ctx: RecoveryContext }) {
             return (
               <li key={p.id} className="stack" data-proposal={p.id} data-kind={p.kind}>
                 <p>
-                  <strong>{KIND_TEXT[p.kind] ?? p.kind}</strong>: de la dirección <AddressText address={p.oldValue} /> a
-                  la dirección <AddressText address={p.newValue} />
+                  <strong>{KIND_TEXT[p.kind]}</strong>: de la dirección <AddressText address={p.oldValue} /> a la
+                  dirección <AddressText address={p.newValue} />
                 </p>
                 <p>
                   {mature

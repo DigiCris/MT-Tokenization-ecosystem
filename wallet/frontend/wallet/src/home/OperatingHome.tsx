@@ -15,7 +15,7 @@ import { useChainNow } from '../chain/ChainNow.tsx';
 import { pinnedChain } from '../config/chain.ts';
 import { systemContracts } from '../config/index.ts';
 import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
-import { ROLE_TEXT } from '../operations/describe.ts';
+import { ofRole } from '../operations/describe.ts';
 import { addressNames, backendLabels, shownLabels, userLabel } from '../operations/names.ts';
 import type { OperatingWallet } from '../safe/SafeGate.tsx';
 import { readPendingProposals, type PendingProposal } from '../security/rotations/rotations.ts';
@@ -112,7 +112,7 @@ export function OperatingHome({ ctx }: { ctx: OperatingWallet }) {
       )}
       {pending.map((p) => (
         <Notice key={p.id} tone="warning">
-          Hay una rotación pendiente de {ROLE_TEXT[p.role] ?? p.role}: se puede ejecutar desde el{' '}
+          Hay una rotación pendiente {ofRole(p.role)}: se puede ejecutar desde el{' '}
           {p.executableAt.toLocaleString('es-AR')}. <Link to="/security/rotations">Ver rotaciones</Link>
         </Notice>
       ))}

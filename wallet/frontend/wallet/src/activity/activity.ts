@@ -4,12 +4,36 @@
 // transfers de su transacción si los hay (en un swap, lo que salió y lo que entró) y, si no llegó a la cadena, con la
 // intención guardada al prepararla ("Envío: 1,00 USDC a …", sin un "de" que se lea como origen). La hora de una
 // operación es la de su inclusión en un bloque (como la de un transfer indexado); sólo las que no llegaron a la red
-// muestran la de preparación.
+// muestran la de preparación. El tipo y el rol vienen del backend: uno que esta app no conoce va con un texto genérico.
 import type { Address } from 'viem';
-import type { DecodedOperation, OperationStatus, Transfer } from '../api/wallet-api.ts';
+import type { DecodedOperation, OperationStatus, OperationType, Transfer } from '../api/wallet-api.ts';
 import type { PinnedChain } from '../config/chain.ts';
-import { ROLE_TEXT, tokenAmount, type DescriptionPart } from '../operations/describe.ts';
+import { roleText, tokenAmount, type DescriptionPart } from '../operations/describe.ts';
 import type { NameOf } from '../operations/names.ts';
+
+/** El título de cada tipo de operación en la actividad. */
+const OPERATION_TEXT: Readonly<Record<OperationType, string>> = {
+  SEND: 'Envío',
+  SWAP_APPROVE: 'Permiso exacto para el swap',
+  SWAP: 'Swap',
+  WHITELIST_ADD: 'Alta en la whitelist',
+  WHITELIST_REMOVE: 'Baja de la whitelist',
+  ROTATION_PROPOSE: 'Propuesta de rotación',
+  ROTATION_EXECUTE: 'Ejecución de rotación',
+  NOOP_CANCEL: 'Cancelación',
+  MIGRATION_TRANSFER: 'Migración',
+  APPROVE_REVOKE: 'Revocación de permiso',
+  GUARD_UPGRADE: 'Actualización del Guard',
+};
+
+/** Un tipo que esta versión de la app no conoce (llega del backend): un texto genérico, nunca el código. */
+export const UNKNOWN_OPERATION_TEXT =
+  'Operación que esta versión de la app no reconoce (abrí la app actualizada para ver el detalle)';
+
+/** El título de la operación en la actividad. */
+export function operationTypeText(type: string): string {
+  return Object.hasOwn(OPERATION_TEXT, type) ? OPERATION_TEXT[type as OperationType] : UNKNOWN_OPERATION_TEXT;
+}
 
 export type ActivityItem =
   | {
@@ -98,10 +122,13 @@ function intentParts(type: OperationStatus['operationType'], decoded: DecodedOpe
       return parts(party(decoded.destination));
     case 'ROTATION_PROPOSE':
     case 'ROTATION_EXECUTE':
-      return decoded.role === undefined ? null : [text(ROLE_TEXT[decoded.role] ?? decoded.role)];
+      return decoded.role === undefined ? null : [text(roleText(decoded.role))];
     case 'GUARD_UPGRADE':
       return parts(text('nueva dirección '), party(decoded.newKey));
     case 'NOOP_CANCEL':
+      return null;
+    default:
+      // Un tipo que esta app no conoce (llega del backend): sólo el título genérico, sin detalle.
       return null;
   }
 }

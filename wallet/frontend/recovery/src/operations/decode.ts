@@ -1,12 +1,14 @@
 // Lo que hace una SafeTx, decodificado de sus bytes para el review de R (P19): nunca de lo que diga el backend. Sólo las
 // llamadas que puede firmar R (NoOp, baja de whitelist, revocación de permisos, rotaciones, migración) y las del modo
-// soberano; cualquier otra cosa se marca como desconocida y no se firma.
+// soberano; cualquier otra cosa (también un tipo de rotación que esta app no conoce) se marca como desconocida y no se
+// firma. Una clave o un contrato se nombran por su dirección («la dirección de tu clave de usuario (U)»): la dirección
+// no es la clave.
 import { decodeFunctionData, erc20Abi, formatUnits, getAddress, isAddressEqual, type Address } from 'viem';
 import { destinationWhitelistAbi } from '../chain/abis/DestinationWhitelist.ts';
 import { iSafeAbi } from '../chain/abis/ISafe.ts';
 import { rotationTimelockAbi } from '../chain/abis/RotationTimelock.ts';
 import { securityGuardAbi } from '../chain/abis/SecurityGuard.ts';
-import { ROTATION_KINDS } from '../chain/rotations.ts';
+import { ROTATION_KINDS, type RotationKind } from '../chain/rotations.ts';
 import type { SafeTx } from '../chain/safe-tx.ts';
 import type { PinnedChain } from '../config/chain.ts';
 import type { SystemContracts } from '../config/system-contracts.ts';
@@ -23,13 +25,20 @@ export interface DecodedCall {
   text: string;
 }
 
-const KIND_TEXT: Record<string, string> = {
+/** Cada rol que se rota, con «tu» si es una clave del usuario (U y R) y con su artículo si no (S y los guards). */
+const KIND_TEXT: Readonly<Record<RotationKind, string>> = {
   U: 'tu clave de usuario (U)',
   R: 'tu clave de recuperación (R)',
   S: 'la clave de la plataforma (S)',
   GUARD: 'el Guard de seguridad',
   MODULE_GUARD: 'el guard de módulos',
 };
+
+/** «de tu clave de usuario (U)», «de la clave de la plataforma (S)», «del Guard de seguridad». */
+function ofKind(kind: RotationKind): string {
+  const text = KIND_TEXT[kind];
+  return text.startsWith('el ') ? `del ${text.slice('el '.length)}` : `de ${text}`;
+}
 
 function amount(value: bigint): string {
   const [whole = '0', fraction = ''] = formatUnits(value, 6).split('.');
@@ -54,7 +63,7 @@ export function decodeSafeTx(tx: SafeTx, ctx: DecodeContext): DecodedCall {
         const [, oldOwner, newOwner] = call.args;
         return {
           known: true,
-          text: `Reemplazar en la Safe la clave ${groupedAddress(oldOwner)} por ${groupedAddress(newOwner)}`,
+          text: `Reemplazar en la Safe la dirección de la clave actual ${groupedAddress(oldOwner)} por la de la clave nueva ${groupedAddress(newOwner)}`,
         };
       }
       if (call.functionName === 'setGuard' || call.functionName === 'setModuleGuard') {
@@ -95,10 +104,11 @@ export function decodeSafeTx(tx: SafeTx, ctx: DecodeContext): DecodedCall {
       const call = decodeFunctionData({ abi: rotationTimelockAbi, data: tx.data });
       if (call.functionName === 'propose') {
         const [kind, oldValue, newValue] = call.args;
-        const role = ROTATION_KINDS[kind] ?? String(kind);
+        const role = ROTATION_KINDS[kind];
+        if (role === undefined) return unknown('tipo de rotación desconocido');
         return {
           known: true,
-          text: `Proponer reemplazar ${KIND_TEXT[role] ?? role} ${groupedAddress(oldValue)} por ${groupedAddress(newValue)} (se puede ejecutar a las 48 h)`,
+          text: `Proponer reemplazar la dirección ${ofKind(role)} ${groupedAddress(oldValue)} por ${groupedAddress(newValue)} (se puede ejecutar a las 48 h)`,
         };
       }
       return unknown(call.functionName);
@@ -109,7 +119,7 @@ export function decodeSafeTx(tx: SafeTx, ctx: DecodeContext): DecodedCall {
         const [userKey, recoveryKey, executor] = call.args;
         return {
           known: true,
-          text: `Actualizar los roles del Guard: U ${groupedAddress(userKey)}, R ${groupedAddress(recoveryKey)}, S ${groupedAddress(executor)}`,
+          text: `Registrar en el Guard las direcciones de las claves U ${groupedAddress(userKey)}, R ${groupedAddress(recoveryKey)} y S ${groupedAddress(executor)}`,
         };
       }
       return unknown(call.functionName);

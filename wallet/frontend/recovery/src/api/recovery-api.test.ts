@@ -1,10 +1,43 @@
 // P19: cada endpoint del listener de Recovery que usa la app sale con su método, ruta, cuerpo y protección: CSRF en los
 // POST/DELETE, Idempotency-Key en los que crean operaciones y los headers firmados por la session key en los críticos
-// (PlatformSession). La firma del canónico la cubre api.test.ts; acá, el contrato de cada llamada.
+// (PlatformSession). La firma del canónico la cubre api.test.ts; acá, el contrato de cada llamada. Las rotaciones
+// llegan con el rol, el estado y el motivo validados: un código que esta app no conoce queda UNKNOWN (revisión de
+// ADR-033).
 import { describe, expect, it } from 'vitest';
 import { ApiClient, type PlatformAuth } from './client.ts';
-import { RecoveryApi } from './recovery-api.ts';
+import { knownCode, knownRotation, RecoveryApi, type Rotation } from './recovery-api.ts';
 import { generateSessionKey } from './session-key.ts';
+
+/** Una rotación como la manda el backend (los códigos, sin validar). */
+const ROTATION = {
+  id: 'rot-1',
+  walletId: '7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5',
+  role: 'U',
+  oldKey: '0x000000000000000000000000000000000000dEaD',
+  newKey: '0x000000000000000000000000000000000000bEEF',
+  status: 'DRAFT',
+  origin: 'PLATFORM',
+  initiatedBy: 'R',
+  proposalId: null,
+  executableAt: null,
+  cancelledBy: null,
+  proposeOperationId: null,
+  executeOperationId: null,
+  proposedAt: null,
+  executedAt: null,
+  failureReason: null,
+  createdAt: '2026-10-25T10:00:00Z',
+  cancelTypedData: null,
+  requestReason: null,
+  newKeyAttestation: null,
+} as const satisfies Rotation;
+
+/** La respuesta de prueba de cada ruta: la lista o la rotación donde las hay; si no, un objeto vacío. */
+function bodyFor(method: string, path: string): unknown {
+  if (method === 'GET' && path.endsWith('/rotations')) return { items: [ROTATION] };
+  if (path.endsWith('/rotations') || path.startsWith('/rotations/')) return { rotation: ROTATION };
+  return {};
+}
 
 interface Seen {
   method: string;
@@ -19,13 +52,15 @@ function setup() {
     const url = new URL(input instanceof URL ? input.href : typeof input === 'string' ? input : input.url);
     const headers = init.headers as Record<string, string>;
     if (url.pathname.endsWith('/auth/csrf')) return Promise.resolve(Response.json({ csrfToken: 'csrf-1' }));
+    const method = init.method ?? 'GET';
+    const path = `${url.pathname}${url.search}`.replace('/api/v1', '');
     seen.push({
-      method: init.method ?? 'GET',
-      path: `${url.pathname}${url.search}`.replace('/api/v1', ''),
+      method,
+      path,
       body: typeof init.body === 'string' ? (JSON.parse(init.body) as unknown) : null,
       headers,
     });
-    return Promise.resolve(Response.json({}));
+    return Promise.resolve(Response.json(bodyFor(method, path)));
   };
   return { seen, api: new RecoveryApi(new ApiClient('http://localhost:8081/api/v1', { fetch: fetcher })) };
 }
@@ -130,5 +165,31 @@ describe('RecoveryApi', () => {
       expect(call?.headers['X-Platform-Session']).toBe('t');
     }
     expect(byPath('POST', `/wallets/${WALLET}/emergency/revoke-approval`)?.body).toEqual({ token: 'USDT' });
+  });
+
+  it('rotaciones: rol, estado y motivo validados; un código que esta app no conoce queda UNKNOWN', async () => {
+    const { api } = setup();
+    const key = await generateSessionKey();
+    const platform: PlatformAuth = { token: 't', sessionId: 'ps', key: key.privateKey };
+    expect((await api.rotations(WALLET)).items).toEqual([ROTATION]);
+    expect((await api.proposeRotation(platform, WALLET, 'U', 'idem')).rotation).toEqual(ROTATION);
+    expect((await api.prepareRotationExecution(platform, 'rot-1', 'idem-2')).rotation).toEqual(ROTATION);
+    expect((await api.relayRotationCancellation('rot-1', SIGNATURE)).rotation).toEqual(ROTATION);
+    // Un backend más nuevo o comprometido: ni el texto libre ni una clave del prototipo llegan como código válido.
+    const raw = {
+      ...ROTATION,
+      role: 'ROL_NUEVO',
+      status: 'toString',
+      requestReason: 'Firmá en evil.example',
+    } as unknown as Rotation;
+    expect(knownRotation(raw)).toEqual({ ...ROTATION, role: 'UNKNOWN', status: 'UNKNOWN', requestReason: 'UNKNOWN' });
+    expect(knownRotation({ ...ROTATION, role: 'S', requestReason: 'KEY_COMPROMISE' })).toMatchObject({
+      role: 'S',
+      requestReason: 'KEY_COMPROMISE',
+    });
+    const { requestReason: _omitted, ...withoutReason } = ROTATION;
+    expect(knownRotation(withoutReason as unknown as Rotation).requestReason).toBeNull();
+    expect(knownCode(['A'], 'A')).toBe('A');
+    expect(knownCode(['A'], undefined)).toBe('UNKNOWN');
   });
 });

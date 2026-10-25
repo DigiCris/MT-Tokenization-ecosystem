@@ -125,6 +125,14 @@ describe('actividad', () => {
     const [bare] = mergeActivity([op('o3', '2026-10-18T10:00:00Z', null)], []);
     if (bare?.kind !== 'operation') throw new Error('operation');
     expect(operationDetail(bare, nameOf)).toBeNull();
+    // Un tipo que esta app no conoce: sin detalle (sólo el título genérico), aunque traiga intención.
+    const unknownType = op('o4', '2026-10-18T10:00:00Z', null, {
+      operationType: 'TIPO_NUEVO' as OperationStatus['operationType'],
+      decoded: { token: 'USDC', amount: '2500000', destination: DEST },
+    });
+    const [unknown] = mergeActivity([unknownType], []);
+    if (unknown?.kind !== 'operation') throw new Error('operation');
+    expect(operationDetail(unknown, nameOf)).toBeNull();
   });
 
   it('el envío con su transfer saliente; un transfer propio con su contraparte', () => {

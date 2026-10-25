@@ -10,7 +10,7 @@ import { useSession } from '../session/context.tsx';
 import { Notice } from '../ui/forms.tsx';
 import { describeError } from '../ui/errors.ts';
 import type { UnlockedWallet } from '../unlock/unlock.ts';
-import { failureText, verifyOnUnlock } from './gate.ts';
+import { failureText, verifyOnUnlock, walletStatusText } from './gate.ts';
 import type { SafeState } from './verify.ts';
 
 export interface OperatingWallet {
@@ -66,7 +66,7 @@ export function SafeGate({ children }: { children: (ctx: OperatingWallet) => Rea
     );
   }
   if (wallet.status !== 'ACTIVE' || wallet.safe === null) {
-    return <Notice tone="warning">Tu wallet no está activa ({wallet.status}).</Notice>;
+    return <Notice tone="warning">Tu wallet no está activa. Estado: {walletStatusText(wallet.status)}</Notice>;
   }
   if (!unlocked) {
     return (

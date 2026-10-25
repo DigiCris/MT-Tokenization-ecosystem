@@ -1,5 +1,6 @@
 // Rutas del listener de Wallet que usa la app (contrato: OpenAPI del backend, `GET /docs/openapi.json`). Cada método
-// es un request tipado sobre ApiClient; los críticos llevan la PlatformSession que exige su scope ([W-07]).
+// es un request tipado sobre ApiClient; los críticos llevan la PlatformSession que exige su scope ([W-07]). Los códigos
+// de las rotaciones que se muestran con texto propio (rol, estado, motivo) se validan al recibirlos (knownRotation).
 import type { Address } from 'viem';
 import type { KdfParams } from '../crypto/kdf.ts';
 import { newIdempotencyKey, type ApiClient } from './client.ts';
@@ -87,8 +88,34 @@ export interface UserKeyRegistration {
   registrationRecord: string;
 }
 
-export type RotationRole = 'U' | 'R' | 'S' | 'GUARD' | 'MODULE_GUARD';
-export type ExecutorRotationReason = 'SHARD_MIGRATION' | 'HSM_MIGRATION' | 'KEY_COMPROMISE' | 'MAINTENANCE';
+export const ROTATION_ROLES = ['U', 'R', 'S', 'GUARD', 'MODULE_GUARD'] as const;
+export type RotationRole = (typeof ROTATION_ROLES)[number];
+export const EXECUTOR_ROTATION_REASONS = ['SHARD_MIGRATION', 'HSM_MIGRATION', 'KEY_COMPROMISE', 'MAINTENANCE'] as const;
+export type ExecutorRotationReason = (typeof EXECUTOR_ROTATION_REASONS)[number];
+export const ROTATION_STATUSES = [
+  'DRAFT',
+  'AWAITING_SIGNATURE',
+  'PROPOSING',
+  'PENDING_TIMELOCK',
+  'READY_TO_EXECUTE',
+  'EXECUTING',
+  'EXECUTED',
+  'CANCELLED',
+  'FAILED',
+] as const;
+export type RotationStatus = (typeof ROTATION_STATUSES)[number];
+
+/**
+ * Un código que esta versión de la app no conoce, en un campo que la pantalla muestra con su propio texto (un backend
+ * más nuevo o comprometido): se valida al recibirlo y en pantalla va un texto genérico, nunca el valor crudo (revisión
+ * de ADR-033).
+ */
+export type UnknownCode = 'UNKNOWN';
+
+/** El valor si es uno de los códigos conocidos; si no, UNKNOWN. */
+export function knownCode<T extends string>(known: readonly T[], value: unknown): T | UnknownCode {
+  return known.find((code) => code === value) ?? 'UNKNOWN';
+}
 
 export interface CancelRotationTypedData {
   domain: { name: string; version: string; chainId: number; verifyingContract: Address };
@@ -97,22 +124,14 @@ export interface CancelRotationTypedData {
   message: { proposalId: `0x${string}`; safe: Address };
 }
 
+/** Rotación del backend: el rol, el estado y el motivo llegan validados (knownRotation). */
 export interface Rotation {
   id: string;
   walletId: string;
-  role: RotationRole;
+  role: RotationRole | UnknownCode;
   oldKey: Address;
   newKey: Address;
-  status:
-    | 'DRAFT'
-    | 'AWAITING_SIGNATURE'
-    | 'PROPOSING'
-    | 'PENDING_TIMELOCK'
-    | 'READY_TO_EXECUTE'
-    | 'EXECUTING'
-    | 'EXECUTED'
-    | 'CANCELLED'
-    | 'FAILED';
+  status: RotationStatus | UnknownCode;
   origin: 'PLATFORM' | 'ONCHAIN';
   initiatedBy: 'U' | 'R' | 'SAFE';
   proposalId: `0x${string}` | null;
@@ -126,9 +145,20 @@ export interface Rotation {
   createdAt: string;
   cancelTypedData: CancelRotationTypedData | null;
   /** Rotación de S pedida por la plataforma: motivo del borrador del operador. */
-  requestReason: ExecutorRotationReason | null;
+  requestReason: ExecutorRotationReason | UnknownCode | null;
   /** Rotación de S: SignerKeyAttestation de la S nueva. */
   newKeyAttestation: string | null;
+}
+
+/** Una rotación del backend con el rol, el estado y el motivo validados: los que esta app no conoce quedan UNKNOWN. */
+export function knownRotation(rotation: Rotation): Rotation {
+  const reason: unknown = rotation.requestReason;
+  return {
+    ...rotation,
+    role: knownCode(ROTATION_ROLES, rotation.role),
+    status: knownCode(ROTATION_STATUSES, rotation.status),
+    requestReason: reason === null || reason === undefined ? null : knownCode(EXECUTOR_ROTATION_REASONS, reason),
+  };
 }
 
 // --- Onboarding de la Safe ([B-WAL], P12) -------------------------------------------------------------------------
@@ -661,8 +691,9 @@ export class WalletApi {
     }>('POST', '/recovery/u-replacement', { platform, body: input, idempotencyKey });
   }
 
-  listRotations(walletId: string) {
-    return this.client.request<{ items: Rotation[] }>('GET', `/wallets/${enc(walletId)}/rotations`);
+  async listRotations(walletId: string) {
+    const list = await this.client.request<{ items: Rotation[] }>('GET', `/wallets/${enc(walletId)}/rotations`);
+    return { ...list, items: list.items.map(knownRotation) };
   }
 
   // --- Recovery y Safe (P12, P18.T01/T02) -------------------------------------------------------------------------
@@ -884,28 +915,36 @@ export class WalletApi {
 
   // --- Rotaciones y migración (P15, P18.T09–T11) ------------------------------------------------------------------
 
-  proposeRotation(platform: PlatformAuth, walletId: string, role: RotationRole, idempotencyKey = newIdempotencyKey()) {
-    return this.client.request<{ rotation: Rotation; operation: PreparedOperation }>(
+  async proposeRotation(
+    platform: PlatformAuth,
+    walletId: string,
+    role: RotationRole,
+    idempotencyKey = newIdempotencyKey(),
+  ) {
+    const result = await this.client.request<{ rotation: Rotation; operation: PreparedOperation }>(
       'POST',
       `/wallets/${enc(walletId)}/rotations`,
       { platform, body: { role }, idempotencyKey },
     );
+    return { ...result, rotation: knownRotation(result.rotation) };
   }
 
-  prepareRotationExecution(platform: PlatformAuth, rotationId: string, idempotencyKey = newIdempotencyKey()) {
-    return this.client.request<{ rotation: Rotation; operation: PreparedOperation }>(
+  async prepareRotationExecution(platform: PlatformAuth, rotationId: string, idempotencyKey = newIdempotencyKey()) {
+    const result = await this.client.request<{ rotation: Rotation; operation: PreparedOperation }>(
       'POST',
       `/rotations/${enc(rotationId)}/execute/prepare`,
       { platform, idempotencyKey },
     );
+    return { ...result, rotation: knownRotation(result.rotation) };
   }
 
   /** Relay público de la cancelación: la autoriza la firma EIP-712 `CancelRotation` de U. */
-  relayRotationCancellation(rotationId: string, signature: `0x${string}`) {
-    return this.client.request<{
+  async relayRotationCancellation(rotationId: string, signature: `0x${string}`) {
+    const result = await this.client.request<{
       rotation: Rotation;
       relay: { status: 'REQUESTED'; signer: Address; role: 'U' | 'R' };
     }>('POST', `/rotations/${enc(rotationId)}/cancel`, { body: { signature } });
+    return { ...result, rotation: knownRotation(result.rotation) };
   }
 
   prepareMigration(platform: PlatformAuth, oldWalletId: string, idempotencyKey = newIdempotencyKey()) {

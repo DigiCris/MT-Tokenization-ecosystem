@@ -68,7 +68,7 @@ async function proposeFromPage(newExecutor: Address, reasonText: RegExp): Promis
   await expect(request.locator(`[data-address="${newExecutor}"]`)).toBeVisible();
   await expect(page.getByText('La clave nueva está atestada por el signer de esta versión.')).toBeVisible();
   await page.getByRole('button', { name: 'Revisar y firmar la propuesta' }).click();
-  await expect(page.getByText(/Proponer reemplazar la clave de la plataforma \(S\)/)).toBeVisible();
+  await expect(page.getByText(/Proponer reemplazar la dirección de la clave de la plataforma \(S\)/)).toBeVisible();
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(settled(page)).toBeVisible({ timeout: 240_000 });
   await expect.poll(activeExecutorProposal, { timeout: 60_000 }).not.toMatch(/^0x0{64}$/);
@@ -162,7 +162,9 @@ test('rotación madura: a las 48 h U la ejecuta y S′ queda como owner y como S
   const row = page.locator('li[data-role="S"]');
   await expect(row).toContainText('Se puede ejecutar.', { timeout: 60_000 });
   await row.getByRole('button', { name: 'Ejecutar' }).click();
-  await expect(page.getByText(/Reemplazar en la Safe la clave 0x/)).toBeVisible();
+  await expect(
+    page.getByText(/Reemplazar en la Safe la dirección de la clave actual 0x .+ por la de la clave nueva 0x/),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Firmar con tu clave U' }).click();
   await expect(settled(page)).toBeVisible({ timeout: 240_000 });
   const owners = await chain().readContract({ address: wallet.wallet.safe, abi: iSafeAbi, functionName: 'getOwners' });

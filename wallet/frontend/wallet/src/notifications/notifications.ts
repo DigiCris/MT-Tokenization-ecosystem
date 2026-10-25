@@ -1,11 +1,11 @@
 // Avisos in-app que crea el backend ([B-MAIL-03], P15.T07: los mismos eventos que van por email) en texto para la app:
 // qué pasó, con las direcciones completas, y a qué pantalla ir. Son la "alerta in-app" de ADR-006 y del threat model
 // (ESC-02, ESC-16, ESC-20, ESC-23, ESC-33, ESC-34). El payload viene del backend: sólo se muestra como texto, una
-// dirección inválida no se renderiza como dirección y un tipo desconocido queda como aviso genérico.
+// dirección inválida no se renderiza como dirección y un tipo o un rol desconocidos quedan con un texto genérico.
 import { getAddress, isAddress, type Address } from 'viem';
 import type { AppNotification } from '../api/wallet-api.ts';
 import { formatAmount, parseDecimalAmount } from '../assets/amount.ts';
-import { ROLE_TEXT, type DescriptionPart } from '../operations/describe.ts';
+import { isRotationRole, ofRole, roleText, type DescriptionPart } from '../operations/describe.ts';
 import type { NameOf } from '../operations/names.ts';
 
 export interface NotificationView {
@@ -47,10 +47,32 @@ function amountText(value: string | null, token: string | null, minimalUnits: bo
   }
 }
 
-function roleText(payload: Record<string, unknown>): string {
+/** Qué se rota: una clave (U, R, S), un contrato (los guards) o algo que esta app no conoce. */
+type Rotated = 'KEY' | 'CONTRACT' | 'UNKNOWN';
+
+/** El rol rotado del aviso con su artículo; sin rol, «una clave de tu Safe»; uno que la app no conoce, el genérico. */
+function rotatedRole(payload: Record<string, unknown>): { text: string; of: string; kind: Rotated } {
   const role = field(payload, 'role');
-  return role === null ? 'una clave de tu Safe' : (ROLE_TEXT[role] ?? role);
+  if (role === null) return { text: 'una clave de tu Safe', of: 'de una clave de tu Safe', kind: 'KEY' };
+  const kind: Rotated = !isRotationRole(role)
+    ? 'UNKNOWN'
+    : role === 'GUARD' || role === 'MODULE_GUARD'
+      ? 'CONTRACT'
+      : 'KEY';
+  return { text: roleText(role), of: ofRole(role), kind };
 }
+
+/** Hacia qué se propuso rotar: una clave o un contrato se nombran por su dirección, que no es la clave. */
+const PROPOSED_TO: Readonly<Record<Rotated, string>> = {
+  KEY: 'la clave con la dirección ',
+  CONTRACT: 'el contrato con la dirección ',
+  UNKNOWN: 'la dirección ',
+};
+const REPLACED_BY: Readonly<Record<Rotated, string>> = {
+  KEY: 'la dirección de la clave nueva es ',
+  CONTRACT: 'la dirección del contrato nuevo es ',
+  UNKNOWN: 'la dirección nueva es ',
+};
 
 export function notificationView(notification: AppNotification, nameOf?: NameOf): NotificationView {
   const p = notification.payload;
@@ -102,10 +124,11 @@ export function notificationView(notification: AppNotification, nameOf?: NameOf)
     }
     case 'ROTATION_PROPOSED': {
       const at = dateField(p, 'executableAt');
+      const role = rotatedRole(p);
       return view(
         'warning',
         [
-          text(`Se propuso reemplazar ${roleText(p)} por la clave con la dirección `),
+          text(`Se propuso reemplazar ${role.text} por ${PROPOSED_TO[role.kind]}`),
           party('newKey'),
           text(
             `${at === null ? '' : `; se puede ejecutar desde el ${at}`}. Si no la propusiste vos, cancelala antes de esa fecha.`,
@@ -115,15 +138,13 @@ export function notificationView(notification: AppNotification, nameOf?: NameOf)
       );
     }
     case 'ROTATION_READY':
-      return view('info', [text(`La rotación de ${roleText(p)} ya se puede ejecutar.`)], ROTATIONS);
+      return view('info', [text(`La rotación ${rotatedRole(p).of} ya se puede ejecutar.`)], ROTATIONS);
     case 'ROTATION_CANCELLED':
-      return view('info', [text(`Se canceló la rotación de ${roleText(p)}.`)], ROTATIONS);
-    case 'ROTATION_EXECUTED':
-      return view('info', [
-        text(`Se reemplazó ${roleText(p)}: la dirección de la clave nueva es `),
-        party('newKey'),
-        text('.'),
-      ]);
+      return view('info', [text(`Se canceló la rotación ${rotatedRole(p).of}.`)], ROTATIONS);
+    case 'ROTATION_EXECUTED': {
+      const role = rotatedRole(p);
+      return view('info', [text(`Se reemplazó ${role.text}: ${REPLACED_BY[role.kind]}`), party('newKey'), text('.')]);
+    }
     case 'RECOVERY_STARTED':
       return view(
         'warning',

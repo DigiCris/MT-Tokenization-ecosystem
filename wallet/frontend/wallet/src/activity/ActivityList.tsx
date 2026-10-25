@@ -4,22 +4,8 @@
 import { CallDescription } from '../operations/CallDescription.tsx';
 import { operationReason, stateLabel } from '../operations/describe.ts';
 import type { NameOf } from '../operations/names.ts';
-import { operationDetail, transferDetail, type ActivityItem } from './activity.ts';
+import { operationDetail, operationTypeText, transferDetail, type ActivityItem } from './activity.ts';
 import { TxHash } from './TxHash.tsx';
-
-const OPERATION_TEXT: Record<string, string> = {
-  SEND: 'Envío',
-  SWAP_APPROVE: 'Permiso exacto para el swap',
-  SWAP: 'Swap',
-  WHITELIST_ADD: 'Alta en la whitelist',
-  WHITELIST_REMOVE: 'Baja de la whitelist',
-  ROTATION_PROPOSE: 'Propuesta de rotación',
-  ROTATION_EXECUTE: 'Ejecución de rotación',
-  NOOP_CANCEL: 'Cancelación',
-  MIGRATION_TRANSFER: 'Migración',
-  APPROVE_REVOKE: 'Revocación de permiso',
-  GUARD_UPGRADE: 'Actualización del Guard',
-};
 
 export function ActivityList({ items, nameOf }: { items: ActivityItem[]; nameOf: NameOf }) {
   if (items.length === 0) return <p className="muted">Todavía no hay movimientos.</p>;
@@ -33,7 +19,7 @@ export function ActivityList({ items, nameOf }: { items: ActivityItem[]; nameOf:
           const reason = operationReason(operation);
           return (
             <li key={`op-${operation.id}`} data-kind="operation" data-status={operation.status}>
-              <strong>{OPERATION_TEXT[operation.operationType] ?? operation.operationType}</strong>
+              <strong>{operationTypeText(operation.operationType)}</strong>
               {detail && (
                 <span data-detail>
                   {': '}

@@ -1,10 +1,12 @@
 // `/security/rotations` (P18.T09 y P18.T09.b): rotaciones pendientes leídas de la cadena con su cuenta regresiva,
 // cancelación con la firma EIP-712 de U (al relay de la plataforma o exportada para `cancelWithSignature` desde
 // cualquier wallet), ejecución de las maduras y el pedido de rotación de S de la plataforma (motivo, S′ con su
-// atestación verificada con la clave fijada, propuesta firmada por U y, tras proponer, S′ leída del timelock).
+// atestación verificada con la clave fijada, propuesta firmada por U y, tras proponer, S′ leída del timelock). El rol,
+// el estado y el motivo que informa el backend llegan validados (wallet-api.ts): uno que esta app no conoce se muestra
+// con un texto genérico, nunca con el código.
 import { useCallback, useEffect, useState } from 'react';
 import { encodeFunctionData, isAddressEqual } from 'viem';
-import type { Rotation } from '../../api/wallet-api.ts';
+import type { ExecutorRotationReason, Rotation, RotationRole, UnknownCode } from '../../api/wallet-api.ts';
 import { api } from '../../app/services.ts';
 import { iSafeAbi } from '../../chain/abis/ISafe.ts';
 import { rotationTimelockAbi } from '../../chain/abis/RotationTimelock.ts';
@@ -12,6 +14,7 @@ import { verifyPrepared, type VerifiedOperation } from '../../chain/safe-tx.ts';
 import { systemContracts } from '../../config/index.ts';
 import { useChainNow } from '../../chain/ChainNow.tsx';
 import { decodeContext, onchainNonce } from '../../operations/context.ts';
+import { ofRole } from '../../operations/describe.ts';
 import { OperationReview } from '../../operations/OperationReview.tsx';
 import { releasePrepared, verifiedOrReleased } from '../../operations/prepared.ts';
 import { verifySignerKeyAttestation } from '../../safe/attestation.ts';
@@ -31,20 +34,23 @@ import {
   type PendingProposal,
 } from './rotations.ts';
 
-const ROLE_TEXT: Record<string, string> = {
-  U: 'clave de usuario (U)',
-  R: 'clave de recuperación (R)',
-  S: 'clave de la plataforma (S)',
+/** Qué se rota, como título de cada rotación (las pendientes se leen de la cadena; el historial, del backend). */
+const ROLE_LABEL: Readonly<Record<RotationRole | UnknownCode, string>> = {
+  U: 'Clave de usuario (U)',
+  R: 'Clave de recuperación (R)',
+  S: 'Clave de la plataforma (S)',
   GUARD: 'Guard de seguridad',
-  MODULE_GUARD: 'guard de módulos',
+  MODULE_GUARD: 'Guard de módulos',
+  UNKNOWN: 'Rol que esta versión de la app no reconoce',
 };
-const REASON_TEXT: Record<string, string> = {
+const REASON_TEXT: Readonly<Record<ExecutorRotationReason | UnknownCode, string>> = {
   SHARD_MIGRATION: 'migración de la clave a otro servidor de firma de la plataforma',
   HSM_MIGRATION: 'migración de la clave a un módulo de hardware (HSM)',
   KEY_COMPROMISE: 'posible compromiso del servidor que guarda la clave',
   MAINTENANCE: 'mantenimiento preventivo de la clave',
+  UNKNOWN: 'esta versión de la app no lo reconoce (abrí la app actualizada para ver el detalle)',
 };
-const STATUS_TEXT: Record<Rotation['status'], string> = {
+const STATUS_TEXT: Readonly<Record<Rotation['status'], string>> = {
   DRAFT: 'Pedida, sin proponer',
   AWAITING_SIGNATURE: 'Esperando tu firma',
   PROPOSING: 'Proponiendo',
@@ -54,6 +60,7 @@ const STATUS_TEXT: Record<Rotation['status'], string> = {
   EXECUTED: 'Ejecutada',
   CANCELLED: 'Cancelada',
   FAILED: 'Falló',
+  UNKNOWN: 'Estado que esta versión de la app no reconoce',
 };
 
 function Rotations({ ctx }: { ctx: OperatingWallet }) {
@@ -189,10 +196,8 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
           });
         });
         setReviewDone(false);
-        setReview({
-          title: `Revisá la ejecución de la rotación de tu ${ROLE_TEXT[proposal.role] ?? proposal.role}`,
-          item,
-        });
+        // «de tu clave de usuario (U)», pero «de la clave de la plataforma (S)» y «del Guard de seguridad».
+        setReview({ title: `Revisá la ejecución de la rotación ${ofRole(proposal.role)}`, item });
       },
       [unlocked, reader, wallet.safe, rotationFor],
     ),
@@ -223,7 +228,7 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
       {request && !review && (
         <section className="card stack" aria-labelledby="s-request-title" data-s-request={request.id}>
           <h2 id="s-request-title">La plataforma pidió rotar su clave (S)</h2>
-          <p>Motivo: {REASON_TEXT[request.requestReason ?? ''] ?? request.requestReason}</p>
+          <p>Motivo: {REASON_TEXT[request.requestReason ?? 'UNKNOWN']}</p>
           <dl className="summary">
             <dt>Dirección de la clave actual (leída de Base)</dt>
             <dd>
@@ -290,8 +295,8 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
             return (
               <li key={p.id} className="stack" data-proposal={p.id} data-role={p.role}>
                 <p>
-                  <strong>{ROLE_TEXT[p.role] ?? p.role}</strong>: de la dirección <AddressText address={p.oldValue} /> a
-                  la dirección <AddressText address={p.newValue} />
+                  <strong>{ROLE_LABEL[p.role]}</strong>: de la dirección <AddressText address={p.oldValue} /> a la
+                  dirección <AddressText address={p.newValue} />
                 </p>
                 <p>
                   {mature
@@ -348,7 +353,7 @@ function Rotations({ ctx }: { ctx: OperatingWallet }) {
           <ul className="rotations">
             {history.map((r) => (
               <li key={r.id} data-rotation={r.id} data-status={r.status}>
-                {ROLE_TEXT[r.role] ?? r.role}: {STATUS_TEXT[r.status]} · {new Date(r.createdAt).toLocaleString('es-AR')}
+                {ROLE_LABEL[r.role]}: {STATUS_TEXT[r.status]} · {new Date(r.createdAt).toLocaleString('es-AR')}
               </li>
             ))}
           </ul>

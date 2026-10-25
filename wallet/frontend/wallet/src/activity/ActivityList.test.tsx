@@ -2,16 +2,17 @@
 // P18.MAN (B1): cada operación de la actividad dice qué fue con dos puntos ("Alta en la whitelist: «Proveedor» 0x…",
 // "Envío: 1.000,00 USDC a …", sin un "de" que se lea como origen), su estado con el matiz que importa ("Cancelada antes
 // de firmar") y el motivo en texto si no se ejecutó, y el hash de la transacción además del enlace al explorador. La
-// ayuda de estados cubre todos los que se pueden ver.
+// ayuda de estados cubre todos los que se pueden ver. Un tipo, un estado o un rol que esta app no conoce van con un
+// texto genérico: el código del backend no llega a la pantalla.
 import { MemoryRouter } from 'react-router';
 import { getAddress, type Address } from 'viem';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OperationStatus, Transfer } from '../api/wallet-api.ts';
-import { STATE_HELP } from '../operations/describe.ts';
+import { STATE_HELP, UNKNOWN_ROLE_TEXT, UNKNOWN_STATE_TEXT } from '../operations/describe.ts';
 import { addressNames, labelsOf, shownLabels } from '../operations/names.ts';
 import { groupAddress } from '../ui/AddressText.tsx';
 import { render, type Mounted } from '../ui/dom.test-helper.ts';
-import { mergeActivity } from './activity.ts';
+import { mergeActivity, operationTypeText, UNKNOWN_OPERATION_TEXT } from './activity.ts';
 import { ActivityList } from './ActivityList.tsx';
 import { StateHelp } from './ActivityPage.tsx';
 
@@ -103,6 +104,25 @@ describe('lista de actividad', () => {
       ' (no cumple las reglas de la plataforma: venció el plazo del swap)',
     );
     expect(item?.textContent).not.toMatch(/POLICY_REJECTED|DEADLINE_INVALID/);
+  });
+
+  it('un tipo, un estado o un rol que esta app no conoce: texto genérico, nunca el código del backend', async () => {
+    const c = await list([
+      op('nuevo', { operationType: 'TIPO_NUEVO' as OperationStatus['operationType'], status: 'FINALIZED' }),
+      op('estado', { status: 'ESTADO_NUEVO' as OperationStatus['status'] }),
+      op('rol', {
+        operationType: 'ROTATION_PROPOSE',
+        decoded: { role: 'ROL_NUEVO' as never },
+        createdAt: '2026-10-19T08:00:00Z',
+      }),
+    ]);
+    const [nuevo, estado, rol] = [...c.querySelectorAll('li[data-kind="operation"]')];
+    expect(nuevo?.querySelector('strong')?.textContent).toBe(UNKNOWN_OPERATION_TEXT);
+    expect(estado?.querySelector('[data-state]')?.textContent).toBe(UNKNOWN_STATE_TEXT);
+    expect(rol?.textContent).toContain(`Propuesta de rotación: ${UNKNOWN_ROLE_TEXT}`);
+    expect(c.textContent).not.toMatch(/TIPO_NUEVO|ESTADO_NUEVO|ROL_NUEVO/);
+    expect(operationTypeText('SEND')).toBe('Envío');
+    expect(operationTypeText('constructor')).toBe(UNKNOWN_OPERATION_TEXT);
   });
 
   it('un transfer recibido: de quién, con el hash de su transacción', async () => {

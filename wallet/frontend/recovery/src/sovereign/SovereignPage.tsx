@@ -152,7 +152,7 @@ function ActionFields({ type, state }: { type: ActionInput['type']; state: Sover
     return (
       <>
         <Field
-          label="Clave de usuario (U)"
+          label="Dirección de la clave de usuario (U)"
           name="userKey"
           autoComplete="off"
           spellCheck={false}
@@ -160,7 +160,7 @@ function ActionFields({ type, state }: { type: ActionInput['type']; state: Sover
           required
         />
         <Field
-          label="Clave de recuperación (R)"
+          label="Dirección de la clave de recuperación (R)"
           name="recoveryKey"
           autoComplete="off"
           spellCheck={false}
@@ -168,7 +168,7 @@ function ActionFields({ type, state }: { type: ActionInput['type']; state: Sover
           required
         />
         <Field
-          label="Clave de la plataforma (S)"
+          label="Dirección de la clave de la plataforma (S)"
           name="executor"
           autoComplete="off"
           spellCheck={false}

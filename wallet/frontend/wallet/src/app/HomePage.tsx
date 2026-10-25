@@ -4,19 +4,10 @@
 import { Link } from 'react-router';
 import { OperatingHome } from '../home/OperatingHome.tsx';
 import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
+import { walletStatusText } from '../safe/gate.ts';
 import { SafeGate } from '../safe/SafeGate.tsx';
 import { useSession, useSessionStore } from '../session/context.tsx';
 import { AddressText } from '../ui/AddressText.tsx';
-
-const STATUS_TEXT: Record<string, string> = {
-  CREATING: 'Creación en curso: falta terminar el alta de tus claves.',
-  DEPLOYING: 'Desplegando tu Safe en Base.',
-  VERIFYING: 'Verificando tu Safe on-chain.',
-  ACTIVE: 'Activa.',
-  SOVEREIGN_MODIFIED: 'Modificada fuera de la plataforma (modo soberano).',
-  MIGRATING: 'Migración excepcional en curso.',
-  FAILED: 'La creación falló.',
-};
 
 export function HomePage() {
   const { status, user, wallet, unlocked } = useSession();
@@ -48,7 +39,7 @@ export function HomePage() {
           ) : (
             <>
               <p>
-                Estado: <strong>{STATUS_TEXT[wallet.status] ?? wallet.status}</strong>
+                Estado: <strong>{walletStatusText(wallet.status)}</strong>
               </p>
               {wallet.safe && (
                 <p>

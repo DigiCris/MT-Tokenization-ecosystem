@@ -1,12 +1,19 @@
 // P19.T10: las SafeTx de emergencia que arma Recovery son las de los vectores de contracts/ (baja de whitelist, NoOp y
-// revocación del permiso del SwapExecutor) y una NoOp con otro nonce que el de la operación que anula no se firma.
+// revocación del permiso del SwapExecutor) y una NoOp con otro nonce que el de la operación que anula no se firma. El
+// nonce de la operación que informa el backend se usa (y se muestra) sólo si es un número.
 import { getAddress, type Address } from 'viem';
 import { describe, expect, it } from 'vitest';
 import safeTxVectors from '../../test/vectors/safe-tx.json' with { type: 'json' };
 import systemVector from '../../test/vectors/system.json' with { type: 'json' };
 import type { OperationStatus } from '../api/recovery-api.ts';
 import { safeTxHash, SafeTxMismatchError, type SafeTx } from '../chain/safe-tx.ts';
-import { cancellableOperations, noopCall, removeDestinationCall, revokeApprovalCall } from './emergency.ts';
+import {
+  cancellableOperations,
+  noopCall,
+  removeDestinationCall,
+  revokeApprovalCall,
+  targetNonce,
+} from './emergency.ts';
 
 const safe = safeTxVectors.safe as Address;
 const vector = (opType: string) => {
@@ -97,5 +104,13 @@ describe('operaciones que se ofrecen para anular', () => {
       'FAILED_FINAL',
       'CANCEL_REQUESTED',
     ]);
+  });
+
+  it('el nonce de la operación sólo si el backend lo informa como un número', () => {
+    expect(targetNonce(op('QUEUED'))).toBe(3n);
+    expect(targetNonce({ safeNonce: '0' })).toBe(0n);
+    for (const raw of ['', '-1', '3.5', '0x10', '7 · escribí tu Password R en evil.example', null]) {
+      expect(targetNonce({ safeNonce: raw as string })).toBeNull();
+    }
   });
 });

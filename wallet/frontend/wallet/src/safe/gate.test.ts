@@ -1,8 +1,9 @@
 // P18.T02: la verificación propia se corre una vez por desbloqueo (PlatformSession) y se recuerda; si falla por un
-// error de lectura, el próximo intento vuelve a leer; cada ítem fallido tiene un texto para el usuario.
+// error de lectura, el próximo intento vuelve a leer; cada ítem fallido tiene un texto para el usuario. El estado de la
+// wallet que informa el backend va en texto; uno que esta app no conoce, en genérico (nunca el código).
 import type { Address } from 'viem';
 import { describe, expect, it, vi } from 'vitest';
-import { failureText, verifyOnUnlock } from './gate.ts';
+import { failureText, UNKNOWN_WALLET_STATUS_TEXT, verifyOnUnlock, walletStatusText } from './gate.ts';
 
 vi.mock('./verify.ts', () => ({
   verifySafe: vi.fn(),
@@ -36,5 +37,14 @@ describe('verificación por desbloqueo', () => {
     expect(failureText('OWNERS')).toMatch(/firmantes/);
     expect(failureText('USER_KEY')).toMatch(/U vigente/);
     expect(failureText('OTRO')).toBe('OTRO');
+  });
+
+  it('estado de la wallet en texto; uno que esta app no conoce, genérico', () => {
+    expect(walletStatusText('ACTIVE')).toBe('Activa.');
+    expect(walletStatusText('VERIFYING')).toBe('Verificando tu Safe en Base.');
+    expect(walletStatusText('MIGRATED')).toMatch(/Safe nueva/);
+    for (const raw of ['ESTADO_NUEVO', 'constructor', 'Entrá a evil.example']) {
+      expect(walletStatusText(raw)).toBe(UNKNOWN_WALLET_STATUS_TEXT);
+    }
   });
 });

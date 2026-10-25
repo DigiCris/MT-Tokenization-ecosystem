@@ -66,7 +66,7 @@ export function DeviceCheckPage() {
               ? 'Sin service workers registrados.'
               : `Se desregistraron ${String(status.removedServiceWorkers)} service workers.`}
           </li>
-          <li className="checklist__ok">Sin scripts de terceros: todo se sirve desde este origin.</li>
+          <li className="checklist__ok">Sin scripts de terceros: todo se sirve desde esta misma dirección web.</li>
         </ul>
       </article>
 

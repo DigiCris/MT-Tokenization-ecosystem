@@ -1,14 +1,30 @@
 // Endpoints del listener de Recovery (P12/P15) que usa la app: cuenta, step-up (PlatformSession ENROLLMENT/RECOVERY con
 // la session key propia), enrollment de R, rotaciones (U, S y la cancelación por relay), operaciones firmadas por R,
 // emergencia, migración y notificaciones. Los tipos siguen las respuestas del backend; lo que se firma la app lo
-// reconstruye por su cuenta (nada de una SafeTx se toma del backend sin verificarlo).
+// reconstruye por su cuenta (nada de una SafeTx se toma del backend sin verificarlo). Los códigos de las rotaciones que
+// se muestran con texto propio (rol, estado, motivo) se validan al recibirlos (knownRotation).
 import type { Address, Hex } from 'viem';
 import { newIdempotencyKey, type ApiClient, type PlatformAuth } from './client.ts';
 import type { P256PublicJwk } from './session-key.ts';
 import type { SubmissionEnvelope } from './submission.ts';
 
 export type TokenSymbol = 'USDC' | 'USDT';
-export type RotationRole = 'U' | 'R' | 'S' | 'GUARD' | 'MODULE_GUARD';
+export const ROTATION_ROLES = ['U', 'R', 'S', 'GUARD', 'MODULE_GUARD'] as const;
+export type RotationRole = (typeof ROTATION_ROLES)[number];
+export const EXECUTOR_ROTATION_REASONS = ['SHARD_MIGRATION', 'HSM_MIGRATION', 'KEY_COMPROMISE', 'MAINTENANCE'] as const;
+export type ExecutorRotationReason = (typeof EXECUTOR_ROTATION_REASONS)[number];
+
+/**
+ * Un código que esta versión de la app no conoce, en un campo que la pantalla muestra con su propio texto (un backend
+ * más nuevo o comprometido): se valida al recibirlo y en pantalla va un texto genérico, nunca el valor crudo (revisión
+ * de ADR-033).
+ */
+export type UnknownCode = 'UNKNOWN';
+
+/** El valor si es uno de los códigos conocidos; si no, UNKNOWN. */
+export function knownCode<T extends string>(known: readonly T[], value: unknown): T | UnknownCode {
+  return known.find((code) => code === value) ?? 'UNKNOWN';
+}
 
 export interface User {
   id: string;
@@ -151,24 +167,27 @@ export interface OperationStatus {
   createdAt: string;
 }
 
-export type RotationStatus =
-  | 'DRAFT'
-  | 'AWAITING_SIGNATURE'
-  | 'PROPOSING'
-  | 'PENDING_TIMELOCK'
-  | 'READY_TO_EXECUTE'
-  | 'EXECUTING'
-  | 'EXECUTED'
-  | 'CANCELLED'
-  | 'FAILED';
+export const ROTATION_STATUSES = [
+  'DRAFT',
+  'AWAITING_SIGNATURE',
+  'PROPOSING',
+  'PENDING_TIMELOCK',
+  'READY_TO_EXECUTE',
+  'EXECUTING',
+  'EXECUTED',
+  'CANCELLED',
+  'FAILED',
+] as const;
+export type RotationStatus = (typeof ROTATION_STATUSES)[number];
 
+/** Rotación del backend: el rol, el estado y el motivo llegan validados (knownRotation). */
 export interface Rotation {
   id: string;
   walletId: string;
-  role: RotationRole;
+  role: RotationRole | UnknownCode;
   oldKey: Address;
   newKey: Address;
-  status: RotationStatus;
+  status: RotationStatus | UnknownCode;
   origin: 'PLATFORM' | 'ONCHAIN';
   initiatedBy: 'U' | 'R' | 'SAFE';
   proposalId: Hex | null;
@@ -181,8 +200,20 @@ export interface Rotation {
   failureReason: string | null;
   createdAt: string;
   cancelTypedData: Record<string, unknown> | null;
-  requestReason: string | null;
+  /** Rotación de S pedida por la plataforma: motivo del borrador del operador. */
+  requestReason: ExecutorRotationReason | UnknownCode | null;
   newKeyAttestation: string | null;
+}
+
+/** Una rotación del backend con el rol, el estado y el motivo validados: los que esta app no conoce quedan UNKNOWN. */
+export function knownRotation(rotation: Rotation): Rotation {
+  const reason: unknown = rotation.requestReason;
+  return {
+    ...rotation,
+    role: knownCode(ROTATION_ROLES, rotation.role),
+    status: knownCode(ROTATION_STATUSES, rotation.status),
+    requestReason: reason === null || reason === undefined ? null : knownCode(EXECUTOR_ROTATION_REASONS, reason),
+  };
 }
 
 export interface WhitelistEntry {
@@ -288,32 +319,40 @@ export class RecoveryApi {
 
   // --- Rotaciones ----------------------------------------------------------------------------------------------------
 
-  rotations(walletId: string) {
-    return this.client.request<{ items: Rotation[] }>('GET', `/wallets/${enc(walletId)}/rotations`);
+  async rotations(walletId: string) {
+    const list = await this.client.request<{ items: Rotation[] }>('GET', `/wallets/${enc(walletId)}/rotations`);
+    return { ...list, items: list.items.map(knownRotation) };
   }
 
-  proposeRotation(platform: PlatformAuth, walletId: string, role: 'U' | 'S', idempotencyKey = newIdempotencyKey()) {
-    return this.client.request<{ rotation: Rotation; operation: PreparedOperation }>(
+  async proposeRotation(
+    platform: PlatformAuth,
+    walletId: string,
+    role: 'U' | 'S',
+    idempotencyKey = newIdempotencyKey(),
+  ) {
+    const result = await this.client.request<{ rotation: Rotation; operation: PreparedOperation }>(
       'POST',
       `/wallets/${enc(walletId)}/rotations`,
       { platform, body: { role }, idempotencyKey },
     );
+    return { ...result, rotation: knownRotation(result.rotation) };
   }
 
-  prepareRotationExecution(platform: PlatformAuth, rotationId: string, idempotencyKey = newIdempotencyKey()) {
-    return this.client.request<{ rotation: Rotation; operation: PreparedOperation }>(
+  async prepareRotationExecution(platform: PlatformAuth, rotationId: string, idempotencyKey = newIdempotencyKey()) {
+    const result = await this.client.request<{ rotation: Rotation; operation: PreparedOperation }>(
       'POST',
       `/rotations/${enc(rotationId)}/execute/prepare`,
       { platform, idempotencyKey },
     );
+    return { ...result, rotation: knownRotation(result.rotation) };
   }
 
-  relayRotationCancellation(rotationId: string, signature: Hex) {
-    return this.client.request<{ rotation: Rotation; relay: { status: string; signer: Address; role: 'U' | 'R' } }>(
-      'POST',
-      `/rotations/${enc(rotationId)}/cancel`,
-      { body: { signature } },
-    );
+  async relayRotationCancellation(rotationId: string, signature: Hex) {
+    const result = await this.client.request<{
+      rotation: Rotation;
+      relay: { status: string; signer: Address; role: 'U' | 'R' };
+    }>('POST', `/rotations/${enc(rotationId)}/cancel`, { body: { signature } });
+    return { ...result, rotation: knownRotation(result.rotation) };
   }
 
   // --- Operaciones ---------------------------------------------------------------------------------------------------

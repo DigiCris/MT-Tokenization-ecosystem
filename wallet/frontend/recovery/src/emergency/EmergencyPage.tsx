@@ -1,6 +1,8 @@
 // `/emergency` (P19.T10): el botón de pánico si U está comprometida. Con R + S: quitar destinos de la whitelist (leídos
 // on-chain), anular una operación pendiente con una NoOp del mismo nonce y revocar el permiso residual del
-// SwapExecutor sobre USDC/USDT. Cada SafeTx la arma la app y se compara con la del backend antes de que R firme.
+// SwapExecutor sobre USDC/USDT. Cada SafeTx la arma la app y se compara con la del backend antes de que R firme. De
+// cada operación pendiente se muestran el tipo y el estado con textos de esta app (operations/status.ts) y el nonce
+// sólo si es un número.
 import { useCallback, useEffect, useState } from 'react';
 import { erc20Abi, getAddress, type Address } from 'viem';
 import type { OperationStatus, TokenSymbol } from '../api/recovery-api.ts';
@@ -8,14 +10,21 @@ import { api, pinned, reader } from '../app/services.ts';
 import { destinationWhitelistAbi } from '../chain/abis/DestinationWhitelist.ts';
 import { safeNonce } from '../chain/rotations.ts';
 import { verifyPrepared, type VerifiedOperation } from '../chain/safe-tx.ts';
-import { OperationReview, STATE_TEXT } from '../operations/OperationReview.tsx';
+import { OperationReview } from '../operations/OperationReview.tsx';
 import { releasePrepared, SETTLED_STATES, verifiedOrReleased } from '../operations/sign.ts';
+import { operationTypeText, stateText } from '../operations/status.ts';
 import { useSensitiveScreen } from '../session/context.tsx';
 import { RecoveryGate, type RecoveryContext } from '../session/RecoveryGate.tsx';
 import { AddressText } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
 import { Notice, useAsyncAction } from '../ui/forms.tsx';
-import { cancellableOperations, noopCall, removeDestinationCall, revokeApprovalCall } from './emergency.ts';
+import {
+  cancellableOperations,
+  noopCall,
+  removeDestinationCall,
+  revokeApprovalCall,
+  targetNonce,
+} from './emergency.ts';
 
 interface State {
   destinations: { address: Address; label: string | null }[];
@@ -105,12 +114,17 @@ function Emergency({ ctx }: { ctx: RecoveryContext }) {
           return;
         }
         const item = await verifiedOrReleased(api, platform, [prepared], async () => {
-          const targetNonce = BigInt(target.safeNonce);
+          const nonce = targetNonce(target);
+          if (nonce === null) {
+            throw new Error(
+              'La plataforma no informó el número de orden de esa operación: no se puede anular desde acá.',
+            );
+          }
           return verifyPrepared(prepared, {
             safe,
             chainId: 8453,
             onchainNonce: await safeNonce(reader, safe),
-            build: (n) => noopCall(safe, targetNonce, n),
+            build: (n) => noopCall(safe, nonce, n),
           });
         });
         setReview({ title: 'Revisá la anulación de la operación pendiente', item });
@@ -199,7 +213,8 @@ function Emergency({ ctx }: { ctx: RecoveryContext }) {
             <ul className="list">
               {state.operations.map((op) => (
                 <li key={op.id} className="list__item" data-operation={op.id} data-status={op.status}>
-                  {op.operationType} · nonce {op.safeNonce} · {STATE_TEXT[op.status]}{' '}
+                  {operationTypeText(op.operationType)} ·{' '}
+                  {targetNonce(op) === null ? 'nonce desconocido' : `nonce ${op.safeNonce}`} · {stateText(op.status)}{' '}
                   <button
                     type="button"
                     className="button button--link"

@@ -23,6 +23,14 @@ export function cancellableOperations(items: readonly OperationStatus[]): Operat
   return items.filter((op) => CANCELLABLE_STATES.includes(op.status) && op.operationType !== 'NOOP_CANCEL');
 }
 
+/**
+ * El nonce de la operación a anular, sólo si el backend lo informa como un número (uint256 en decimal): si no, no se
+ * muestra ni se arma una NoOp con él (y su texto nunca llega a la pantalla).
+ */
+export function targetNonce(op: Pick<OperationStatus, 'safeNonce'>): bigint | null {
+  return /^\d{1,78}$/.test(op.safeNonce) ? BigInt(op.safeNonce) : null;
+}
+
 export function removeDestinationCall(whitelist: Address, destination: Address, nonce: bigint): SafeTx {
   return plainCall(
     whitelist,
