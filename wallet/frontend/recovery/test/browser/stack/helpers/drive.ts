@@ -2,9 +2,9 @@
 // pantalla de autorización la responde el test con un access token real de la cuenta de prueba (GOOGLE_DRIVE_TEST_*)
 // devuelto por el mismo camino que usa Google —redirección al callback con el token y el `state` del pedido en el
 // fragmento—. Todo lo demás (subida verificada, listado y lectura de los sobres) va contra la API real de Drive, salvo
-// la revocación: ver answerGoogleConsent.
+// la revocación: ver blockGoogleRevocation.
 import { resolve } from 'node:path';
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 import { WALLET_ROOT } from '../../../../build/config.ts';
 import { readEnvFile } from '../../../../build/env-file.ts';
 import { DriveClient } from '../../../../src/drive/client.ts';
@@ -44,21 +44,61 @@ export interface GoogleConsent {
   revoked: string[];
 }
 
+const blocked = new WeakMap<BrowserContext, GoogleConsent>();
+
 /**
- * Responde la autorización de Google con el token real (como Google tras el consentimiento). La revocación que hace la
- * app al bloquear o cerrar sesión ([F-DRV-01]) se intercepta en todo el contexto: el token es de la cuenta de prueba y
- * revocarlo en Google revoca el permiso entero del cliente de prueba para esa cuenta (los refresh tokens de
- * GOOGLE_DRIVE_TEST_* y de EMAIL_TEST_*). El pedido queda en `revoked` y se responde como Google; el formato contra el
- * endpoint real lo prueba test/live/drive.live.test.ts con un token inválido.
+ * Impide en todo el contexto que un pedido de revocación llegue a Google. El token que reciben estas páginas es de la
+ * cuenta de prueba, y revocarlo revoca el permiso entero del cliente de prueba para esa cuenta (los refresh tokens de
+ * GOOGLE_DRIVE_TEST_* y de EMAIL_TEST_*); la app lo revoca al bloquear o cerrar sesión ([F-DRV-01]). Dos capas: un script que corre
+ * antes que la app responde ahí mismo, sin red, cualquier `fetch` o `sendBeacon` a /revoke (vale aunque la página se esté
+ * cerrando y Playwright ya no intercepte), y la ruta del contexto, por si algo pasara la primera. Cada pedido queda en
+ * `revoked`; el formato contra el endpoint real lo prueba test/live/drive.live.test.ts con un token inválido.
  */
-export async function answerGoogleConsent(page: Page): Promise<GoogleConsent> {
-  const accessToken = await driveTestToken();
+export async function blockGoogleRevocation(context: BrowserContext): Promise<GoogleConsent> {
+  const existing = blocked.get(context);
+  if (existing) return existing;
   const consent: GoogleConsent = { revoked: [] };
-  await page.context().route(`${REVOKE_URL}**`, async (route) => {
+  blocked.set(context, consent);
+  await context.exposeBinding('mtwRevocationBlocked', (_source, token: string) => {
+    consent.revoked.push(token);
+  });
+  await context.addInitScript((revokeUrl: string) => {
+    const report = (body: unknown) => {
+      const text = body instanceof URLSearchParams ? body.toString() : typeof body === 'string' ? body : '';
+      const notify = (window as unknown as { mtwRevocationBlocked?: (token: string) => Promise<void> })
+        .mtwRevocationBlocked;
+      void notify?.(new URLSearchParams(text).get('token') ?? '').catch(() => undefined);
+    };
+    const target = (input: RequestInfo | URL) =>
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      if (!target(input).startsWith(revokeUrl)) return originalFetch(input, init);
+      report(init?.body);
+      return Promise.resolve(new Response('', { status: 200 }));
+    };
+    const originalBeacon = navigator.sendBeacon.bind(navigator);
+    navigator.sendBeacon = (url, data) => {
+      if (!target(url).startsWith(revokeUrl)) return originalBeacon(url, data);
+      report(data);
+      return true;
+    };
+  }, REVOKE_URL);
+  await context.route(`${REVOKE_URL}**`, async (route) => {
     consent.revoked.push(new URLSearchParams(route.request().postData() ?? '').get('token') ?? '');
     const origin = (await route.request().headerValue('origin')) ?? '*';
     await route.fulfill({ status: 200, headers: { 'access-control-allow-origin': origin }, body: '' });
   });
+  return consent;
+}
+
+/**
+ * Responde la autorización de Google con el token real (como Google tras el consentimiento), con la revocación ya
+ * bloqueada en el contexto (blockGoogleRevocation): ninguna página recibe el token antes que la protección.
+ */
+export async function answerGoogleConsent(page: Page): Promise<GoogleConsent> {
+  const consent = await blockGoogleRevocation(page.context());
+  const accessToken = await driveTestToken();
   await page.route('https://accounts.google.com/**', async (route) => {
     const request = new URL(route.request().url());
     const redirect = new URL(request.searchParams.get('redirect_uri') ?? '');
