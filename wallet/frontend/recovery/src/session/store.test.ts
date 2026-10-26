@@ -1,11 +1,13 @@
 // P19 [F-KEY-07]/[F-SES-04]: la sesión de Recovery vive sólo en memoria. Se bloquea —R se descarta, la wallet externa se
 // desconecta y la PlatformSession se revoca en el backend— por inactividad en pantallas sensibles (5 min), al vencer la
-// PlatformSession (15 min), al salir o a pedido; fuera de las pantallas sensibles no cuenta la inactividad.
+// PlatformSession (15 min), al salir o a pedido; fuera de las pantallas sensibles no cuenta la inactividad. Cuarta
+// revisión de P17.MAN: un minuto antes del bloqueo por inactividad se avisa (sin pausar la cuenta), y una R que ya no
+// se va a usar se descarta sin revocar la verificación.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '../api/recovery-api.ts';
 import type { UnlockedRecovery } from '../crypto/session.ts';
 import type { ExternalSession } from '../external-wallet/types.ts';
-import { currentSigner, INACTIVITY_MS, SessionStore, type PlatformSession } from './store.ts';
+import { currentSigner, INACTIVITY_MS, INACTIVITY_WARNING_MS, SessionStore, type PlatformSession } from './store.ts';
 
 const user = { id: 'u1', email: 'ana@example.test' } as User;
 
@@ -117,6 +119,78 @@ describe('bloqueos', () => {
     await Promise.resolve();
     expect(disconnect).toHaveBeenCalledOnce();
     expect(store.snapshot()).toMatchObject({ external: null, lockReason: 'MANUAL' });
+    unsubscribe();
+  });
+});
+
+describe('aviso de inactividad (hallazgo 2 de la cuarta revisión)', () => {
+  it('un minuto antes del bloqueo avisa; el aviso no pausa la cuenta y el bloqueo lo saca', () => {
+    const store = new SessionStore(fakeApi().api);
+    const leave = store.enterSensitive();
+    store.unlockRecovery(recovery);
+    vi.advanceTimersByTime(INACTIVITY_MS - INACTIVITY_WARNING_MS - 1_000);
+    expect(store.snapshot().inactivityWarning).toBe(false);
+    vi.advanceTimersByTime(1_000);
+    expect(store.snapshot().inactivityWarning).toBe(true);
+    vi.advanceTimersByTime(INACTIVITY_WARNING_MS);
+    expect(store.snapshot()).toMatchObject({ recovery: null, lockReason: 'INACTIVITY', inactivityWarning: false });
+    leave();
+  });
+
+  it('«Seguir usando Recovery» (o cualquier tecla o toque) reinicia la cuenta y saca el aviso', () => {
+    const store = new SessionStore(fakeApi().api);
+    const leave = store.enterSensitive();
+    store.setPlatform(platform(900_000));
+    vi.advanceTimersByTime(INACTIVITY_MS - INACTIVITY_WARNING_MS);
+    expect(store.snapshot().inactivityWarning).toBe(true);
+    store.touch();
+    expect(store.snapshot().inactivityWarning).toBe(false);
+    vi.advanceTimersByTime(INACTIVITY_MS - 1_000);
+    expect(store.snapshot().platform).not.toBeNull();
+    expect(store.snapshot().inactivityWarning).toBe(true);
+    leave();
+    // Fuera de las pantallas sensibles no hay aviso ni bloqueo.
+    expect(store.snapshot().inactivityWarning).toBe(false);
+    vi.advanceTimersByTime(INACTIVITY_MS);
+    expect(store.snapshot().platform).not.toBeNull();
+  });
+
+  it('sin nada abierto no avisa', () => {
+    const store = new SessionStore(fakeApi().api);
+    const leave = store.enterSensitive();
+    store.unlockRecovery(recovery);
+    store.discardKey();
+    vi.advanceTimersByTime(INACTIVITY_MS);
+    expect(store.snapshot()).toMatchObject({ inactivityWarning: false, lockReason: null });
+    leave();
+  });
+});
+
+describe('descartar la clave sin bloquear', () => {
+  it('R y la wallet externa se descartan; la verificación sigue y no cuenta como bloqueo', async () => {
+    const disconnect = vi.fn<() => Promise<void>>(() => Promise.resolve());
+    const external = {
+      address: '0x00000000000000000000000000000000000000e1',
+      disconnect,
+    } as unknown as ExternalSession;
+    const { api, calls } = fakeApi();
+    const store = new SessionStore(api);
+    store.setPlatform(platform(900_000));
+    store.unlockRecovery(recovery);
+    store.discardKey();
+    expect(store.snapshot()).toMatchObject({ recovery: null, lockReason: null });
+    expect(store.snapshot().platform).not.toBeNull();
+    store.connectExternal(external);
+    store.discardKey();
+    await Promise.resolve();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(store.snapshot().external).toBeNull();
+    expect(calls).toEqual([]);
+    // Sin nada que descartar no cambia el estado.
+    const listener = vi.fn<() => void>();
+    const unsubscribe = store.subscribe(listener);
+    store.discardKey();
+    expect(listener).not.toHaveBeenCalled();
     unsubscribe();
   });
 });

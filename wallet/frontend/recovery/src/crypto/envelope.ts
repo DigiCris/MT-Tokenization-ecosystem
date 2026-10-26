@@ -248,13 +248,20 @@ export async function sealRecoveryKey(
   }
 }
 
-/** El archivo descargable (`mtw-R-<walletId>.enc.json`) y el contenido del QR: el JSON del sobre. */
+/** El contenido del archivo descargable y del QR: el JSON del sobre. */
 export function serializeRecoveryEnvelope(envelope: RecoveryEnvelope): string {
   return `${JSON.stringify(envelope, null, 2)}\n`;
 }
 
-export function envelopeFileName(envelope: Pick<RecoveryEnvelope, 'walletId'>): string {
-  return `mtw-R-${envelope.walletId}.enc.json`;
+/**
+ * Nombre del archivo descargable: `mtw-R-<walletId>-<4 primeros>-<4 últimos>.enc.json`, con el principio y el final de
+ * la dirección de R (EIP-55). Cada R de la misma wallet (la de un pedido anterior, R′ en un reemplazo) baja con otro
+ * nombre, y el archivo se reconoce por la dirección que se anota en los demás backups (cuarta revisión de P17.MAN,
+ * hallazgo 1). Restaurar lee el contenido, nunca el nombre.
+ */
+export function envelopeFileName(envelope: Pick<RecoveryEnvelope, 'walletId' | 'keyAddress'>): string {
+  const hex = getAddress(envelope.keyAddress).slice(2);
+  return `mtw-R-${envelope.walletId}-${hex.slice(0, 4)}-${hex.slice(-4)}.enc.json`;
 }
 
 /** Baseline de Argon2id de la app (para la UI del dispositivo). */

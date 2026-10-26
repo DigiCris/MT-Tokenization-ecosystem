@@ -10,7 +10,7 @@ import { expect, test } from '@playwright/test';
 import { getAddress, type Address } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { securityGuardAbi } from '../../../src/chain/abis/SecurityGuard.ts';
-import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from '../../../src/crypto/envelope.ts';
+import { envelopeFileName, parseRecoveryEnvelope, serializeRecoveryEnvelope } from '../../../src/crypto/envelope.ts';
 import { chain } from './helpers/chain.ts';
 import { downloadedText } from './helpers/download.ts';
 import { answerGoogleConsent, driveTestToken, removeRecoveryBackup, testDrive } from './helpers/drive.ts';
@@ -74,7 +74,10 @@ test('R interna: Password R, backups en Drive y archivo, prueba de control y Saf
     const file = await downloadedText(download);
     const envelope = parseRecoveryEnvelope(JSON.parse(file));
     expect(envelope).toMatchObject({ role: 'R', walletId: state.walletId });
-    expect(download.suggestedFilename()).toBe(`mtw-R-${state.walletId}.enc.json`);
+    // Con el principio y el final de la dirección de R: los archivos de distintas R no se pisan (cuarta revisión).
+    const hex = envelope.keyAddress.slice(2);
+    expect(download.suggestedFilename()).toBe(`mtw-R-${state.walletId}-${hex.slice(0, 4)}-${hex.slice(-4)}.enc.json`);
+    expect(download.suggestedFilename()).toBe(envelopeFileName(envelope));
     // El de Drive es exactamente el mismo sobre (la serialización del archivo).
     const drive = await testDrive();
     const [stored] = await drive.list(`R.enc.${state.walletId}.json`);

@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts';
-import { openRecoveryEnvelope, parseRecoveryEnvelope } from '../../../src/crypto/envelope.ts';
+import { envelopeFileName, openRecoveryEnvelope, parseRecoveryEnvelope } from '../../../src/crypto/envelope.ts';
 import { uploadRecoveryEnvelope } from '../../../src/drive/backup.ts';
 import { encodeFrames } from '../../../src/qr/frames.ts';
 import { answerGoogleConsent, removeRecoveryBackup, testDrive } from './helpers/drive.ts';
@@ -60,21 +60,22 @@ test('desde el archivo cifrado: Password R, verificación en Base y sobre record
   await page.goto('/restore');
   await page.getByRole('button', { name: 'Archivo cifrado' }).click();
   await page.getByLabel('Archivo del sobre cifrado (R.enc)').setInputFiles({
-    name: `mtw-R-${wallet.walletId}.enc.json`,
+    name: envelopeFileName(sealed.envelope),
     mimeType: 'application/json',
     buffer: Buffer.from(sealed.file),
   });
   await openAndVerify(page);
   await page.getByRole('button', { name: 'Recordar el sobre cifrado en este dispositivo' }).click();
   await expect(page.getByText('Sobre cifrado recordado en este dispositivo.')).toBeVisible();
-  // En otra pantalla, el desbloqueo ofrece el sobre recordado (sin volver a elegir el archivo).
+  // En otra pantalla, el desbloqueo ofrece el sobre recordado (sin volver a elegir el archivo), con la dirección completa
+  // de su R en grupos (cuarta revisión de P17.MAN: puede haber sobres de otras R de la misma wallet).
   await page.getByRole('link', { name: 'MT Recovery, inicio' }).click();
   await page.getByRole('button', { name: 'Bloquear' }).click();
   await page.getByRole('link', { name: 'Rotaciones pendientes' }).click();
   await login(page, wallet.account.email);
   await expect(
     page.getByRole('button', {
-      name: `Usar el sobre recordado de la clave R con la dirección ${recovery.address.slice(0, 10)}…`,
+      name: `Usar el sobre recordado de la clave R con la dirección 0x ${(recovery.address.slice(2).match(/.{4}/g) ?? []).join(' ')}`,
     }),
   ).toBeVisible();
 });

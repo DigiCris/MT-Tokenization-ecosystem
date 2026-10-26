@@ -1,12 +1,16 @@
 // Password R nueva ([F-KEY-02]): la app genera 5 palabras, el usuario las anota y confirma 2 al azar (posiciones nuevas
 // cada vez que pasa a confirmar; si se equivoca, puede volver a verlas). La usan la creación de R (P19.T03) y el
 // re-cifrado de R restaurada desde las 17 palabras (P19.T08). La confirmación es el paso donde se cifra R: quien la usa
-// puede sumar ahí sus opciones (la creación de R, recordar el sobre en este dispositivo).
+// puede sumar ahí sus opciones (la creación de R, recordar el sobre en este dispositivo). Cuarta revisión de P17.MAN:
+// lo que abre la Password R incluye la copia de Drive y el sobre recordado, y el papel lleva un rótulo (con la
+// dirección de R si ya se conoce).
 import { useCallback, useState, type ReactNode } from 'react';
+import type { Address } from 'viem';
 import { confirmationPositions, confirmsPassword, newPasswordR } from '../crypto/password.ts';
 import { loadWordlist } from '../crypto/wordlist.ts';
 import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { Words } from '../ui/Words.tsx';
+import { passwordRPaperText } from './texts.ts';
 
 export function NewPasswordR({
   pending,
@@ -14,6 +18,8 @@ export function NewPasswordR({
   generateLabel,
   confirmLabel,
   confirmOptions,
+  keyAddress,
+  onGenerated,
   onConfirmed,
 }: {
   pending: boolean;
@@ -22,6 +28,10 @@ export function NewPasswordR({
   confirmLabel: string;
   /** Opciones del cifrado, junto al botón que cifra. */
   confirmOptions?: ReactNode;
+  /** La dirección de la R que se va a cifrar, si ya se conoce (va en el rótulo del papel); null al crear R. */
+  keyAddress: Address | null;
+  /** Las 5 palabras quedaron a la vista (el usuario puede empezar a anotarlas). */
+  onGenerated?: () => void;
   onConfirmed: (words: string[]) => void;
 }) {
   const [words, setWords] = useState<string[] | null>(null);
@@ -34,7 +44,8 @@ export function NewPasswordR({
   const start = useAsyncAction(
     useCallback(async () => {
       setWords(newPasswordR(await loadWordlist()));
-    }, []),
+      onGenerated?.();
+    }, [onGenerated]),
   );
 
   if (words === null) {
@@ -54,10 +65,12 @@ export function NewPasswordR({
         <h3 id="password-r-title">Tu Password R</h3>
         <Notice tone="warning">
           Anotá estas 5 palabras en papel, en este orden. Están en inglés: copialas letra por letra, sin traducir ni
-          corregir. Son la Password R: sin ellas no vas a poder abrir el sobre cifrado de R (el archivo y el QR). MT
-          Wallet no las guarda ni puede recuperarlas, y no son la contraseña de tu cuenta ni tu Password U.
+          corregir. Son la Password R: sin ellas no vas a poder abrir el sobre cifrado de R (el archivo, el QR, la copia
+          de Drive y el que recuerde este dispositivo). MT Wallet no las guarda ni puede recuperarlas, y no son la
+          contraseña de tu cuenta ni tu Password U.
         </Notice>
         <Words words={words} label="Password R" />
+        <p>{passwordRPaperText(keyAddress)}</p>
         <label className="check">
           <input
             type="checkbox"

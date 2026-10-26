@@ -1,13 +1,14 @@
 // P19: verificación propia de la Safe por el RPC de Recovery antes de que R firme. Con todo lo fijado en el build no
 // hay fallas; cada desvío (contrato del sistema con otro código, proxy o singleton distintos, threshold, guards, Safe no
 // registrada, owners ≠ roles, R que no es la recoveryKey) aparece como su ítem y requireSafe se niega a seguir. También
-// las propuestas pendientes del timelock y el nonce leídos on-chain.
+// las propuestas pendientes del timelock y el nonce leídos on-chain, y una R que no es firmante de la Safe (el sobre de
+// un pedido anterior, cuarta revisión de P17.MAN).
 import { getAddress, keccak256, padHex, toHex, type Address, type Hex } from 'viem';
 import { describe, expect, it } from 'vitest';
 import type { PinnedChain } from '../config/chain.ts';
 import { SYSTEM_ROLES, type SystemContracts } from '../config/system-contracts.ts';
 import { pendingProposals, safeNonce } from './rotations.ts';
-import { checkSafe, requireSafe, SAFE_SLOTS, SafeCheckError, safeFailureText } from './safe-check.ts';
+import { checkSafe, notASigner, requireSafe, SAFE_SLOTS, SafeCheckError, safeFailureText } from './safe-check.ts';
 
 const addr = (n: number) => getAddress(padHex(toHex(n), { size: 20 }));
 const SAFE = addr(0x5afe);
@@ -112,6 +113,16 @@ describe('checkSafe', () => {
       expect.arrayContaining(['SAFE_PROXY_CODEHASH', 'THRESHOLD', 'NOT_REGISTERED', 'OWNERS']),
     );
     expect(checked.owners).toEqual([]);
+  });
+
+  it('una R que no es firmante de la Safe (de un pedido anterior) se distingue de una Safe que no es la esperada', async () => {
+    const other = addr(0xa9);
+    const checked = await checkSafe(reader(healthy()), pinned, SAFE, { recoveryKey: other });
+    expect(checked.failures).toEqual(['RECOVERY_KEY']);
+    expect(notASigner(checked, other)).toBe(true);
+    // La R vigente sí es firmante; un owner que no es la recoveryKey del Guard no cuenta como «no firmante».
+    expect(notASigner(await checkSafe(reader(healthy()), pinned, SAFE, { recoveryKey: R }), R)).toBe(false);
+    expect(notASigner(await checkSafe(reader(healthy()), pinned, SAFE, { recoveryKey: U }), U)).toBe(false);
   });
 
   it('textos de cada ítem', () => {

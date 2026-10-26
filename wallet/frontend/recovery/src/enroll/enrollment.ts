@@ -5,12 +5,16 @@
 // lo manda a su backend, sólo lo devuelve en el fragmento del enlace de regreso, y con él la Wallet sabe que ese enlace
 // lo armó esta app a partir de su pedido (un backend comprometido conoce el pedido y su R′, pero nunca `k`). También,
 // cuándo vence el pedido y qué queda de R en este dispositivo al enviarla ([F-KEY-07], tercera revisión de P17.MAN).
-import { getAddress, isAddress, type Address, type Hex } from 'viem';
+// Cuarta revisión: el propósito con el que esta app trata el pedido no depende sólo del backend (hallazgo 5) y un envío
+// que el backend rechaza por el estado del pedido se explica con el pedido releído (hallazgo 4).
+import { getAddress, isAddress, isAddressEqual, type Address, type Hex } from 'viem';
+import { ApiError } from '../api/client.ts';
 import type { EnrollmentObject, EnrollmentStatus, EnrollmentSubmission, StorageFlags } from '../api/recovery-api.ts';
 import { canonicalize } from '../api/jcs.ts';
 import { signP256 } from '../api/session-key.ts';
 import { hexToBytes, bytesToHex } from '../crypto/encoding.ts';
 import type { RecoveryEnvelope } from '../crypto/envelope.ts';
+import { SUBMIT_REREAD_FAILED_TEXT, SUBMIT_STILL_OPEN_TEXT, type UnusedCause } from './texts.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NONCE = /^0x[0-9a-f]{64}$/;
@@ -201,7 +205,8 @@ export interface EnvelopeStore {
  * dirección enviada, así un pedido que vence o se abandona no deja el sobre de una R que no se va a usar. En el
  * onboarding, antes se borra el que hubiera quedado de un pedido anterior (la wallet todavía no tiene R vigente: era de
  * una R que ya no se usa). En un reemplazo de R nunca se borra nada: el de R′ queda junto al de la R vigente, que hasta
- * que el reemplazo se ejecute (48 h) es la que cancela rotaciones. Devuelve si quedó recordado.
+ * que el reemplazo se ejecute (48 h) es la que cancela rotaciones. `purpose` es el propósito efectivo
+ * (effectivePurpose), no sólo el que informa el backend. Devuelve si quedó recordado.
  */
 export async function keepEnvelopeOnDevice(
   envelope: RecoveryEnvelope,
@@ -212,4 +217,102 @@ export async function keepEnvelopeOnDevice(
   if (!choice.remember) return false;
   await store.remember(envelope);
   return true;
+}
+
+/** Lo que este dispositivo sabe de una wallet: sus sobres recordados y la Safe que verificó cada R (envelope-cache.ts). */
+export interface DeviceRecords {
+  envelopes: () => Promise<RecoveryEnvelope[]>;
+  safeOf: (recoveryKey: Address) => Promise<Address | null>;
+}
+
+/**
+ * El propósito con el que esta app trata el pedido (hallazgo 5 de la cuarta revisión): reemplazo si el backend lo dice
+ * o si este dispositivo recuerda un sobre de esa wallet cuya R tiene una Safe recordada (la que RecoveryGate verificó en
+ * Base, con R como clave de recuperación del Guard): esa wallet ya tiene R. Así, un backend que marque como onboarding
+ * el reemplazo de una wallet con R no consigue que se borre el sobre de la R vigente ni que se muestren los textos del
+ * onboarding. Si el dispositivo no se puede leer, vale lo que dice el backend (tampoco se podría borrar nada).
+ */
+export async function effectivePurpose(
+  enrollment: Pick<EnrollmentStatus, 'purpose' | 'walletId'>,
+  device: DeviceRecords,
+): Promise<EnrollmentStatus['purpose']> {
+  if (enrollment.purpose === 'REPLACEMENT') return 'REPLACEMENT';
+  try {
+    for (const envelope of await device.envelopes()) {
+      if (envelope.walletId !== enrollment.walletId) continue;
+      if ((await device.safeOf(envelope.keyAddress)) !== null) return 'REPLACEMENT';
+    }
+  } catch {
+    // Sin IndexedDB (modo privado, datos del sitio bloqueados) no hay sobres recordados que cuidar.
+  }
+  return 'ONBOARDING';
+}
+
+/**
+ * Qué pasó con un envío que el backend rechazó por el estado del pedido (CONFLICT), según el pedido releído: ya tiene
+ * esta misma R (un envío anterior que sí llegó: se sigue como enviado), esta R no se va a usar (y por qué) o el pedido
+ * sigue abierto (se puede reintentar). Una respuesta de otro pedido no dice nada de éste: se trata como abierto.
+ */
+export type ConflictOutcome = { kind: 'sent' } | { kind: 'unused'; cause: UnusedCause } | { kind: 'open' };
+
+export function conflictOutcome(
+  latest: Pick<EnrollmentStatus, 'id' | 'status' | 'recoveryKey' | 'rejectionReason'>,
+  enrollmentId: string,
+  recoveryKey: Address,
+): ConflictOutcome {
+  if (latest.id.toLowerCase() !== enrollmentId.toLowerCase()) return { kind: 'open' };
+  switch (latest.status) {
+    case 'REQUESTED':
+      return { kind: 'open' };
+    case 'EXPIRED':
+      return { kind: 'unused', cause: 'EXPIRED' };
+    case 'RETIRED':
+      return { kind: 'unused', cause: 'RETIRED' };
+    case 'REJECTED':
+      return { kind: 'unused', cause: latest.rejectionReason === 'SUPERSEDED' ? 'SUPERSEDED' : 'CANCELLED' };
+    case 'SUBMITTED':
+    case 'CONFIRMED':
+      return latest.recoveryKey !== null &&
+        isAddress(latest.recoveryKey, { strict: false }) &&
+        isAddressEqual(latest.recoveryKey, recoveryKey)
+        ? { kind: 'sent' }
+        : { kind: 'unused', cause: 'OTHER_KEY' };
+    default:
+      // Un estado que esta versión no conoce: no dice nada de esta R.
+      return { kind: 'open' };
+  }
+}
+
+/**
+ * Un envío que falló, explicado (hallazgo 4 de la cuarta revisión): vencido, o rechazado por el estado del pedido
+ * (CONFLICT) y entonces releído: ya tiene esta R (`sent`, con el pedido releído), esta R no se va a usar (`unused`) o
+ * se puede reintentar (`retry`, con un error que se muestra con describeError: nunca un texto del backend ni «recargá
+ * la pantalla», que sin el fragmento pierde el pedido). Si la plataforma ya no encuentra el pedido, esta R tampoco se
+ * va a usar.
+ */
+export type SubmitFailure =
+  | { kind: 'sent'; latest: EnrollmentStatus }
+  | { kind: 'unused'; cause: UnusedCause }
+  | { kind: 'retry'; error: unknown };
+
+export async function explainSubmitFailure(
+  error: unknown,
+  reread: () => Promise<EnrollmentStatus>,
+  enrollmentId: string,
+  recoveryKey: Address,
+): Promise<SubmitFailure> {
+  if (!(error instanceof ApiError)) return { kind: 'retry', error };
+  if (error.code === 'ENROLLMENT_EXPIRED') return { kind: 'unused', cause: 'EXPIRED' };
+  if (error.code !== 'CONFLICT' && error.status !== 409) return { kind: 'retry', error };
+  let latest: EnrollmentStatus;
+  try {
+    latest = await reread();
+  } catch (readError) {
+    if (readError instanceof ApiError && readError.status === 404) return { kind: 'unused', cause: 'NOT_FOUND' };
+    return { kind: 'retry', error: new Error(SUBMIT_REREAD_FAILED_TEXT, { cause: readError }) };
+  }
+  const outcome = conflictOutcome(latest, enrollmentId, recoveryKey);
+  if (outcome.kind === 'sent') return { kind: 'sent', latest };
+  if (outcome.kind === 'unused') return outcome;
+  return { kind: 'retry', error: new Error(SUBMIT_STILL_OPEN_TEXT, { cause: error }) };
 }

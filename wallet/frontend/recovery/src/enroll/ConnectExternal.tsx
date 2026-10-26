@@ -1,13 +1,16 @@
 // R externa (P19.T03, [F-KEY-09], [F-CON-01]): el chunk lazy de wallet externa (wagmi y los conectores sólo se cargan
 // acá) lista las wallets del navegador (EIP-6963), MetaMask, Coinbase Wallet (sólo EOA) y WalletConnect con QR propio;
-// la cuenta conectada tiene que ser una EOA en Base (lo verifica la firma de la prueba de control).
-import { useCallback, useEffect, useState } from 'react';
+// la cuenta conectada tiene que ser una EOA en Base (lo verifica la firma de la prueba de control). Al registrarla como R
+// (cuarta revisión de P17.MAN, hallazgo 9) se aconseja una wallet que no se use a diario y guardar su frase de
+// recuperación lejos de los backups de U; los textos no usan «EOA».
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { appConfig } from '../config/index.ts';
 import type { ConnectorChoice, ExternalSession } from '../external-wallet/types.ts';
 import { loadExternalWallet } from '../external-wallet/load.ts';
 import { describeError } from '../ui/errors.ts';
 import { Notice, useAsyncAction } from '../ui/forms.tsx';
 import { QrCanvas } from '../ui/QrCanvas.tsx';
+import { EXTERNAL_R_ADVICE } from './texts.ts';
 
 function options() {
   return {
@@ -17,10 +20,24 @@ function options() {
   };
 }
 
-export function ConnectExternal({ onConnected }: { onConnected: (session: ExternalSession) => void }) {
+export function ConnectExternal({
+  enrolling = false,
+  onConnected,
+}: {
+  /** Se va a registrar como R (enrollment): el consejo de qué wallet usar y dónde guardar su frase de recuperación. */
+  enrolling?: boolean;
+  onConnected: (session: ExternalSession) => void;
+}) {
   const [connectors, setConnectors] = useState<ConnectorChoice[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pairingUri, setPairingUri] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -43,6 +60,11 @@ export function ConnectExternal({ onConnected }: { onConnected: (session: Extern
         setPairingUri(null);
         const module = await loadExternalWallet();
         const session = await module.connectExternal(options(), connectorId, setPairingUri);
+        // Una conexión que termina con esta pantalla ya cerrada (p. ej. Recovery se bloqueó) no se usa.
+        if (!mounted.current) {
+          void session.disconnect();
+          return;
+        }
         setPairingUri(null);
         onConnected(session);
       },
@@ -54,9 +76,10 @@ export function ConnectExternal({ onConnected }: { onConnected: (session: Extern
     <section className="card stack" aria-labelledby="external-title">
       <h2 id="external-title">Usar una wallet externa como clave R</h2>
       <p>
-        La wallet tiene que ser una cuenta común (EOA) en Base. Va a firmar la prueba de que controlás esa clave y, más
-        adelante, las operaciones de recuperación.
+        La wallet tiene que ser una cuenta común en Base, no un contrato. Va a firmar la prueba de que controlás esa
+        clave y, más adelante, las operaciones de recuperación.
       </p>
+      {enrolling && <Notice tone="warning">{EXTERNAL_R_ADVICE}</Notice>}
       {loadError && <Notice tone="error">{loadError}</Notice>}
       {connectors === null && !loadError && <p className="muted">Buscando wallets…</p>}
       <div className="actions">

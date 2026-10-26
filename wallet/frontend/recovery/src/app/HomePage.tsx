@@ -26,7 +26,7 @@ const ACTIONS: { to: string; title: string; text: string; document?: boolean }[]
   {
     to: '/restore',
     title: 'Restaurar mi clave R',
-    text: 'En un dispositivo nuevo: desde Drive, el archivo cifrado, el QR o las 17 palabras.',
+    text: 'En un dispositivo nuevo o en éste: desde Drive, el archivo cifrado, el QR o las 17 palabras.',
     document: true,
   },
   {
@@ -52,7 +52,7 @@ export function HomePage() {
           <li>
             R se cifra en tu dispositivo con tu Password R, distinta de tu Password U, y nunca se envía al servidor.
           </li>
-          <li>También podés usar como R una wallet externa tuya (una cuenta EOA).</li>
+          <li>También podés usar como R una wallet externa tuya (una cuenta común, no un contrato).</li>
           <li>R nunca mueve fondos sola: cualquier cambio de claves espera 48 h y se puede cancelar.</li>
         </ul>
         <div className="actions">

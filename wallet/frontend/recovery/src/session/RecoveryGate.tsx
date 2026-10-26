@@ -2,20 +2,27 @@
 // o wallet externa), la PlatformSession RECOVERY de esa wallet (step-up) y la verificación propia de la Safe por el RPC
 // de Recovery —contratos con su codehash, Safe v1.5.0, Guard y module guard del sistema, owners = roles y R como
 // recoveryKey del Guard—. Si algo no coincide, no se opera.
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { Address } from 'viem';
+//
+// Cuarta revisión de P17.MAN (hallazgo 12): si la R desbloqueada no es firmante de la Safe (un sobre recordado de un
+// pedido anterior), se dice y se ofrece olvidar ese sobre en este dispositivo o elegir otro, sin perder la verificación;
+// nunca olvidar el de R′ de un reemplazo en curso en Base. El desbloqueo ofrece también el camino de las 17 palabras.
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { isAddressEqual, type Address } from 'viem';
 import { pinned, reader } from '../app/services.ts';
 import { LoginForm } from '../auth/LoginForm.tsx';
-import { checkSafe, safeFailureText, type CheckedSafe } from '../chain/safe-check.ts';
+import { pendingProposals, type PendingProposal } from '../chain/rotations.ts';
+import { checkSafe, notASigner, safeFailureText, type CheckedSafe } from '../chain/safe-check.ts';
 import { ConnectExternal } from '../enroll/ConnectExternal.tsx';
-import { rememberSafe } from '../storage/envelope-cache.ts';
+import { forgetRememberedEnvelope, isRememberedEnvelope, rememberSafe } from '../storage/envelope-cache.ts';
 import { currentSigner, type PlatformSession } from './store.ts';
 import type { RecoverySigner } from '../signer/recovery-signer.ts';
 import { UnlockRecovery } from '../unlock/UnlockRecovery.tsx';
+import { AddressText } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
-import { Notice } from '../ui/forms.tsx';
+import { Notice, useAsyncAction } from '../ui/forms.tsx';
 import { useSession, useSessionStore } from './context.tsx';
 import { StepUp } from './StepUp.tsx';
+import { notASignerText, pendingReplacementText } from './texts.ts';
 
 export interface RecoveryContext {
   platform: PlatformSession;
@@ -25,13 +32,32 @@ export interface RecoveryContext {
   checked: CheckedSafe;
 }
 
+/** Una R interna que no es firmante de la Safe: si el dispositivo recuerda su sobre y si es R′ de un reemplazo en curso. */
+interface Stranger {
+  remembered: boolean;
+  replacement: PendingProposal | null;
+}
+
+async function strangerOf(signer: RecoverySigner, safe: Address): Promise<Stranger | null> {
+  if (signer.kind !== 'internal' || signer.walletId === null) return null;
+  const [remembered, proposals] = await Promise.all([
+    isRememberedEnvelope(signer.walletId, signer.address).catch(() => false),
+    pendingProposals(reader, pinned.system.contracts.timelock.address, safe).catch(() => [] as PendingProposal[]),
+  ]);
+  const replacement = proposals.find((p) => p.kind === 'R' && isAddressEqual(p.newValue, signer.address)) ?? null;
+  return { remembered, replacement };
+}
+
 export function RecoveryGate({ children }: { children: (ctx: RecoveryContext) => ReactNode }) {
   const session = useSession();
   const store = useSessionStore();
   const [mode, setMode] = useState<'internal' | 'external'>('internal');
-  const [checked, setChecked] = useState<{ key: string; result: CheckedSafe | null; error: string | null } | null>(
-    null,
-  );
+  const [checked, setChecked] = useState<{
+    key: string;
+    result: CheckedSafe | null;
+    error: string | null;
+    stranger: Stranger | null;
+  } | null>(null);
   // Estable mientras no cambie la R desbloqueada o la wallet conectada (la verificación depende de él).
   const { recovery, external } = session;
   const signer = useMemo(() => currentSigner({ recovery, external }), [recovery, external]);
@@ -48,18 +74,30 @@ export function RecoveryGate({ children }: { children: (ctx: RecoveryContext) =>
     if (checkKey === null || safe === null || signer === null) return;
     let alive = true;
     checkSafe(reader, pinned, safe, { recoveryKey: signer.address })
-      .then((result) => {
-        if (alive) setChecked({ key: checkKey, result, error: null });
+      .then(async (result) => {
         // Para el modo soberano: la Safe de esta R, sin depender del backend.
         if (result.failures.length === 0) void rememberSafe(signer.address, result.safe).catch(() => undefined);
+        const stranger = notASigner(result, signer.address) ? await strangerOf(signer, safe) : null;
+        if (alive) setChecked({ key: checkKey, result, error: null, stranger });
       })
       .catch((error: unknown) => {
-        if (alive) setChecked({ key: checkKey, result: null, error: describeError(error) });
+        if (alive) setChecked({ key: checkKey, result: null, error: describeError(error), stranger: null });
       });
     return () => {
       alive = false;
     };
   }, [checkKey, safe, signer]);
+
+  // Olvidar el sobre de una R que no es firmante (sólo ése) y volver a elegir, con la misma verificación.
+  const forget = useAsyncAction(
+    useCallback(
+      async (walletId: string, recoveryKey: Address) => {
+        await forgetRememberedEnvelope(walletId, recoveryKey);
+        store.discardKey();
+      },
+      [store],
+    ),
+  );
 
   if (session.status === 'loading') return <p className="muted">Cargando…</p>;
   if (session.status !== 'account') {
@@ -100,7 +138,7 @@ export function RecoveryGate({ children }: { children: (ctx: RecoveryContext) =>
           </button>
         </div>
         {mode === 'internal' ? (
-          <UnlockRecovery />
+          <UnlockRecovery wordsHint />
         ) : (
           <ConnectExternal
             onConnected={(external) => {
@@ -120,17 +158,56 @@ export function RecoveryGate({ children }: { children: (ctx: RecoveryContext) =>
   if (checked === null || checked.key !== checkKey) return <p className="muted">Verificando tu Safe en Base…</p>;
   if (checked.error !== null) return <Notice tone="error">{checked.error}</Notice>;
   if (checked.result === null || checked.result.failures.length > 0) {
+    const { stranger } = checked;
+    const walletId = signer.walletId;
     return (
-      <Notice tone="error">
-        <p>La verificación propia de tu Safe falló: no se opera con ella.</p>
-        <ul>
-          {checked.result?.failures.map((item) => (
-            <li key={item} data-item={item}>
-              {safeFailureText(item)}
-            </li>
-          ))}
-        </ul>
-      </Notice>
+      <div className="stack">
+        <Notice tone="error">
+          <p>La verificación propia de tu Safe falló: no se opera con ella.</p>
+          <ul>
+            {checked.result?.failures.map((item) => (
+              <li key={item} data-item={item}>
+                {safeFailureText(item)}
+              </li>
+            ))}
+          </ul>
+        </Notice>
+        {stranger !== null && walletId !== null && (
+          <section className="card stack" aria-labelledby="not-a-signer-title" data-not-a-signer={signer.address}>
+            <h2 id="not-a-signer-title">Esta clave R no es firmante de tu Safe</h2>
+            <p>
+              Dirección de la clave R que desbloqueaste: <AddressText address={signer.address} />
+            </p>
+            <p>
+              {stranger.replacement !== null
+                ? pendingReplacementText(stranger.replacement.executableAt)
+                : notASignerText(stranger.remembered)}
+            </p>
+            {forget.error && <Notice tone="error">{forget.error}</Notice>}
+            <div className="actions">
+              {stranger.remembered && stranger.replacement === null && (
+                <button
+                  type="button"
+                  className="button"
+                  disabled={forget.pending}
+                  onClick={() => void forget.run(walletId, signer.address)}
+                >
+                  Olvidar este sobre
+                </button>
+              )}
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => {
+                  store.discardKey();
+                }}
+              >
+                Usar otro sobre
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
     );
   }
   return children({ platform, signer, walletId: platform.view.walletId, safe, checked: checked.result });

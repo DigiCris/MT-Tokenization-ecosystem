@@ -1,7 +1,8 @@
 // Direcciones escritas por el usuario en Recovery: EIP-55 válido o todo en minúsculas; un checksum roto, una longitud
-// incorrecta o la dirección cero (salvo que se permita, p. ej. para retirar un guard) se rechazan.
+// incorrecta o la dirección cero (salvo que se permita, p. ej. para retirar un guard) se rechazan. Y la abreviatura con
+// la que se identifican los backups de una clave.
 import { describe, expect, it } from 'vitest';
-import { AddressInputError, parseAddressInput } from './address.ts';
+import { AddressInputError, parseAddressInput, shortAddress } from './address.ts';
 
 const CHECKSUMMED = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
@@ -19,5 +20,12 @@ describe('parseAddressInput', () => {
     const zero = `0x${'0'.repeat(40)}`;
     expect(() => parseAddressInput(zero)).toThrow('cero');
     expect(parseAddressInput(zero, { allowZero: true })).toBe(zero);
+  });
+});
+
+describe('shortAddress', () => {
+  it('el principio y el final de la dirección en EIP-55, como se anotan en los backups', () => {
+    expect(shortAddress(CHECKSUMMED)).toBe('0x 8335 … 2913');
+    expect(shortAddress(CHECKSUMMED.toLowerCase() as `0x${string}`)).toBe('0x 8335 … 2913');
   });
 });

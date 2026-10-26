@@ -1,14 +1,24 @@
 // QR del sobre cifrado de R ([F-KEY-06].3, [W-05]): los cuadros MTWQR1 dibujados en canvas, todos a la vista y quietos
 // (no el QR animado de los documentos soberanos: impreso sólo saldría un cuadro), con la opción de imprimirlos solos.
 // Si el sobre no entra en un cuadro, se avisa que para restaurar hacen falta todas las partes. Cada cuadro lleva, también
-// impreso, de qué app y qué clave es, qué parte es y con qué se abre (una hoja suelta tiene que decirlo). Lo usan los
-// backups del enrollment y la restauración de R.
+// impreso, de qué app y qué clave es (con la dirección abreviada de esa R), qué parte es y con qué se abre (una hoja
+// suelta tiene que decirlo). Lo usan los backups del enrollment y la restauración de R.
+import type { Address } from 'viem';
 import { printSection } from '../ui/print.ts';
 import { Notice } from '../ui/forms.tsx';
 import { QrCanvas } from '../ui/QrCanvas.tsx';
 import { rQrTitle } from './texts.ts';
 
-export function EnvelopeQr({ frames, printId }: { frames: readonly string[]; printId: string }) {
+export function EnvelopeQr({
+  frames,
+  keyAddress,
+  printId,
+}: {
+  frames: readonly string[];
+  /** La dirección de la R del sobre: va abreviada en el título de cada cuadro. */
+  keyAddress: Address;
+  printId: string;
+}) {
   const parts = frames.length;
   return (
     <div className="stack">
@@ -25,7 +35,7 @@ export function EnvelopeQr({ frames, printId }: { frames: readonly string[]; pri
               size={360}
               label={`QR del sobre cifrado de R, parte ${String(i + 1)} de ${String(parts)}`}
             />
-            <figcaption className="print-title">{rQrTitle(i + 1, parts)}</figcaption>
+            <figcaption className="print-title">{rQrTitle(keyAddress, i + 1, parts)}</figcaption>
           </figure>
         ))}
       </div>

@@ -1,8 +1,10 @@
-// `/restore` (P19.T08, [F-KEY-10]): R en un dispositivo nuevo. El sobre `R.enc` sale del Drive de Recovery, de un
-// archivo o del QR (cámara permitida en esta ruta) y se abre con la Password R; o R sale de las 17 palabras y se re-cifra
-// con una Password R nueva para la wallet de la PlatformSession RECOVERY. Antes de quedarse con R, la app verifica en
-// Base que sea la recoveryKey vigente de la Safe y uno de sus owners. Después se puede recordar el sobre en este
-// dispositivo y guardar los backups (Drive, archivo o QR).
+// `/restore` (P19.T08, [F-KEY-10]): R en un dispositivo nuevo, o en éste si sólo quedan las 17 palabras (el desbloqueo
+// de las otras pantallas pide un sobre: cuarta revisión de P17.MAN, hallazgo 6). El sobre `R.enc` sale del Drive de
+// Recovery, de un archivo o del QR (cámara permitida en esta ruta) y se abre con la Password R; o R sale de las 17
+// palabras y se re-cifra con una Password R nueva para la wallet de la PlatformSession RECOVERY (su papel lleva la
+// dirección de R, que ya se conoce). Antes de quedarse con R, la app verifica en Base que sea la recoveryKey vigente de
+// la Safe y uno de sus owners. Después se puede recordar el sobre en este dispositivo y guardar los backups (Drive,
+// archivo o QR, con la dirección de R en el nombre y en lo impreso).
 import { useCallback, useEffect, useState } from 'react';
 import type { Address } from 'viem';
 import { argon2, pinned, reader } from '../app/services.ts';
@@ -120,7 +122,7 @@ function Restored({ unlocked, fromWords }: { unlocked: UnlockedRecovery; fromWor
             </button>
           ))}
       </div>
-      {frames && <EnvelopeQr frames={frames} printId="restored-qr-print" />}
+      {frames && <EnvelopeQr frames={frames} keyAddress={unlocked.address} printId="restored-qr-print" />}
       {(remember.error ?? upload.error ?? showQr.error) && (
         <Notice tone="error">{remember.error ?? upload.error ?? showQr.error}</Notice>
       )}
@@ -305,7 +307,8 @@ export function RestorePage() {
       <section className="card stack" aria-labelledby="restore-title">
         <h1 id="restore-title">Restaurar tu clave de recuperación (R)</h1>
         <p>
-          En un dispositivo nuevo: desde tu Drive de Recovery, el archivo cifrado, el QR del sobre o las 17 palabras.
+          En un dispositivo nuevo o en éste: desde tu Drive de Recovery, el archivo cifrado, el QR del sobre o las 17
+          palabras.
         </p>
         {envelope === null && fromWords === null && (
           <div className="actions">
@@ -498,6 +501,7 @@ export function RestorePage() {
               confirmLabel="Verificar en Base y cifrar"
               pending={reseal.pending}
               error={reseal.error}
+              keyAddress={fromWords.address}
               onConfirmed={(words) => void reseal.run(words)}
             />
           )}

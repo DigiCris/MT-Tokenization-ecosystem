@@ -1,7 +1,10 @@
 // Desbloquear R ([F-SES-02], [F-KEY-05]): el sobre `R.enc` sale del dispositivo (recordado), de un archivo o del QR (sólo
 // en las rutas con cámara) y se abre con la Password R (Argon2id en el worker). En memoria quedan el sobre y K_R no
-// exportable; R se descifra sólo para cada firma.
+// exportable; R se descifra sólo para cada firma. Cuarta revisión de P17.MAN (hallazgos 6 y 12): cada sobre recordado se
+// ofrece con la dirección completa de su R (puede haber uno de un pedido anterior o de R′ en un reemplazo, y se avisa si
+// hay más de uno de la misma wallet), y quien sólo tiene las 17 palabras sabe que primero las restaura en /restore.
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router';
 import { argon2 } from '../app/services.ts';
 import { openRecoveryEnvelope, parseRecoveryEnvelope, type RecoveryEnvelope } from '../crypto/envelope.ts';
 import { normalizePasswordR } from '../crypto/password.ts';
@@ -9,21 +12,28 @@ import { loadWordlist } from '../crypto/wordlist.ts';
 import { FrameCollector } from '../qr/frames.ts';
 import { useSessionStore } from '../session/context.tsx';
 import { rememberEnvelope, rememberedEnvelopes } from '../storage/envelope-cache.ts';
-import { AddressText } from '../ui/AddressText.tsx';
+import { AddressText, groupedAddress } from '../ui/AddressText.tsx';
 import { readTextFile } from '../ui/download.ts';
 import { describeError } from '../ui/errors.ts';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { QrScanner } from '../ui/QrScanner.tsx';
 import type { UnlockedRecovery } from '../crypto/session.ts';
 
+/** Más de un sobre recordado de la misma wallet: cuál elegir y cómo se sabe si no era. */
+const SEVERAL_ENVELOPES_TEXT =
+  'Este dispositivo recuerda más de un sobre de R de la misma wallet (por ejemplo, de un pedido anterior o de un reemplazo en curso). Elegí el que tenga la dirección de tu R vigente: la muestra la app Wallet en Seguridad → «Estado y reemplazo de tu clave de recuperación (R)». Si elegís otro, Recovery te lo va a decir al verificar tu Safe y, si es de un pedido anterior, vas a poder olvidarlo.';
+
 export function UnlockRecovery({
   walletId,
   allowCamera = false,
+  wordsHint = false,
   onUnlocked,
 }: {
   /** Si se sabe la wallet, sólo se acepta su sobre. */
   walletId?: string;
   allowCamera?: boolean;
+  /** Ofrecer el camino de las 17 palabras (restaurar R en /restore, que necesita la plataforma, y volver). */
+  wordsHint?: boolean;
   onUnlocked?: (unlocked: UnlockedRecovery) => void;
 }) {
   const store = useSessionStore();
@@ -76,6 +86,10 @@ export function UnlockRecovery({
     [collector, choose],
   );
 
+  const severalPerWallet = remembered.some(
+    (e, i) => remembered.findIndex((other) => other.walletId === e.walletId) !== i,
+  );
+
   const unlock = useAsyncAction(
     useCallback(
       async (password: string, remember: boolean) => {
@@ -96,16 +110,18 @@ export function UnlockRecovery({
       {!envelope ? (
         <div className="stack">
           <p>Elegí el sobre cifrado de R (el archivo que guardaste, el QR o el recordado en este dispositivo).</p>
+          {severalPerWallet && <Notice tone="warning">{SEVERAL_ENVELOPES_TEXT}</Notice>}
           {remembered.map((e) => (
             <button
               key={`${e.walletId}:${e.keyAddress}`}
               type="button"
               className="button button--secondary"
+              data-remembered-envelope={e.keyAddress}
               onClick={() => {
                 setEnvelope(e);
               }}
             >
-              Usar el sobre recordado de la clave R con la dirección <code>{e.keyAddress.slice(0, 10)}…</code>
+              Usar el sobre recordado de la clave R con la dirección <code>{groupedAddress(e.keyAddress)}</code>
             </button>
           ))}
           <label className="field">
@@ -142,6 +158,15 @@ export function UnlockRecovery({
           {scanning && <QrScanner onText={onQrText} />}
           {progress && <p className="muted">{progress}</p>}
           {sourceError && <Notice tone="error">{sourceError}</Notice>}
+          {wordsHint && (
+            <p className="muted" data-words-hint="">
+              ¿Tenés sólo las 17 palabras de R? Primero restaurala en{' '}
+              <Link to="/restore" reloadDocument>
+                «Restaurar mi clave R»
+              </Link>{' '}
+              (sirve también en este dispositivo) y volvé.
+            </p>
+          )}
         </div>
       ) : (
         <form

@@ -5,6 +5,7 @@ import { expect, type Page } from '@playwright/test';
 import { getAddress } from 'viem';
 import { nextCode } from './mailpit.ts';
 import { ACCOUNT_PASSWORD } from './api.ts';
+import { envelopeFileName } from '../../../../src/crypto/envelope.ts';
 import type { SealedRecovery } from './envelope.ts';
 
 export async function login(page: Page, email: string, password = ACCOUNT_PASSWORD): Promise<void> {
@@ -24,7 +25,7 @@ export async function completeStepUp(page: Page, email: string): Promise<void> {
 /** Desbloquea R desde el archivo cifrado (como si el usuario lo eligiera de su disco). */
 export async function unlockFromFile(page: Page, sealed: SealedRecovery, remember = false): Promise<void> {
   await page.getByLabel('Archivo del sobre cifrado (R.enc)').setInputFiles({
-    name: `mtw-R-${sealed.envelope.walletId}.enc.json`,
+    name: envelopeFileName(sealed.envelope),
     mimeType: 'application/json',
     buffer: Buffer.from(sealed.file),
   });

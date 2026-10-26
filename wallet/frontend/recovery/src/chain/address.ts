@@ -1,5 +1,6 @@
 // Direcciones escritas o pegadas por el usuario en Recovery (destino de una transferencia soberana, la Safe, S′ o un
-// guard): EIP-55 válido o toda en minúsculas; una dirección con mayúsculas y checksum roto es un error de tipeo.
+// guard): EIP-55 válido o toda en minúsculas; una dirección con mayúsculas y checksum roto es un error de tipeo. También
+// cómo se abrevia la dirección de una clave en lo que identifica sus backups (cuarta revisión de P17.MAN, hallazgo 1).
 import { getAddress, isAddress, isAddressEqual, zeroAddress, type Address } from 'viem';
 
 export class AddressInputError extends Error {
@@ -19,4 +20,13 @@ export function parseAddressInput(text: string, options: { allowZero?: boolean }
     throw new AddressInputError('La dirección cero no es válida acá.');
   }
   return address;
+}
+
+/**
+ * El principio y el final de una dirección (EIP-55), como se escriben en los backups de una clave para distinguirlos de
+ * los de otra: «0x F0c0 … 98bf».
+ */
+export function shortAddress(address: Address): string {
+  const hex = getAddress(address).slice(2);
+  return `0x ${hex.slice(0, 4)} … ${hex.slice(-4)}`;
 }

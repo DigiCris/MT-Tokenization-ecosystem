@@ -1,9 +1,10 @@
 // Marco común de las pantallas de Recovery: marca con su acento propio (el usuario tiene que saber en qué app está, V9
-// §17), entorno (fuera de producción), la cuenta con su salida, el bloqueo de R y de la PlatformSession, y el release
-// del build.
+// §17), entorno (fuera de producción), la cuenta con su salida, el bloqueo de R y de la PlatformSession, el aviso de
+// que falta un minuto para el bloqueo por inactividad (cuarta revisión de P17.MAN) y el release del build.
 import { Link, Outlet } from 'react-router';
 import { appConfig } from '../config/index.ts';
 import { useSession, useSessionStore } from '../session/context.tsx';
+import { INACTIVITY_WARNING_TEXT, KEEP_USING_LABEL } from '../session/texts.ts';
 
 export function AppShell() {
   const session = useSession();
@@ -46,6 +47,22 @@ export function AppShell() {
         </nav>
       </header>
       <main className="shell__main">
+        {session.inactivityWarning && (
+          <div className="notice notice--warning stack" role="alert" data-inactivity-warning="">
+            <p>{INACTIVITY_WARNING_TEXT}</p>
+            <div className="actions">
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  store.touch();
+                }}
+              >
+                {KEEP_USING_LABEL}
+              </button>
+            </div>
+          </div>
+        )}
         <Outlet />
       </main>
       <footer className="shell__footer">

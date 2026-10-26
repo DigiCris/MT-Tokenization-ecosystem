@@ -73,7 +73,17 @@ describe('sellar y abrir', () => {
     expect(again.envelope.kdf.salt).not.toBe(sealed.envelope.kdf.salt);
     expect(again.envelope.cipher.nonce).not.toBe(sealed.envelope.cipher.nonce);
     const file = serializeRecoveryEnvelope(sealed.envelope);
-    expect(envelopeFileName(sealed.envelope)).toBe(`mtw-R-${context.walletId}.enc.json`);
+    // El nombre lleva el principio y el final de la dirección de R: dos R de la misma wallet no bajan con el mismo.
+    const hex = sealed.envelope.keyAddress.slice(2);
+    expect(envelopeFileName(sealed.envelope)).toBe(
+      `mtw-R-${context.walletId}-${hex.slice(0, 4)}-${hex.slice(-4)}.enc.json`,
+    );
+    expect(
+      envelopeFileName({
+        walletId: context.walletId,
+        keyAddress: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+      }),
+    ).toBe(`mtw-R-${context.walletId}-8335-2913.enc.json`);
     const reopened = await openRecoveryEnvelope(
       parseRecoveryEnvelope(JSON.parse(file)),
       'una password de prueba',

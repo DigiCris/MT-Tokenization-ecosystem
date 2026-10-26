@@ -8,7 +8,8 @@
 // puede volver a verlas o imprimirlas solas, y mientras están a la vista sin confirmar no se puede seguir (después de
 // este paso no se vuelven a mostrar). Cada backup hecho y confirmado queda en los storageFlags del enrollment. Lo que se
 // imprime lleva el título de qué app y qué clave es, y los backups de R se guardan lejos de los de U: las dos juntas
-// mueven los fondos sin la plataforma (tercera revisión de P17.MAN).
+// mueven los fondos sin la plataforma (tercera revisión de P17.MAN). El archivo, lo impreso y lo anotado llevan la
+// dirección de esta R (abreviada), para distinguir sus backups de los de otra R (cuarta revisión, hallazgo 1).
 import { useCallback, useEffect, useState } from 'react';
 import type { StorageFlags } from '../api/recovery-api.ts';
 import { uploadRecoveryEnvelope } from '../drive/backup.ts';
@@ -24,7 +25,7 @@ import { downloadText } from '../ui/download.ts';
 import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { printSection } from '../ui/print.ts';
 import { EnvelopeQr } from './EnvelopeQr.tsx';
-import { R_APART_FROM_U_WARNING, R_BACKUP_INTRO, R_WORDS_HANDWRITTEN, R_WORDS_TITLE } from './texts.ts';
+import { R_APART_FROM_U_WARNING, R_BACKUP_INTRO, rWordsHandwritten, rWordsTitle } from './texts.ts';
 
 export function BackupStep({
   unlocked,
@@ -112,7 +113,7 @@ export function BackupStep({
           </button>
         ) : (
           <>
-            <EnvelopeQr frames={frames} printId="r-qr-print" />
+            <EnvelopeQr frames={frames} keyAddress={unlocked.address} printId="r-qr-print" />
             <label className="check">
               <input type="checkbox" checked={flags.qr} onChange={check('qr')} />{' '}
               {frames.length > 1
@@ -215,7 +216,7 @@ function BackupWords({
       {step === 'shown' && words !== null && (
         <>
           <div className="stack" id="r-words-print">
-            <p className="print-title">{R_WORDS_TITLE}</p>
+            <p className="print-title">{rWordsTitle(unlocked.address)}</p>
             <ol className="words words--17" aria-label="17 palabras de tu clave R">
               {words.map((word, i) => (
                 <li key={`${String(i)}-${word}`} className="words__item">
@@ -224,7 +225,7 @@ function BackupWords({
               ))}
             </ol>
           </div>
-          <p>{R_WORDS_HANDWRITTEN}</p>
+          <p>{rWordsHandwritten(unlocked.address)}</p>
           <div className="actions">
             <button
               type="button"

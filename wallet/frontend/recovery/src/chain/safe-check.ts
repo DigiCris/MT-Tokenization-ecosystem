@@ -111,6 +111,17 @@ export async function checkSafe(
   return { safe: getAddress(safe), roles: safeRoles, owners, failures };
 }
 
+/**
+ * La R que se verificó no es firmante de la Safe (no es uno de sus owners): por ejemplo, la de un sobre recordado de un
+ * pedido anterior que no se usó, o R′ de un reemplazo que todavía no se ejecutó (cuarta revisión de P17.MAN, hallazgo
+ * 12). Distinto de una Safe que no es la que espera la app.
+ */
+export function notASigner(checked: Pick<CheckedSafe, 'failures' | 'owners'>, recoveryKey: Address): boolean {
+  return (
+    checked.failures.includes('RECOVERY_KEY') && !checked.owners.some((owner) => isAddressEqual(owner, recoveryKey))
+  );
+}
+
 export class SafeCheckError extends Error {
   override name = 'SafeCheckError';
   readonly failures: readonly string[];
