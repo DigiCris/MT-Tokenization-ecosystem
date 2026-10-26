@@ -1,6 +1,7 @@
 // P15.T07 / P18.MAN: los avisos in-app del backend ([B-MAIL-03]) en texto para el inicio: qué pasó, con la dirección
 // completa y su nombre, a dónde ir, y nada inventado si el payload no trae un dato o trae uno inválido. Un rol que esta
-// app no conoce va en genérico (nunca el código) y un guard es un contrato, no una clave.
+// app no conoce va en genérico (nunca el código) y un guard es un contrato, no una clave. El reemplazo de U en borrador
+// o rechazado no muestra la U′ que informa la plataforma (ESC-41); en el timelock, sí.
 import type { Address } from 'viem';
 import { describe, expect, it } from 'vitest';
 import type { AppNotification } from '../api/wallet-api.ts';
@@ -8,6 +9,7 @@ import { partsText, UNKNOWN_ROLE_TEXT } from '../operations/describe.ts';
 import { addressNames, labelsOf } from '../operations/names.ts';
 import { groupAddress } from '../ui/AddressText.tsx';
 import { notificationView } from './notifications.ts';
+import { RECOVERY_STARTED_TEXT, U_REPLACEMENT_REJECTED_TEXT } from './texts.ts';
 
 const DEST: Address = '0xf0A1000000000000000000000000000000076A3d';
 const KEY: Address = '0x00000000000000000000000000000000000000B2';
@@ -151,13 +153,44 @@ describe('avisos in-app', () => {
       }),
     );
     expect(view.tone).toBe('error');
+    // Avisar a soporte si se había copiado bien (como pide Recovery), no sólo «si no fuiste vos» (N10).
     expect(partsText(view.parts)).toBe(
-      'La app Recovery canceló el reemplazo de tu clave U porque la dirección no coincidió: alguien pudo haberla cambiado. Si no fuiste vos, avisá a soporte; podés empezar de nuevo desde «Perdí mi Password U».',
+      'La app Recovery canceló el reemplazo de tu clave U porque la dirección no coincidió: alguien pudo haberla cambiado. Si la habías copiado bien, avisá a soporte. Podés empezar de nuevo desde «Perdí mi Password U».',
     );
+    expect(partsText(view.parts)).toBe(U_REPLACEMENT_REJECTED_TEXT);
     // La U′ del borrador (posiblemente cambiada) no aparece: la clave nueva se copia sólo de «Perdí mi Password U».
     expect(view.parts.some((part) => part.kind === 'address')).toBe(false);
     expect(partsText(view.parts)).not.toContain(groupAddress(KEY));
     expect(view.link).toBeNull();
+  });
+
+  it('reemplazo de U iniciado (ESC-41, B1): sólo el estado, sin la U′ del borrador, y de dónde copiar la clave nueva', () => {
+    // El aviso sale al registrarse el borrador, antes de que Recovery compare U′: la que informa la plataforma puede ser
+    // la U″ de un backend comprometido, así que no se muestra (tampoco si el payload la trae con otro nombre).
+    for (const payload of [{ newKey: KEY }, { newKey: KEY, userKey: KEY, rotationId: 'r1' }, {}]) {
+      const view = notificationView(notification('RECOVERY_STARTED', payload));
+      expect(view.tone).toBe('warning');
+      expect(partsText(view.parts)).toBe(RECOVERY_STARTED_TEXT);
+      expect(view.parts.some((part) => part.kind === 'address')).toBe(false);
+      expect(partsText(view.parts)).not.toContain(groupAddress(KEY));
+      expect(partsText(view.parts).toLowerCase()).not.toContain(KEY.slice(2).toLowerCase());
+      expect(view.link).toEqual({ to: '/security/rotations', label: 'Ver rotaciones' });
+    }
+    expect(RECOVERY_STARTED_TEXT).toBe(
+      'Se inició el reemplazo de tu clave de usuario (U) con tu clave de recuperación (R). En la app Recovery copiá la dirección de la clave U nueva sólo de la pantalla final de «Perdí mi Password U», nunca de un aviso, un email o un chat. Si no fuiste vos, avisá a soporte.',
+    );
+    // Todavía no hay propuesta que cancelar.
+    expect(RECOVERY_STARTED_TEXT).not.toMatch(/cancel/i);
+  });
+
+  it('con la propuesta del reemplazo de U ya en el timelock, el aviso sí muestra la dirección (para compararla y cancelarla)', () => {
+    const view = notificationView(
+      notification('ROTATION_PROPOSED', { role: 'U', newKey: KEY, executableAt: '2026-10-21T10:00:00.000Z' }),
+    );
+    expect(partsText(view.parts)).toContain(
+      `Se propuso reemplazar tu clave de usuario (U) por la clave con la dirección ${groupAddress(KEY)}`,
+    );
+    expect(partsText(view.parts)).toContain('cancelala antes de esa fecha');
   });
 
   it('payload incompleto o inválido: no inventa direcciones ni montos; un tipo desconocido queda genérico', () => {
@@ -205,13 +238,7 @@ describe('avisos in-app', () => {
       `la dirección de la clave nueva es ${groupAddress(KEY)}.`,
       null,
     ],
-    [
-      'RECOVERY_STARTED',
-      { newKey: KEY },
-      'warning',
-      'Si no fuiste vos, cancelalo desde las rotaciones.',
-      '/security/rotations',
-    ],
+    ['RECOVERY_STARTED', { newKey: KEY }, 'warning', 'Si no fuiste vos, avisá a soporte.', '/security/rotations'],
     [
       'EXECUTOR_ROTATION_REQUESTED',
       { reason: 'MAINTENANCE' },

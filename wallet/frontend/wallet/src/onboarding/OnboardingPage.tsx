@@ -11,7 +11,7 @@
 // con una R ya enviada según la plataforma), seguir con la creación avisa que Recovery va a crear otra R y el primer
 // pedido lo repite. Activar Recovery sigue montado aunque venza la verificación (el pedido vigente se puede seguir
 // confirmando): antes de generar otro, el paso pide el step-up ahí mismo.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { isAddressEqual, type Address } from 'viem';
 import type { StorageFlags, WalletView } from '../api/wallet-api.ts';
@@ -87,6 +87,17 @@ export function OnboardingPage() {
     },
     [draft],
   );
+  useEffect(
+    () => () => {
+      // AuthSecret_U: cada intento de «Registrar» usa una copia; el original se borra al registrar U (user-key.ts) o al
+      // salir de la pantalla (N1 de la verificación de P17.MAN).
+      if (sealed) zeroize(sealed.authSecret);
+    },
+    [sealed],
+  );
+  // U ya registrada, aunque después haya fallado releer la wallet: el reintento de «Registrar» no la registra de nuevo
+  // (su AuthSecret_U ya se borró) y sólo sigue con lo que faltaba.
+  const userKeyRegistered = useRef(false);
 
   const createWallet = useAsyncAction(
     useCallback(
@@ -121,8 +132,11 @@ export function OnboardingPage() {
     useCallback(
       async (session: StepUpSession, backups: StorageFlags) => {
         if (!sealed || !draft) return;
-        await registerNewUserKey(api, session.platform, sealed, backups);
-        zeroize(draft.key);
+        if (!userKeyRegistered.current) {
+          await registerNewUserKey(api, session.platform, sealed, backups);
+          userKeyRegistered.current = true;
+          zeroize(draft.key);
+        }
         await store.refreshWallet();
         setUserKey({ envelope: sealed.envelope, encryptionKey: sealed.encryptionKey });
         setStep('recovery');

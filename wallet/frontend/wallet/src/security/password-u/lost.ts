@@ -25,7 +25,9 @@ export interface PreparedReplacement {
 
 /**
  * Sobre de U' (con la versión que asigna el backend) y su registro OPAQUE (todavía sin guardar: el backend lo guarda
- * PENDING recién con la KeyAcceptance, después de los backups).
+ * PENDING recién con la KeyAcceptance, después de los backups). Cada intento deriva su propio AuthSecret_U de la
+ * Password U' (que sigue en memoria) y lo borra al terminar: un reintento después de un error registra con el secreto
+ * correcto (N1 de la verificación de P17.MAN).
  */
 export async function prepareReplacement(
   api: WalletApi,
@@ -65,6 +67,13 @@ export const OTHER_USER_KEY_TEXT =
  */
 export const NEW_USER_KEY_COMPARE_TEXT =
   'En la app Recovery vas a tener que copiar estos 10 grupos (los que siguen al «0x»). Recovery no te muestra la dirección que recibió la plataforma: si te dice que no coincide y la copiaste bien, no firmes.';
+
+/**
+ * Antes de «Continuar en Recovery», que abre en otra pestaña (B1 de la verificación de P17.MAN, ESC-41): esta pantalla
+ * es la única que muestra la U′ que generó esta app, y no se puede volver a ella.
+ */
+export const HANDOFF_NEW_TAB_TEXT =
+  'Abrilo en otra pestaña o en otro dispositivo: esta pantalla tiene que quedar a la vista para copiar la dirección.';
 
 /**
  * Con los backups hechos: KeyAcceptance de U' y registro de U' → borrador de rotación para que R la proponga. La U'

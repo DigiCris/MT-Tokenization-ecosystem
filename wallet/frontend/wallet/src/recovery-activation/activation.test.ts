@@ -7,6 +7,7 @@
 // pedido, cualquier respuesta de la plataforma que no sea ese pedido SUBMITTED con esa misma R aborta.
 import { describe, expect, it } from 'vitest';
 import type { RecoveryEnrollment } from '../api/wallet-api.ts';
+import { shortAddress } from '../onboarding/user-key.ts';
 import {
   ADDRESS_GROUPS,
   addressGroups,
@@ -15,6 +16,8 @@ import {
   distributePaste,
   endedRequestText,
   groupsText,
+  LOCKED_AFTER_CONFIRMATION_TEXT,
+  LOCKED_DURING_REPLACEMENT_TEXT,
   MANUAL_ABORT_TEXT,
   MANUAL_ATTEMPTS,
   MANUAL_MISMATCH_TEXT,
@@ -31,6 +34,7 @@ import {
   recoveryEnrollLink,
   RecoveryActivationError,
   RecoveryKeyMismatchError,
+  REPLACEMENT_SESSION_TEXT,
   requestExpiryText,
   RESUME_NEW_REQUEST_TEXT,
   RETURN_LINK_ELSEWHERE_TEXT,
@@ -186,16 +190,40 @@ describe('activar Recovery', () => {
     expect(NEW_REQUEST_TEXT).toBe(
       'Escaneá el QR nuevo: Recovery va a crear otra clave R. Destruí los backups de la anterior (archivo, QR y 17 palabras) y su Password R: son los que no tienen la dirección de la R nueva.',
     );
-    for (const text of [
-      BEFORE_NEW_REQUEST_TEXT,
-      newRequestText('REPLACEMENT'),
-      beforeNewRequestText('REPLACEMENT'),
-      beforeNewRequestText(undefined),
-    ]) {
+    for (const text of [BEFORE_NEW_REQUEST_TEXT, beforeNewRequestText(undefined)]) {
       expect(text).toContain(
         '(archivo, QR y 17 palabras) y su Password R: son los que no tienen la dirección de la R nueva.',
       );
     }
+    // En un reemplazo, los backups de la R actual tampoco tienen la dirección de la R nueva: se destruye lo que no tiene
+    // ninguna de las dos y, si la pantalla la conoce, se dice cuál es la actual (N5 de la verificación de P17.MAN).
+    for (const text of [newRequestText('REPLACEMENT'), beforeNewRequestText('REPLACEMENT')]) {
+      expect(text).toContain(
+        '(archivo, QR y 17 palabras) y su Password R: son los que no tienen ni la dirección de la R nueva ni la de tu R actual.',
+      );
+    }
+    expect(newRequestText('REPLACEMENT', R)).toBe(
+      `Escaneá el QR nuevo: Recovery va a crear otra clave R nueva. Destruí los backups de la que creaste para el pedido anterior (archivo, QR y 17 palabras) y su Password R: son los que no tienen ni la dirección de la R nueva ni la de tu R actual (${shortAddress(R)}). Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.`,
+    );
+    expect(beforeNewRequestText('REPLACEMENT', R)).toContain(
+      `Destruí los backups de la que creaste para este pedido (archivo, QR y 17 palabras) y su Password R: son los que no tienen ni la dirección de la R nueva ni la de tu R actual (${shortAddress(R)}).`,
+    );
+    // La R actual no cambia los textos del onboarding.
+    expect(newRequestText('ONBOARDING', R)).toBe(NEW_REQUEST_TEXT);
+    expect(beforeNewRequestText('ONBOARDING', R)).toBe(BEFORE_NEW_REQUEST_TEXT);
+  });
+
+  it('reemplazo de R con la wallet bloqueada (N14): el pedido sigue y el desbloqueo es en la misma pantalla', () => {
+    expect(LOCKED_DURING_REPLACEMENT_TEXT).toBe(
+      'El pedido a la app Recovery sigue: podés crear ahí tu clave R nueva y confirmar su dirección acá. Para proponer el reemplazo, desbloqueá la wallet en esta pantalla (si salís de ella, el pedido se pierde).',
+    );
+    expect(REPLACEMENT_SESSION_TEXT).toBe(
+      'Para generar el pedido nuevo, desbloqueá la wallet de nuevo en esta pantalla.',
+    );
+    // Con R′ ya confirmada, lo que falta es proponer el reemplazo.
+    expect(LOCKED_AFTER_CONFIRMATION_TEXT).toBe(
+      'La dirección de tu clave R nueva ya quedó confirmada. Para proponer el reemplazo, desbloqueá la wallet en esta pantalla (si salís de ella, vas a tener que generar otro pedido).',
+    );
   });
 
   it('un pedido de otro propósito que el de la pantalla no se usa: el texto lo dice sin nada de la plataforma', () => {

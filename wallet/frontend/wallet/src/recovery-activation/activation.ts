@@ -14,11 +14,13 @@
 //
 // Cuarta revisión de P17.MAN: los avisos de «otra R» dicen qué destruir (lo que no tiene la dirección de la R nueva,
 // también su Password R, hallazgo 1); el propósito del pedido lo da la pantalla que monta el paso, y un pedido de otro
-// propósito no se usa (hallazgo 5); y pegar «0x» más un grupo en el Grupo 1 deja el grupo entero (hallazgo 11).
+// propósito no se usa (hallazgo 5); y pegar «0x» más un grupo en el Grupo 1 deja el grupo entero (hallazgo 11). En la
+// verificación: en un reemplazo, lo que se destruye no tiene ni la dirección de la R nueva ni la de la actual (N5).
 import { getAddress, isAddress, isAddressEqual, type Address } from 'viem';
 import type { CreatedEnrollment, RecoveryEnrollment } from '../api/wallet-api.ts';
 import type { EnrollmentPurpose } from './abort-reports.ts';
 import { randomBytes, toBase64Url } from '../crypto/bytes.ts';
+import { shortAddress } from '../onboarding/user-key.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** `k`: 16 bytes (128 bits) del CSPRNG en base64url sin relleno. */
@@ -316,24 +318,42 @@ const KEEP_CURRENT_R =
   'Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.';
 
 /**
+ * Qué destruir en un reemplazo (N5 de la verificación de P17.MAN): los backups de la R actual tampoco tienen la
+ * dirección de la R nueva, así que lo que se destruye es lo que no tiene ninguna de las dos. Si la pantalla conoce la R
+ * actual (la lee del Guard), va su dirección abreviada, como la que se anota en sus backups.
+ */
+function replacementWhatToDestroy(currentRecoveryKey: Address | null): string {
+  const current =
+    currentRecoveryKey === null ? 'la de tu R actual' : `la de tu R actual (${shortAddress(currentRecoveryKey)})`;
+  return `(archivo, QR y 17 palabras) y su Password R: son los que no tienen ni la dirección de la R nueva ni ${current}.`;
+}
+
+/**
  * En un reemplazo de R, la «anterior» es la R nueva del pedido anterior, no la actual: la R actual sigue siendo la de
  * recuperación (y puede cancelar el reemplazo) hasta que se ejecute, así que sus backups no se destruyen.
  */
-export const REPLACEMENT_NEW_REQUEST_TEXT = `Escaneá el QR nuevo: Recovery va a crear otra clave R nueva. Destruí los backups de la que creaste para el pedido anterior ${WHAT_TO_DESTROY} ${KEEP_CURRENT_R}`;
+export function replacementNewRequestText(currentRecoveryKey: Address | null): string {
+  return `Escaneá el QR nuevo: Recovery va a crear otra clave R nueva. Destruí los backups de la que creaste para el pedido anterior ${replacementWhatToDestroy(currentRecoveryKey)} ${KEEP_CURRENT_R}`;
+}
 
-export const REPLACEMENT_BEFORE_NEW_REQUEST_TEXT = `Si generás un pedido nuevo, vas a escanear un QR nuevo y Recovery va a crear otra clave R nueva. Destruí los backups de la que creaste para este pedido ${WHAT_TO_DESTROY} ${KEEP_CURRENT_R}`;
+export function replacementBeforeNewRequestText(currentRecoveryKey: Address | null): string {
+  return `Si generás un pedido nuevo, vas a escanear un QR nuevo y Recovery va a crear otra clave R nueva. Destruí los backups de la que creaste para este pedido ${replacementWhatToDestroy(currentRecoveryKey)} ${KEEP_CURRENT_R}`;
+}
 
 /** Sin saber el propósito del pedido (no se pudo leer): lo del onboarding, con la salvedad del reemplazo. */
 export const ANY_BEFORE_NEW_REQUEST_TEXT = `${BEFORE_NEW_REQUEST_TEXT} Si estabas reemplazando tu clave R, los backups de la actual no los destruyas: sigue vigente hasta que el reemplazo se ejecute.`;
 
-/** El aviso de pedido nuevo según el propósito del pedido. */
-export function newRequestText(purpose: EnrollmentPurpose): string {
-  return purpose === 'REPLACEMENT' ? REPLACEMENT_NEW_REQUEST_TEXT : NEW_REQUEST_TEXT;
+/** El aviso de pedido nuevo según el propósito del pedido (en un reemplazo, con la R actual si se la conoce). */
+export function newRequestText(purpose: EnrollmentPurpose, currentRecoveryKey: Address | null = null): string {
+  return purpose === 'REPLACEMENT' ? replacementNewRequestText(currentRecoveryKey) : NEW_REQUEST_TEXT;
 }
 
 /** Antes de generar otro pedido, según el propósito (null o undefined si no se sabe). */
-export function beforeNewRequestText(purpose: EnrollmentPurpose | null | undefined): string {
-  if (purpose === 'REPLACEMENT') return REPLACEMENT_BEFORE_NEW_REQUEST_TEXT;
+export function beforeNewRequestText(
+  purpose: EnrollmentPurpose | null | undefined,
+  currentRecoveryKey: Address | null = null,
+): string {
+  if (purpose === 'REPLACEMENT') return replacementBeforeNewRequestText(currentRecoveryKey);
   return purpose === 'ONBOARDING' ? BEFORE_NEW_REQUEST_TEXT : ANY_BEFORE_NEW_REQUEST_TEXT;
 }
 
@@ -355,6 +375,23 @@ export function purposeMismatchText(purpose: EnrollmentPurpose): string {
 
 /** La verificación del onboarding venció antes de generar un pedido (hallazgo 4 de la tercera revisión). */
 export const SESSION_EXPIRED_TEXT = 'Tu verificación venció: confirmá que sos vos de nuevo para generar el pedido.';
+
+/**
+ * En el reemplazo de R, la wallet se bloqueó (o su sesión está por vencer) antes de generar otro pedido: el desbloqueo
+ * está en la misma pantalla, que no se deja para no perder el pedido (N14 de la verificación de P17.MAN).
+ */
+export const REPLACEMENT_SESSION_TEXT = 'Para generar el pedido nuevo, desbloqueá la wallet de nuevo en esta pantalla.';
+
+/**
+ * La wallet se bloqueó con un reemplazo de R en curso (N14): el pedido y su `k` siguen en esta pestaña, la dirección de
+ * R′ se puede confirmar igual y el desbloqueo está en la misma pantalla, porque salir de ella pierde el pedido.
+ */
+export const LOCKED_DURING_REPLACEMENT_TEXT =
+  'El pedido a la app Recovery sigue: podés crear ahí tu clave R nueva y confirmar su dirección acá. Para proponer el reemplazo, desbloqueá la wallet en esta pantalla (si salís de ella, el pedido se pierde).';
+
+/** Lo mismo con la dirección de R′ ya confirmada: falta proponer el reemplazo, que necesita la wallet desbloqueada. */
+export const LOCKED_AFTER_CONFIRMATION_TEXT =
+  'La dirección de tu clave R nueva ya quedó confirmada. Para proponer el reemplazo, desbloqueá la wallet en esta pantalla (si salís de ella, vas a tener que generar otro pedido).';
 
 /** Cuándo vence el pedido (el plazo lo fija el backend: 15 minutos mientras Recovery no informa la dirección). */
 export function requestExpiryText(expiresAt: string, timeZone?: string): string {

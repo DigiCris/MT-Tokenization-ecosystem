@@ -2,11 +2,16 @@
 // qué pasó, con las direcciones completas, y a qué pantalla ir. Son la "alerta in-app" de ADR-006 y del threat model
 // (ESC-02, ESC-16, ESC-20, ESC-23, ESC-33, ESC-34). El payload viene del backend: sólo se muestra como texto, una
 // dirección inválida no se renderiza como dirección y un tipo o un rol desconocidos quedan con un texto genérico.
+// Excepción (ESC-41, B1 de la verificación de P17.MAN): mientras el reemplazo de U está en borrador o rechazado, la U′
+// que informa la plataforma no se muestra en ningún aviso (RECOVERY_STARTED, U_REPLACEMENT_REJECTED): un backend
+// comprometido pondría ahí su U″ para que el usuario la copie en la app Recovery. Con la propuesta ya en el timelock
+// (ROTATION_PROPOSED, leída de Base por la plataforma) sí se muestra: sirve para compararla y cancelarla.
 import { getAddress, isAddress, type Address } from 'viem';
 import type { AppNotification } from '../api/wallet-api.ts';
 import { formatAmount, parseDecimalAmount } from '../assets/amount.ts';
 import { isRotationRole, ofRole, roleText, type DescriptionPart } from '../operations/describe.ts';
 import type { NameOf } from '../operations/names.ts';
+import { RECOVERY_STARTED_TEXT, U_REPLACEMENT_REJECTED_TEXT } from './texts.ts';
 
 export interface NotificationView {
   tone: 'info' | 'warning' | 'error';
@@ -146,17 +151,8 @@ export function notificationView(notification: AppNotification, nameOf?: NameOf)
       return view('info', [text(`Se reemplazó ${role.text}: ${REPLACED_BY[role.kind]}`), party('newKey'), text('.')]);
     }
     case 'RECOVERY_STARTED':
-      return view(
-        'warning',
-        [
-          text(
-            'Se inició el reemplazo de tu clave de usuario (U) con tu clave de recuperación (R) hacia la clave con la dirección ',
-          ),
-          party('newKey'),
-          text('. Si no fuiste vos, cancelalo desde las rotaciones.'),
-        ],
-        ROTATIONS,
-      );
+      // El borrador del reemplazo de U (todavía sin propuesta): sólo el estado, nunca la U′ del payload (ESC-41).
+      return view('warning', [text(RECOVERY_STARTED_TEXT)], ROTATIONS);
     case 'RECOVERY_ENROLLMENT_REJECTED': {
       // [F-LNK-02] (N10): la Wallet abortó un pedido de R que no pudo confirmar.
       const reason = field(p, 'reason');
@@ -185,11 +181,7 @@ export function notificationView(notification: AppNotification, nameOf?: NameOf)
       // [F-LNK-04] (ESC-41): la app Recovery canceló el borrador del reemplazo de U porque la U′ que informó la
       // plataforma no coincidió con la que mostró esta app. La dirección que recibió la plataforma no se muestra: no
       // es de donde se copia la clave nueva.
-      return view('error', [
-        text(
-          'La app Recovery canceló el reemplazo de tu clave U porque la dirección no coincidió: alguien pudo haberla cambiado. Si no fuiste vos, avisá a soporte; podés empezar de nuevo desde «Perdí mi Password U».',
-        ),
-      ]);
+      return view('error', [text(U_REPLACEMENT_REJECTED_TEXT)]);
     case 'EXECUTOR_ROTATION_REQUESTED':
       return view('info', [text('La plataforma pidió rotar su clave (S): revisá y firmá la propuesta.')], ROTATIONS);
     case 'EXECUTOR_REPLACED':

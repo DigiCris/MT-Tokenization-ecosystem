@@ -123,8 +123,9 @@ test('pasos, step-up, Password U, cifrado de 128 MiB y backups con las 17 palabr
   await expect(page.getByText(/Están en inglés: copialas letra por letra, sin traducir ni corregir\./)).toBeVisible();
   const words = await shown.allTextContents();
   // El rótulo del papel con la dirección de la U nueva (ya existe al mostrar la Password U): se compara con la del sobre.
+  // Una expresión ve el texto sin normalizar: la dirección abreviada va con espacios que no cortan (U+00A0, N9).
   const paper = page.getByText(
-    /^Arriba del papel escribí «MT Wallet: Password U de 0x [0-9A-Fa-f]{4} … [0-9A-Fa-f]{4}»\.$/,
+    /^Arriba del papel escribí «MT Wallet: Password U de 0x\s[0-9A-Fa-f]{4}\s…\s[0-9A-Fa-f]{4}»\.$/,
   );
   await expect(paper).toBeVisible();
   const paperText = await paper.textContent();

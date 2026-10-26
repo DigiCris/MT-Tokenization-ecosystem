@@ -8,10 +8,9 @@ import { fromBase64Url, fromHex } from '../crypto/bytes.ts';
 import { parseEnvelope, type KeyEnvelope } from '../crypto/envelope.ts';
 import { hkdfBytes, type Argon2 } from '../crypto/kdf.ts';
 import { deriveArgon2id } from '../workers/argon2-protocol.ts';
-import { jwkThumbprint } from '../api/session-key.ts';
-import type { IssuedPlatformSession, WalletApi } from '../api/wallet-api.ts';
+import type { WalletApi } from '../api/wallet-api.ts';
 import { opaquePassword, registerOpaque, startLogin, startRegistration } from './opaque.ts';
-import { expectedBinding, opaqueTestServer } from './opaque-server.test-helper.ts';
+import { opaqueTestServer, opaqueUnlockApi } from './opaque-server.test-helper.ts';
 import { UnlockError, unlockWallet } from './unlock.ts';
 
 const argon2: Argon2 = (input) => deriveArgon2id(input);
@@ -41,6 +40,15 @@ describe('cliente OPAQUE', () => {
     expect(() => opaquePassword(new Uint8Array(16))).toThrow(TypeError);
   });
 
+  it('un AuthSecret_U ya borrado (en cero) no se registra ni se usa para entrar (N1)', async () => {
+    const erased = new Uint8Array(32);
+    expect(() => opaquePassword(erased)).toThrow(TypeError);
+    const serverResponse = vi.fn(() => Promise.resolve({ registrationResponse: '' }));
+    await expect(registerOpaque(erased, serverResponse)).rejects.toThrow(TypeError);
+    expect(serverResponse).not.toHaveBeenCalled();
+    await expect(startLogin(erased)).rejects.toThrow(TypeError);
+  });
+
   it('un registro para otro identificador (wallet o versión) no abre con esa password', async () => {
     const server = opaqueTestServer();
     const secret = fromHex(vector.authSecretHex);
@@ -56,41 +64,11 @@ describe('cliente OPAQUE', () => {
 
 /** API de desbloqueo respaldada por el servidor OPAQUE real (como el backend): verifica el binding de la session key. */
 function unlockApi(server: ReturnType<typeof opaqueTestServer>, keyVersion = 1) {
-  const pending = new Map<string, { finish: (r: string) => string; thumbprint: string }>();
-  const api = {
-    opaqueStart: vi.fn<WalletApi['opaqueStart']>(async (input) => {
-      const started = server.startLogin(input.walletId ?? '', keyVersion, input.startLoginRequest);
-      const loginAttemptId = crypto.randomUUID();
-      pending.set(loginAttemptId, { finish: started.finish, thumbprint: await jwkThumbprint(input.sessionPublicKey) });
-      return {
-        loginAttemptId,
-        loginResponse: started.loginResponse,
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      };
-    }),
-    opaqueFinish: vi.fn<WalletApi['opaqueFinish']>(async (input) => {
-      const attempt = pending.get(input.loginAttemptId);
-      if (!attempt) throw new Error('intento desconocido');
-      const sessionKey = attempt.finish(input.finishLoginRequest);
-      if (input.sessionKeyBinding !== (await expectedBinding(sessionKey, attempt.thumbprint, input.loginAttemptId))) {
-        throw new Error('binding inválido');
-      }
-      const issued: IssuedPlatformSession = {
-        token: 'jws.de.prueba',
-        session: {
-          id: crypto.randomUUID(),
-          scope: 'OPERATIONS',
-          authMethod: 'OPAQUE_U',
-          walletId: envelope.walletId,
-          safe: null,
-          issuedAt: new Date().toISOString(),
-          expiresAt: new Date(Date.now() + 900_000).toISOString(),
-        },
-      };
-      return issued;
-    }),
+  const backed = opaqueUnlockApi(server, keyVersion);
+  return {
+    opaqueStart: vi.fn<WalletApi['opaqueStart']>(backed.opaqueStart),
+    opaqueFinish: vi.fn<WalletApi['opaqueFinish']>(backed.opaqueFinish),
   };
-  return api;
 }
 
 describe('desbloqueo', () => {

@@ -1,12 +1,15 @@
 // Marco común de las pantallas de Wallet: marca, entorno (fuera de producción), sesión de cuenta (seguridad, bloquear,
 // salir), aviso de pausa de la co-firma por integridad (P20.T03), aviso no bloqueante del chequeo periódico del backup
-// en Drive ([F-DRV-05]), aviso un minuto antes del bloqueo por inactividad ([F-SES-04]) y release del build.
+// en Drive ([F-DRV-05]), aviso un minuto antes del bloqueo por inactividad ([F-SES-04]) y release del build. El aviso
+// de inactividad queda pegado al borde de abajo de la ventana desde cualquier scroll (N3 de la verificación de
+// P17.MAN): va al final del contenido, así que al llegar abajo ocupa su lugar y no tapa nada.
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router';
 import { appConfig } from '../config/index.ts';
 import { backupHealth } from '../drive/backup.ts';
 import { api } from './services.ts';
 import { useSession, useSessionStore } from '../session/context.tsx';
+import { INACTIVITY_WARNING_TEXT, KEEP_USING_LABEL } from '../session/texts.ts';
 
 const STATUS_POLL_MS = 60_000;
 
@@ -32,10 +35,6 @@ function useCooperationPaused(): boolean {
   }, []);
   return paused;
 }
-
-/** Un minuto antes del bloqueo por inactividad: lo que se pierde si llega, y cómo seguir. */
-export const INACTIVITY_WARNING_TEXT =
-  'La wallet se va a bloquear en menos de un minuto por inactividad. Si estás cambiando la Password U y todavía no la registraste, el cambio se pierde y vas a tener que hacerlo de nuevo, con backups nuevos.';
 
 export function AppShell() {
   const { status, user, unlocked, inactivityWarning } = useSession();
@@ -96,7 +95,10 @@ export function AppShell() {
         </div>
       )}
       <main className="shell__main">
-        {inactivityWarning && (
+        <Outlet />
+      </main>
+      {inactivityWarning && (
+        <div className="inactivity-warning">
           <div className="notice notice--warning stack" role="alert" data-inactivity-warning="">
             <p>{INACTIVITY_WARNING_TEXT}</p>
             <div className="actions">
@@ -107,13 +109,12 @@ export function AppShell() {
                   store.touch();
                 }}
               >
-                Seguir usando la Wallet
+                {KEEP_USING_LABEL}
               </button>
             </div>
           </div>
-        )}
-        <Outlet />
-      </main>
+        </div>
+      )}
       <footer className="shell__footer">
         <span>
           Release <code>{appConfig.releaseId}</code>

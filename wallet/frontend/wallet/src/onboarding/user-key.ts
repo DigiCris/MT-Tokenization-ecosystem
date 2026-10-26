@@ -20,10 +20,14 @@ import { ARGON2_BASELINE, ARGON2_DESKTOP_MEMORY_KIB } from '../workers/argon2-pr
 /** Versión de U en el onboarding (la primera de la wallet). */
 export const ONBOARDING_KEY_VERSION = 1;
 
-/** El principio y el final de una dirección (EIP-55), como se anotan en los backups de una clave: «0x F0c0 … 98bf». */
+/**
+ * El principio y el final de una dirección (EIP-55), como se anotan en los backups de una clave: «0x F0c0 … 98bf». Los
+ * espacios son U+00A0 (no cortan): el «0x» o el último grupo no pasan solos al renglón siguiente (N9 de la verificación
+ * de P17.MAN).
+ */
 export function shortAddress(address: Address): string {
   const hex = getAddress(address).slice(2);
-  return `0x ${hex.slice(0, 4)} … ${hex.slice(-4)}`;
+  return `0x\u00a0${hex.slice(0, 4)}\u00a0…\u00a0${hex.slice(-4)}`;
 }
 
 /**
@@ -78,7 +82,7 @@ export function draftUserKey(wordlist: Wordlist): DraftKey {
 export interface SealedKey {
   envelope: KeyEnvelope;
   encryptionKey: CryptoKey;
-  /** AuthSecret_U: se borra después de registrar OPAQUE. */
+  /** AuthSecret_U: se borra después de registrar U (registerNewUserKey) o al salir de la pantalla. */
   authSecret: Uint8Array;
   kdf: KdfParams;
 }
@@ -121,7 +125,12 @@ export async function sealUserKey(
   return { envelope, encryptionKey, authSecret, kdf };
 }
 
-/** Registro OPAQUE + alta de U con ONBOARDING (después de los backups). Borra AuthSecret_U al terminar. */
+/**
+ * Registro OPAQUE + alta de U con ONBOARDING (después de los backups). Un intento que falla (red, 5xx, 429) se puede
+ * reintentar: cada uno registra con una copia de AuthSecret_U que se borra al terminar, y el original se borra recién
+ * con U registrada (N1 de la verificación de P17.MAN: borrarlo antes hacía que el reintento —que el backend acepta y
+ * que reemplaza el registro de la misma U— dejara OPAQUE con el secreto en cero, y la Password U no desbloqueaba).
+ */
 export async function registerNewUserKey(
   api: WalletApi,
   platform: PlatformAuth,
@@ -129,19 +138,23 @@ export async function registerNewUserKey(
   storageFlags: StorageFlags,
 ): Promise<{ userKey: Address; keyVersion: number; status: 'PENDING' }> {
   const walletId = sealed.envelope.walletId;
+  const attempt = sealed.authSecret.slice();
+  let registered: { userKey: Address; keyVersion: number; status: 'PENDING' };
   try {
-    const registrationRecord = await registerOpaque(sealed.authSecret, (registrationRequest) =>
+    const registrationRecord = await registerOpaque(attempt, (registrationRequest) =>
       api.userKeyOpaqueRegistration(platform, walletId, registrationRequest),
     );
-    return await api.registerUserKey(platform, walletId, {
+    registered = await api.registerUserKey(platform, walletId, {
       userKey: sealed.envelope.keyAddress,
       kdfParams: sealed.kdf,
       storageFlags,
       registrationRecord,
     });
   } finally {
-    zeroize(sealed.authSecret);
+    zeroize(attempt);
   }
+  zeroize(sealed.authSecret);
+  return registered;
 }
 
 /** [F-KEY-06]: antes de seguir hace falta al menos un backup que no dependa de la plataforma. */

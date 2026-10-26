@@ -69,7 +69,10 @@ export interface PreparedRestore {
   kdf: KdfParams;
 }
 
-/** Sobre nuevo de U con la Password U nueva y la versión vigente (la informa el paso 1 de OPAQUE con KEY_RESTORE). */
+/**
+ * Sobre nuevo de U con la Password U nueva y la versión vigente (la informa el paso 1 de OPAQUE con KEY_RESTORE). Cada
+ * intento deriva su propio AuthSecret_U y lo borra al terminar: un reintento registra con el secreto correcto (N1).
+ */
 export async function prepareRestoredEnvelope(
   api: WalletApi,
   stepUp: StepUpSession,

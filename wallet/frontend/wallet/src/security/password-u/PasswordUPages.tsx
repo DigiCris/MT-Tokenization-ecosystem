@@ -5,6 +5,9 @@
 // dirección de U' que generó esta app a la vista: en Recovery se tipean sus 10 grupos para compararlos con la del backend.
 // Cuarta revisión de P17.MAN: lo que se necesita de R incluye el sobre que recuerda Recovery (hallazgo 7) y el handoff
 // se abre donde se va a usar R, también con sólo uno de sus backups (hallazgo 6); los backups de U′ llevan su dirección.
+// Verificación de P17.MAN: «Continuar en Recovery» abre en otra pestaña, así la U′ local sigue a la vista para copiarla
+// (B1, ESC-41); un registro OPAQUE que falla se puede reintentar con el mismo AuthSecret_U (N1), y si la wallet se
+// bloquea a mitad del cambio, la pantalla dice qué destruir (N7).
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { Address } from 'viem';
@@ -26,8 +29,15 @@ import { rememberedEnvelope, rememberEnvelope } from '../../storage/envelope-cac
 import { AddressText } from '../../ui/AddressText.tsx';
 import { Notice, useAsyncAction } from '../../ui/forms.tsx';
 import { QrCanvas } from '../../ui/QrCanvas.tsx';
-import { commitNewPassword, resealWithNewPassword, type ResealedKey } from './change.ts';
 import {
+  CHANGE_INTERRUPTED_TEXT,
+  commitNewPassword,
+  REMEMBERED_NOT_REPLACED_TEXT,
+  resealWithNewPassword,
+  type ResealedKey,
+} from './change.ts';
+import {
+  HANDOFF_NEW_TAB_TEXT,
   NEW_USER_KEY_COMPARE_TEXT,
   prepareReplacement,
   recoveryHandoffUrl,
@@ -56,13 +66,6 @@ function DriveFirst({ returnTo }: { returnTo: string }) {
 
 type ChangeStep = 'start' | 'show' | 'confirm' | 'backups' | 'done';
 
-/**
- * La wallet se bloqueó (inactividad, vencimiento o «Bloquear») antes de registrar la Password U nueva: la plataforma
- * sigue con la anterior. Los backups de la nueva abren la clave, pero con ellos no se inicia la sesión de operaciones.
- */
-export const CHANGE_INTERRUPTED_TEXT =
-  'La wallet se bloqueó antes de registrar la Password U nueva, así que sigue valiendo la anterior: desbloqueá con ella y empezá el cambio de nuevo (vas a tener otra Password U nueva). Los backups que hiciste con la que no se registró, incluida la copia de Drive si la subiste, reemplazalos con los del cambio nuevo.';
-
 export function ChangePasswordUPage() {
   useSensitiveScreen();
   const store = useSessionStore();
@@ -70,6 +73,16 @@ export function ChangePasswordUPage() {
   const [step, setStep] = useState<ChangeStep>('start');
   const [words, setWords] = useState<string[] | null>(null);
   const [resealed, setResealed] = useState<ResealedKey | null>(null);
+  const [rememberedStale, setRememberedStale] = useState(false);
+
+  // AuthSecret_U de la Password U nueva: cada intento de registro usa una copia (change.ts); el original se borra al
+  // registrarse bien o al salir de la pantalla (N1).
+  useEffect(
+    () => () => {
+      if (resealed) zeroize(resealed.authSecret);
+    },
+    [resealed],
+  );
 
   const reseal = useAsyncAction(
     useCallback(async () => {
@@ -84,7 +97,13 @@ export function ChangePasswordUPage() {
         if (!unlocked || !resealed) return;
         const next = await commitNewPassword(api, unlocked, resealed, flags);
         store.replaceUnlocked(next);
-        if ((await rememberedEnvelope()) !== null) await rememberEnvelope(next.envelope);
+        // Registrada: de acá en más nada falla, así que no hay reintento (su AuthSecret_U ya se borró, N1). El sobre
+        // guardado en este dispositivo, si había uno, pasa a ser el nuevo; si eso no se puede, «Listo» lo avisa.
+        try {
+          if ((await rememberedEnvelope()) !== null) await rememberEnvelope(next.envelope);
+        } catch {
+          setRememberedStale(true);
+        }
         setStep('done');
       },
       [resealed, store, unlocked],
@@ -171,6 +190,7 @@ export function ChangePasswordUPage() {
           Listo: la Password U nueva quedó registrada. Usala desde ahora para desbloquear; la anterior ya no sirve.
         </Notice>
       )}
+      {step === 'done' && rememberedStale && <Notice tone="warning">{REMEMBERED_NOT_REPLACED_TEXT}</Notice>}
     </section>
   );
 }
@@ -318,8 +338,10 @@ export function LostPasswordUPage() {
             recuerda, o cualquiera con uno de sus backups).
           </p>
           <QrCanvas text={handoff.url} label="QR para continuar en Recovery" />
+          {/* En otra pestaña (B1, ESC-41): si no, la dirección de U′ que generó esta app deja de verse y no se recupera. */}
+          <p>{HANDOFF_NEW_TAB_TEXT}</p>
           <p>
-            <a href={handoff.url} rel="noopener" data-testid="recovery-handoff">
+            <a href={handoff.url} target="_blank" rel="noopener noreferrer" data-testid="recovery-handoff">
               Continuar en Recovery
             </a>
           </p>

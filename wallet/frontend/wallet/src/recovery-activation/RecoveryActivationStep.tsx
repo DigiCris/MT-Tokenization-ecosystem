@@ -24,7 +24,9 @@
 //
 // Cuarta revisión: el propósito (onboarding o reemplazo de R) lo da la pantalla que monta el paso y decide los textos;
 // un pedido que la plataforma crea con otro propósito no se usa (error local, sin su QR ni su enlace). Pegar «0x» y un
-// grupo en el Grupo 1 deja el grupo entero, como en la app Recovery.
+// grupo en el Grupo 1 deja el grupo entero, como en la app Recovery. Verificación de P17.MAN: en un reemplazo, los
+// avisos de «otra R» nombran la R actual, cuyos backups no se destruyen (N5), y el paso sigue montado aunque la wallet
+// se bloquee: el pedido y su `k` siguen acá, y el próximo pedido espera el desbloqueo en la misma pantalla (N14).
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { isAddress, type Address } from 'viem';
 import { ApiError, NetworkError } from '../api/problem.ts';
@@ -58,6 +60,7 @@ import {
   RecoveryActivationError,
   recoveryEnrollLink,
   RecoveryKeyMismatchError,
+  REPLACEMENT_SESSION_TEXT,
   requestExpiryText,
   RETURN_LINK_NETWORK_TEXT,
   ReturnLinkUnverifiedError,
@@ -96,6 +99,7 @@ export function RecoveryActivationStep({
   platform,
   sessionExpiresAt,
   purpose,
+  currentRecoveryKey = null,
   onConfirmed,
   intro,
   warning,
@@ -111,6 +115,8 @@ export function RecoveryActivationStep({
    * anterior» en un reemplazo).
    */
   purpose: EnrollmentPurpose;
+  /** En un reemplazo, la R vigente leída del Guard: los avisos de «otra R» dicen que sus backups no se destruyen (N5). */
+  currentRecoveryKey?: Address | null;
   /** Cuándo vence la PlatformSession (para reintentar los avisos de aborto mientras siga vigente). */
   sessionExpiresAt?: string;
   onConfirmed: (confirmed: ConfirmedRecovery) => void;
@@ -122,9 +128,9 @@ export function RecoveryActivationStep({
   /** Se generó un pedido (quien usa el paso lo recuerda si lo vuelve a montar). */
   onRequested?: () => void;
   /**
-   * Cómo renovar la sesión si venció antes de generar un pedido (en el onboarding, el step-up ONBOARDING): recibe a quién
-   * pasarle la sesión nueva, con la que sale el pedido (el padre también la guarda y la pasa en `platform`). Sin esto,
-   * el pedido se intenta igual (el reemplazo de R lo resuelve el desbloqueo).
+   * Cómo renovar la sesión si venció antes de generar un pedido (en el onboarding, el step-up ONBOARDING; en el
+   * reemplazo de R, el desbloqueo en la misma pantalla): recibe a quién pasarle la sesión nueva, con la que sale el
+   * pedido (el padre también la guarda y la pasa en `platform`). Sin esto, el pedido se intenta igual.
    */
   renewSession?: (renewed: (platform: PlatformAuth) => void) => ReactNode;
 }) {
@@ -448,7 +454,7 @@ export function RecoveryActivationStep({
         <p>{intro}</p>
         {warning && <Notice tone="warning">{warning}</Notice>}
         <div className="stack" data-session-expired="">
-          <Notice tone="warning">{SESSION_EXPIRED_TEXT}</Notice>
+          <Notice tone="warning">{purpose === 'REPLACEMENT' ? REPLACEMENT_SESSION_TEXT : SESSION_EXPIRED_TEXT}</Notice>
           {renewSession(renewed)}
         </div>
       </article>
@@ -476,7 +482,7 @@ export function RecoveryActivationStep({
       )}
       {link && created && reported === null && ended === null && (
         <div className="stack">
-          {requests > 1 && <Notice tone="warning">{newRequestText(purpose)}</Notice>}
+          {requests > 1 && <Notice tone="warning">{newRequestText(purpose, currentRecoveryKey)}</Notice>}
           <p>
             Te recomendamos crear tu clave R en otro dispositivo, como tu celular: escaneá este QR con su cámara y se
             abre la app Recovery con este pedido. Si no tenés otro dispositivo, abrí el enlace en este.
@@ -499,7 +505,7 @@ export function RecoveryActivationStep({
       {ended !== null && (
         <div className="stack" data-request-ended="">
           <Notice tone="error">{ended}</Notice>
-          <p>{beforeNewRequestText(purpose)}</p>
+          <p>{beforeNewRequestText(purpose, currentRecoveryKey)}</p>
           {newRequestButton}
         </div>
       )}
@@ -573,7 +579,7 @@ export function RecoveryActivationStep({
               <div className="stack" data-mismatch-groups={mismatch.groups.map((g) => g + 1).join(',')}>
                 <Notice tone="error">{MANUAL_MISMATCH_TEXT}</Notice>
                 <p>{manualRetryText(mismatch.groups, mismatch.attemptsLeft)}</p>
-                <p>{beforeNewRequestText(purpose)}</p>
+                <p>{beforeNewRequestText(purpose, currentRecoveryKey)}</p>
                 <button
                   type="button"
                   className={startOver ? 'button' : 'button button--secondary'}

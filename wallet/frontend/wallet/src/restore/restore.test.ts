@@ -12,11 +12,13 @@ import { addressOf, generatePrivateKey } from '../crypto/keys.ts';
 import { keyRestore } from '../crypto/typed-data.ts';
 import { parseWordlist } from '../crypto/wordlist.ts';
 import { deriveArgon2id } from '../workers/argon2-protocol.ts';
+import { ApiError, NetworkError } from '../api/problem.ts';
 import { generateSessionKey } from '../api/session-key.ts';
 import type { WalletApi } from '../api/wallet-api.ts';
 import type { OnchainRoles } from '../chain/roles.ts';
 import type { PendingStepUp, StepUpSession } from '../session/step-up.ts';
-import { opaqueTestServer } from '../unlock/opaque-server.test-helper.ts';
+import { opaqueTestServer, opaqueUnlockApi } from '../unlock/opaque-server.test-helper.ts';
+import { unlockWallet } from '../unlock/unlock.ts';
 import {
   commitRestore,
   finishKeyRestoreStepUp,
@@ -160,5 +162,72 @@ describe('restauración desde las 17 palabras', () => {
       kdfParams: prepared.kdf,
       storageFlags: flags,
     });
+  });
+
+  it('un intento que falla (5xx o red) se reintenta y la Password U nueva desbloquea después (N1)', async () => {
+    const server = opaqueTestServer();
+    const key = generatePrivateKey();
+    const address = addressOf(key);
+    const stepUp: StepUpSession = {
+      platform: { token: 'jws', sessionId: crypto.randomUUID(), key: await generateSessionKey() },
+      session: {
+        id: crypto.randomUUID(),
+        scope: 'KEY_RESTORE',
+        authMethod: 'STEP_UP',
+        walletId: WALLET,
+        safe: null,
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      },
+    };
+    let opaqueCalls = 0;
+    let restoreCalls = 0;
+    const api = {
+      userKeyOpaqueRegistration: vi.fn<WalletApi['userKeyOpaqueRegistration']>((_p, walletId, request) => {
+        if (opaqueCalls++ === 0) {
+          return Promise.reject(
+            new ApiError({
+              type: 'about:blank',
+              title: 'Error',
+              status: 503,
+              code: 'SERVICE_UNAVAILABLE',
+              requestId: 't',
+            }),
+          );
+        }
+        return Promise.resolve({
+          registrationResponse: server.registrationResponse(walletId, 3, request),
+          keyVersion: 3,
+        });
+      }),
+      restoreUserKey: vi.fn<WalletApi['restoreUserKey']>((_p, walletId, input) => {
+        if (restoreCalls++ === 0) return Promise.reject(new NetworkError('No se pudo contactar a la plataforma'));
+        server.records.set(server.identifier(walletId, 3), input.registrationRecord);
+        return Promise.resolve({ userKey: address, keyVersion: 3, status: 'ACTIVE' as const });
+      }),
+    };
+    const password = 'meshier boom riming rejection dingily';
+    const restored = { key, address };
+    await expect(
+      prepareRestoredEnvelope(api as unknown as WalletApi, stepUp, restored, password, 'mt-test', argon2),
+    ).rejects.toThrow();
+    const prepared = await prepareRestoredEnvelope(
+      api as unknown as WalletApi,
+      stepUp,
+      restored,
+      password,
+      'mt-test',
+      argon2,
+    );
+    const flags = { drive: false, file: true, qr: false, words: false };
+    await expect(commitRestore(api as unknown as WalletApi, stepUp, prepared, flags)).rejects.toThrow();
+    await commitRestore(api as unknown as WalletApi, stepUp, prepared, flags);
+    const unlocked = await unlockWallet(
+      opaqueUnlockApi(server, 3) as unknown as WalletApi,
+      prepared.envelope,
+      password,
+      argon2,
+    );
+    expect(unlocked.session.scope).toBe('OPERATIONS');
   });
 });

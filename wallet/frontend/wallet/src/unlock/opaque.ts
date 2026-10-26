@@ -18,9 +18,13 @@ async function opaque(): Promise<OpaqueModule> {
   return loading;
 }
 
-/** Entrada de OPAQUE: hex de AuthSecret_U sin prefijo. */
+/**
+ * Entrada de OPAQUE: hex de AuthSecret_U sin prefijo. Uno en cero es uno ya borrado: registrarlo dejaría OPAQUE con un
+ * secreto conocido y la Password U no desbloquearía (N1 de la verificación de P17.MAN), así que nunca se usa.
+ */
 export function opaquePassword(authSecret: Uint8Array): string {
   if (authSecret.length !== 32) throw new TypeError('AuthSecret_U tiene 32 bytes');
+  if (authSecret.every((byte) => byte === 0)) throw new TypeError('AuthSecret_U ya se borró');
   return toHex(authSecret).slice(2);
 }
 

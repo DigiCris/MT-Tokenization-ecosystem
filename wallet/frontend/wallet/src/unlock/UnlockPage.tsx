@@ -1,15 +1,11 @@
 // Desbloqueo (P17.T06, [F-SES-02]): el sobre (recordado, Drive o archivo) + la Password U → PlatformSession OPERATIONS
-// de 15 minutos. Opcionalmente recuerda el sobre cifrado en este dispositivo. Si toca el chequeo periódico del backup en
-// Drive ([F-DRV-05]) se avisa después, sin bloquear el desbloqueo.
-import { useCallback, useState } from 'react';
+// de 15 minutos (UnlockForm). Opcionalmente recuerda el sobre cifrado en este dispositivo. Si toca el chequeo periódico
+// del backup en Drive ([F-DRV-05]) se avisa después, sin bloquear el desbloqueo.
+import { useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { api, argon2 } from '../app/services.ts';
-import type { KeyEnvelope } from '../crypto/envelope.ts';
-import { useSession, useSessionStore } from '../session/context.tsx';
-import { rememberEnvelope } from '../storage/envelope-cache.ts';
-import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
-import { EnvelopeSource } from './EnvelopeSource.tsx';
-import { unlockWallet } from './unlock.ts';
+import { useSession } from '../session/context.tsx';
+import { Notice } from '../ui/forms.tsx';
+import { UnlockForm } from './UnlockForm.tsx';
 
 const LOCK_MESSAGES = {
   INACTIVITY: 'La wallet se bloqueó tras 5 minutos sin actividad.',
@@ -19,26 +15,13 @@ const LOCK_MESSAGES = {
 } as const;
 
 export function UnlockPage() {
-  const store = useSessionStore();
   const { lastLock, wallet } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
   const returnTo = ((location.state ?? {}) as { returnTo?: string }).returnTo ?? '/';
-  const [envelope, setEnvelope] = useState<KeyEnvelope | null>(null);
-  const [remember, setRemember] = useState(false);
-
-  const unlock = useAsyncAction(
-    useCallback(
-      async (form: HTMLFormElement) => {
-        if (envelope === null) return;
-        const unlocked = await unlockWallet(api, envelope, formValue(form, 'passwordU'), argon2);
-        if (remember) await rememberEnvelope(envelope);
-        store.unlocked(unlocked);
-        await navigate(returnTo, { replace: true });
-      },
-      [envelope, navigate, remember, returnTo, store],
-    ),
-  );
+  const back = useCallback(async () => {
+    await navigate(returnTo, { replace: true });
+  }, [navigate, returnTo]);
 
   return (
     <section className="stack narrow" aria-labelledby="unlock-title">
@@ -49,68 +32,7 @@ export function UnlockPage() {
           Todavía no tenés una wallet. <Link to="/onboarding">Creala</Link>.
         </Notice>
       )}
-      {envelope === null ? (
-        <article className="card stack" aria-labelledby="envelope-title">
-          <h2 id="envelope-title">Tu sobre cifrado</h2>
-          <p>Elegí de dónde sale el sobre cifrado de tu clave.</p>
-          <EnvelopeSource onEnvelope={setEnvelope} />
-          <p>
-            ¿Dispositivo nuevo y sin el sobre?{' '}
-            <Link to="/restore" reloadDocument>
-              Restaurá tu clave
-            </Link>
-            .
-          </p>
-        </article>
-      ) : (
-        <form
-          className="card form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void unlock.run(event.currentTarget);
-          }}
-        >
-          <p className="muted">
-            Sobre cifrado de la clave U con la dirección <code>{envelope.keyAddress}</code>
-          </p>
-          <Field
-            label="Password U"
-            name="passwordU"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            required
-            hint="Las 5 palabras, separadas por espacios. No es la contraseña de tu cuenta."
-          />
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(event) => {
-                setRemember(event.currentTarget.checked);
-              }}
-            />
-            Recordar el sobre cifrado en este dispositivo
-          </label>
-          {unlock.error && (
-            <p className="form__error" role="alert">
-              {unlock.error}
-            </p>
-          )}
-          <button type="submit" className="button" disabled={unlock.pending} aria-busy={unlock.pending}>
-            {unlock.pending ? 'Desbloqueando…' : 'Desbloquear'}
-          </button>
-          <button
-            type="button"
-            className="button button--ghost"
-            onClick={() => {
-              setEnvelope(null);
-            }}
-          >
-            Usar otro sobre
-          </button>
-        </form>
-      )}
+      <UnlockForm onUnlocked={back} />
     </section>
   );
 }

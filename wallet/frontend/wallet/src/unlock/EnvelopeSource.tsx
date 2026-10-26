@@ -1,6 +1,7 @@
 // De dónde sale el sobre cifrado para desbloquear o restaurar ([F-KEY-10] a/b): el recordado en este dispositivo, el de
 // Drive (si Drive no está conectado, se conecta acá: la redirección vuelve a esta pantalla antes de pedir nada
-// sensible), un archivo o el QR (cámara). Todos se validan como sobre antes de usarlos.
+// sensible), un archivo o el QR (cámara). Todos se validan como sobre antes de usarlos. Una pantalla que no puede
+// recargarse (el reemplazo de R, con su pedido en memoria) ofrece Drive sólo si ya está conectado.
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router';
 import { drive, driveOAuth } from '../app/services.ts';
@@ -20,9 +21,12 @@ type Source = 'device' | 'drive' | 'file' | 'qr';
 export function EnvelopeSource({
   onEnvelope,
   allowQr = false,
+  allowDriveConnect = true,
 }: {
   onEnvelope: (envelope: KeyEnvelope) => void;
   allowQr?: boolean;
+  /** Si Drive no está conectado, conectarlo recarga la página: false lo deja fuera. */
+  allowDriveConnect?: boolean;
 }) {
   const location = useLocation();
   const [remembered, setRemembered] = useState<KeyEnvelope | null>(null);
@@ -88,15 +92,17 @@ export function EnvelopeSource({
             Usar el sobre guardado en este dispositivo
           </button>
         )}
-        <button
-          type="button"
-          className="button button--ghost"
-          onClick={() => {
-            setSource('drive');
-          }}
-        >
-          Desde Google Drive
-        </button>
+        {(allowDriveConnect || hasDriveToken()) && (
+          <button
+            type="button"
+            className="button button--ghost"
+            onClick={() => {
+              setSource('drive');
+            }}
+          >
+            Desde Google Drive
+          </button>
+        )}
         <button
           type="button"
           className="button button--ghost"

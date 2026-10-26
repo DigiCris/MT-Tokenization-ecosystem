@@ -1,7 +1,10 @@
 // Servidor OPAQUE en proceso para los tests unitarios del cliente: la misma librería y los mismos parámetros que el
-// backend (userIdentifier `mtw:<plataforma>:<wallet>:<versión>`, binding HMAC de [B-PSES-02]), sin red. Los tests
-// contra el backend real están en test/browser/stack.
+// backend (userIdentifier `mtw:<plataforma>:<wallet>:<versión>`, binding HMAC de [B-PSES-02]), sin red, y la API de
+// desbloqueo respaldada por él (para comprobar que una Password U registrada desbloquea). Los tests contra el backend
+// real están en test/browser/stack.
 import * as opaque from '@serenity-kit/opaque';
+import { jwkThumbprint } from '../api/session-key.ts';
+import type { IssuedPlatformSession, WalletApi } from '../api/wallet-api.ts';
 import { fromBase64Url, ownBuffer, toBase64Url, utf8 } from '../crypto/bytes.ts';
 
 await opaque.ready;
@@ -61,4 +64,49 @@ export async function expectedBinding(sessionKey: string, thumbprint: string, lo
   return toBase64Url(
     new Uint8Array(await crypto.subtle.sign('HMAC', key, ownBuffer(utf8(`${thumbprint}${loginAttemptId}`)))),
   );
+}
+
+/**
+ * API de desbloqueo (opaqueStart/opaqueFinish) respaldada por el servidor, como el backend: busca el registro de la
+ * wallet y versión del pedido, verifica el binding de la session key y emite una PlatformSession OPERATIONS.
+ */
+export function opaqueUnlockApi(server: OpaqueTestServer, keyVersion = 1) {
+  const pending = new Map<string, { finish: (r: string) => string; thumbprint: string; walletId: string }>();
+  return {
+    opaqueStart: async (input: Parameters<WalletApi['opaqueStart']>[0]) => {
+      const walletId = input.walletId ?? '';
+      const started = server.startLogin(walletId, keyVersion, input.startLoginRequest);
+      const loginAttemptId = crypto.randomUUID();
+      pending.set(loginAttemptId, {
+        finish: started.finish,
+        thumbprint: await jwkThumbprint(input.sessionPublicKey),
+        walletId,
+      });
+      return {
+        loginAttemptId,
+        loginResponse: started.loginResponse,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      };
+    },
+    opaqueFinish: async (input: Parameters<WalletApi['opaqueFinish']>[0]): Promise<IssuedPlatformSession> => {
+      const attempt = pending.get(input.loginAttemptId);
+      if (!attempt) throw new Error('intento desconocido');
+      const sessionKey = attempt.finish(input.finishLoginRequest);
+      if (input.sessionKeyBinding !== (await expectedBinding(sessionKey, attempt.thumbprint, input.loginAttemptId))) {
+        throw new Error('binding inválido');
+      }
+      return {
+        token: 'jws.de.prueba',
+        session: {
+          id: crypto.randomUUID(),
+          scope: 'OPERATIONS',
+          authMethod: 'OPAQUE_U',
+          walletId: attempt.walletId,
+          safe: null,
+          issuedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        },
+      };
+    },
+  };
 }

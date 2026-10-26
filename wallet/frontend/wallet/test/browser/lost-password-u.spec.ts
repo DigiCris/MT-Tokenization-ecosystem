@@ -2,15 +2,20 @@
 // servidor OPAQUE en proceso: step-up U_REPLACEMENT, U' con su Password U' y un backup, registro y la pantalla final.
 // Ésta muestra la dirección de U' que generó esta app (la del sobre, nunca la que informa la plataforma), agrupada como
 // en las apps, con qué hacer en Recovery (copiar sus 10 grupos y no firmar si Recovery muestra otra), y el enlace y el
-// QR con esa misma U'. Si la plataforma informa otra U', no se sigue a Recovery y esa dirección no aparece.
+// QR con esa misma U'. El enlace abre en otra pestaña y esta pantalla sigue a la vista (B1 de la verificación de
+// P17.MAN). Si la plataforma informa otra U', no se sigue a Recovery y esa dirección no aparece.
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import type { Address } from 'viem';
 import { parseEnvelope } from '../../src/crypto/envelope.ts';
 import { addressOf, generatePrivateKey } from '../../src/crypto/keys.ts';
 import { addressGroups } from '../../src/recovery-activation/activation.ts';
-import { NEW_USER_KEY_COMPARE_TEXT, OTHER_USER_KEY_TEXT } from '../../src/security/password-u/lost.ts';
+import {
+  HANDOFF_NEW_TAB_TEXT,
+  NEW_USER_KEY_COMPARE_TEXT,
+  OTHER_USER_KEY_TEXT,
+} from '../../src/security/password-u/lost.ts';
 import { opaqueTestServer } from '../../src/unlock/opaque-server.test-helper.ts';
-import { accountRoutes, creatingWallet, mockApi, WALLET_ID } from './helpers/mock-api.ts';
+import { accountRoutes, buildConfig, creatingWallet, mockApi, WALLET_ID } from './helpers/mock-api.ts';
 import { downloadedText } from './stack/helpers/download.ts';
 
 const ROTATION_ID = 'f0e1d2c3-b4a5-4968-8776-655443322110';
@@ -133,10 +138,27 @@ test("pantalla final: la dirección de U' que generó esta app, para copiarla en
   await expect(shown.locator(`[data-address="${newKey}"]`)).toHaveText(grouped);
   await expect(shown.getByText(NEW_USER_KEY_COMPARE_TEXT)).toBeVisible();
   // El enlace y el QR llevan la rotación y esa misma U'.
-  const handoff = new URL((await page.getByTestId('recovery-handoff').getAttribute('href')) ?? '');
+  const link = page.getByTestId('recovery-handoff');
+  const handoff = new URL((await link.getAttribute('href')) ?? '');
   expect(handoff.pathname).toBe('/recover-u');
   expect(Object.fromEntries(new URLSearchParams(handoff.hash.slice(1)))).toEqual({ rid: ROTATION_ID, u: newKey });
   await expect(page.getByRole('img', { name: 'QR para continuar en Recovery' })).toBeVisible();
+
+  // «Continuar en Recovery» abre en otra pestaña (B1, ESC-41): esta pantalla, la única con la U′ que generó esta app,
+  // queda a la vista para copiar sus grupos en Recovery.
+  await expect(page.getByText(HANDOFF_NEW_TAB_TEXT)).toBeVisible();
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  await context.route(`${buildConfig.recoveryOrigin}/**`, (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>Recovery</title>' }),
+  );
+  const [recovery] = await Promise.all([context.waitForEvent('page'), link.click()]);
+  await recovery.waitForLoadState();
+  expect(new URL(recovery.url()).pathname).toBe('/recover-u');
+  expect(recovery.url()).toContain(`u=${newKey}`);
+  await expect(page.getByRole('heading', { name: 'Seguí en la app Recovery' })).toBeVisible();
+  await expect(shown.locator(`[data-address="${newKey}"]`)).toHaveText(grouped);
+  await recovery.close();
 });
 
 test("si la plataforma informa otra U', no se sigue a Recovery y esa dirección no aparece", async ({
