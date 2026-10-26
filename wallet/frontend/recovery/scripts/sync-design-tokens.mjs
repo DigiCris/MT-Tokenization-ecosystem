@@ -8,7 +8,16 @@
 //      node scripts/sync-design-tokens.mjs --check    verifica fuente y copia (si existe) sin escribir
 //      node scripts/sync-design-tokens.mjs --pin      fija en el lock los hashes actuales de la fuente
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -75,10 +84,21 @@ if (problems.length > 0) {
 }
 
 if (mode === 'sync') {
-  rmSync(DEST, { recursive: true, force: true });
-  for (const file of Object.keys(expected)) {
-    mkdirSync(dirname(join(DEST, file)), { recursive: true });
-    copyFileSync(join(SOURCE, file), join(DEST, file));
+  // Una copia que ya coincide con el lock no se toca: los tests que compilan la app corren en paralelo y cada uno
+  // sincroniza antes; borrar y volver a copiar dejaba a otro build sin tokens. Si hay que escribir, cada archivo se
+  // reemplaza con un rename atómico y sólo se borran los tokens que sobran (nunca el temporal de otro proceso).
+  if (verify(DEST, expected, 'copia de la app').length > 0) {
+    for (const file of Object.keys(expected)) {
+      const target = join(DEST, file);
+      if (existsSync(target) && sha256(target) === expected[file]) continue;
+      mkdirSync(dirname(target), { recursive: true });
+      const temp = `${target}.${String(process.pid)}.tmp`;
+      copyFileSync(join(SOURCE, file), temp);
+      renameSync(temp, target);
+    }
+    for (const file of listFiles(DEST)) {
+      if (INCLUDED.test(file) && !(file in expected)) rmSync(join(DEST, file), { force: true });
+    }
   }
   const copied = verify(DEST, expected, 'copia de la app');
   if (copied.length > 0) {
