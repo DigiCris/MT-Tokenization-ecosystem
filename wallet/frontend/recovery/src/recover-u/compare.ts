@@ -187,9 +187,13 @@ export const STILL_BLOCKED_TEXT =
 /** La plataforma aceptó el aviso pero no muestra el pedido como cancelado. */
 export const REPORT_UNCONFIRMED_TEXT =
   'La plataforma no muestra este pedido como cancelado. Esta app igual no va a firmar hacia esa dirección: reintentá el aviso.';
-/** La plataforma respondió que el pedido cambió (la Wallet registró otra U′ en él, o ya no es un borrador). */
+/**
+ * La plataforma respondió que el pedido cambió (la Wallet registró otra U′ en él, o ya no es un borrador). La pantalla
+ * vuelve a leer las rotaciones sola; recargar la página descartaría R y la verificación (N10 de la verificación de
+ * P17.MAN).
+ */
 export const REPORT_CHANGED_TEXT =
-  'La plataforma informa que este pedido cambió (la app Wallet pudo registrar otra clave U nueva): volvé a cargar esta pantalla.';
+  'La plataforma informa que este pedido cambió (la app Wallet pudo registrar otra clave U nueva): la pantalla se actualiza sola.';
 
 /** La relectura del borrador antes de aceptar la comparación falló por la red (no cuenta como intento). */
 export const REREAD_ERROR_TEXT =

@@ -18,9 +18,13 @@
 // sesión, y la pantalla lo dice con qué hacer con lo anotado (lo que se estaba creando con una verificación que ya no
 // está). Un envío que el backend rechaza por el estado del pedido se explica con el pedido releído (otro más nuevo,
 // vencido, cancelado), nunca con «recargá la pantalla», y esa R se descarta. El propósito efectivo (reemplazo si el
-// backend lo dice o si el dispositivo ya conoce la R de esa wallet) decide los textos y que nunca se borren sobres en un
-// reemplazo; la KeyAcceptance sigue el del pedido, que es lo que exige el backend. La pantalla final pide anotar la
-// dirección de R en sus backups.
+// backend lo dice o si el dispositivo ya conoce la R de esa wallet) decide los textos; la KeyAcceptance sigue el del
+// pedido, que es lo que exige el backend. La pantalla final pide anotar la dirección de R en sus backups.
+//
+// Verificación de P17.MAN: una R descartada (por un bloqueo o porque el pedido ya no la espera) se nombra por su
+// dirección, con su Password R y, en un reemplazo, sin tocar los backups de la R actual (N6); el motivo del bloqueo se
+// sigue viendo después de volver a iniciar sesión, hasta verificar la identidad de nuevo (N11); y ningún envío borra
+// sobres recordados, tampoco en el onboarding (N12).
 import { useCallback, useEffect, useState } from 'react';
 import { isAddressEqual, type Address, type Hex } from 'viem';
 import { ApiError } from '../api/client.ts';
@@ -35,8 +39,9 @@ import { signTypedDataWithRecovery, type UnlockedRecovery } from '../crypto/sess
 import { keyAcceptance, recoveryProofOfControl } from '../crypto/typed-data.ts';
 import type { ExternalSession } from '../external-wallet/types.ts';
 import { useSensitiveScreen, useSession, useSessionStore } from '../session/context.tsx';
+import type { LockReason } from '../session/store.ts';
 import { StepUp } from '../session/StepUp.tsx';
-import { forgetEnvelope, rememberedEnvelopes, rememberedSafe, rememberEnvelope } from '../storage/envelope-cache.ts';
+import { rememberedEnvelopes, rememberedSafe, rememberEnvelope } from '../storage/envelope-cache.ts';
 import { AddressText } from '../ui/AddressText.tsx';
 import { describeError } from '../ui/errors.ts';
 import { Notice, useAsyncAction } from '../ui/forms.tsx';
@@ -61,7 +66,7 @@ import {
 import {
   ENROLLMENT_IN_USE_TEXT,
   INTERRUPTED_EXTERNAL_TEXT,
-  INTERRUPTED_INTERNAL_TEXT,
+  interruptedInternalText,
   lockReasonText,
   R_EXTERNAL_TEXT,
   R_KEEP_FAILED_TEXT,
@@ -104,14 +109,16 @@ interface Sent {
 
 /**
  * Una R en curso (Password R generada, R creada o wallet externa conectada) y la verificación con la que empezó: si esa
- * verificación ya no está, Recovery se bloqueó y lo que se estaba creando se descartó con la sesión.
+ * verificación ya no está, Recovery se bloqueó y lo que se estaba creando se descartó con la sesión. La dirección de una
+ * R interna se conoce desde que quedó cifrada (antes, sólo existía su Password R).
  */
 interface Progress {
   kind: 'internal' | 'external';
   session: string;
+  address: Address | null;
 }
 
-const envelopeStore = { remember: rememberEnvelope, forget: forgetEnvelope };
+const envelopeStore = { remember: rememberEnvelope };
 const deviceRecords: DeviceRecords = { envelopes: rememberedEnvelopes, safeOf: rememberedSafe };
 
 export function EnrollPage() {
@@ -186,6 +193,10 @@ export function EnrollPage() {
     enrollment !== null &&
     platform.view.walletId === enrollment.walletId;
   const sessionId = platformOk ? platform.auth.sessionId : null;
+  // El motivo del último bloqueo (N11): la sesión lo borra al volver a iniciar sesión (signedIn), pero esta pantalla lo
+  // sigue mostrando junto a la R descartada hasta que se verifica la identidad de nuevo («cerraste sesión», también).
+  const [lastLock, setLastLock] = useState<LockReason | null>(session.lockReason);
+  if (session.lockReason !== null && session.lockReason !== lastLock) setLastLock(session.lockReason);
   // Lo que se estaba creando con una verificación que ya no está: se descartó al bloquearse (la sesión ya no lo tiene).
   const interrupted = progress !== null && progress.session !== sessionId && sent === null && ended === null;
   // La clave elegida, sólo mientras siga en la sesión (con la misma dirección) y con la verificación con la que empezó.
@@ -293,24 +304,22 @@ export function EnrollPage() {
         );
         if (failure.kind === 'retry') throw failure.error;
         if (failure.kind === 'unused') {
-          // Esta R no se va a usar: se descarta de la sesión y la pantalla dice qué pasó y qué hacer.
+          // Esta R no se va a usar: se descarta de la sesión y la pantalla dice cuál es, qué pasó y qué hacer.
           store.discardKey();
           setChoice(null);
           setProgress(null);
-          setEnded(unusedText(failure.cause, choice.kind));
+          setEnded(unusedText(failure.cause, choice, purpose));
           return;
         }
         // Un envío anterior de esta misma R sí había llegado.
         result = failure.latest;
       }
       // Con la dirección enviada, el sobre cifrado queda en este dispositivo sólo si se pidió ([F-KEY-07]); si el
-      // navegador no deja guardarlo, se dice (la pantalla final no puede afirmar que quedó). Con el propósito efectivo
-      // releído ahora: en un reemplazo nunca se borra un sobre.
+      // navegador no deja guardarlo, se dice (la pantalla final no puede afirmar que quedó). Ningún otro sobre se borra.
       let kept: Kept = 'external';
       if (choice.kind === 'internal' && signer.kind === 'internal') {
         try {
-          const wanted = { remember: choice.remember, purpose: await effectivePurpose(enrollment, deviceRecords) };
-          kept = (await keepEnvelopeOnDevice(signer.unlocked.envelope, wanted, envelopeStore))
+          kept = (await keepEnvelopeOnDevice(signer.unlocked.envelope, choice.remember, envelopeStore))
             ? 'remembered'
             : 'not-remembered';
         } catch {
@@ -322,7 +331,7 @@ export function EnrollPage() {
       // La pantalla final ya no necesita R: queda sólo la de la sesión, que se descarta al bloquear, por inactividad o
       // al cerrar la pestaña.
       setChoice(null);
-    }, [link, platform, enrollment, enrollmentKey, choice, signer, session.user, store]),
+    }, [link, platform, enrollment, enrollmentKey, choice, signer, session.user, store, purpose]),
   );
 
   if (link === null && enrollment === null) {
@@ -435,9 +444,11 @@ export function EnrollPage() {
       {interrupted && (
         <section className="card stack" aria-label="Clave R descartada" data-interrupted={progress.kind}>
           <Notice tone="warning">
-            {progress.kind === 'internal' ? INTERRUPTED_INTERNAL_TEXT : INTERRUPTED_EXTERNAL_TEXT}
+            {progress.kind === 'internal'
+              ? interruptedInternalText(progress.address, purpose)
+              : INTERRUPTED_EXTERNAL_TEXT}
           </Notice>
-          {session.lockReason !== null && <p className="muted">{lockReasonText(session.lockReason)}</p>}
+          {lastLock !== null && !platformOk && <p className="muted">{lockReasonText(lastLock)}</p>}
         </section>
       )}
       {!platformOk && (
@@ -493,7 +504,10 @@ export function EnrollPage() {
           purpose={purpose}
           onStarted={() => {
             setChoice(null);
-            if (sessionId !== null) setProgress({ kind: 'internal', session: sessionId });
+            if (sessionId !== null) setProgress({ kind: 'internal', session: sessionId, address: null });
+          }}
+          onCreated={(address) => {
+            setProgress((current) => (current === null ? current : { ...current, address }));
           }}
           onReady={(created) => {
             setChoice({
@@ -511,7 +525,7 @@ export function EnrollPage() {
           onConnected={(external) => {
             store.connectExternal(external);
             setChoice({ kind: 'external', address: external.address });
-            if (sessionId !== null) setProgress({ kind: 'external', session: sessionId });
+            if (sessionId !== null) setProgress({ kind: 'external', session: sessionId, address: external.address });
           }}
         />
       )}

@@ -2,7 +2,8 @@
 // de navegador vacío). Desde el archivo, el QR (cámara simulada con un video del QR del sobre) o el Drive de Recovery,
 // el sobre se abre con la Password R de siempre; desde las 17 palabras, R se re-cifra con una Password R nueva para la
 // wallet de la PlatformSession RECOVERY. Siempre se verifica en Base que sea la recoveryKey vigente de la Safe: una
-// clave que no lo es (o un backup de U) no se restaura. El sobre restaurado se puede recordar en el dispositivo.
+// clave que no lo es (o un backup de U) no se restaura. El sobre restaurado se puede recordar en el dispositivo. En
+// Drive, la lista dice la dirección de la R de cada sobre (uno por clave, N13 de la verificación de P17.MAN).
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
@@ -147,7 +148,14 @@ test('desde el Drive de Recovery en un dispositivo nuevo (API real de Drive)', a
     await expect(page.getByText('Google Drive conectado (carpeta privada de Recovery).')).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/restore');
     await page.getByRole('button', { name: 'Buscar mis sobres en Drive' }).click();
-    await page.locator(`[data-drive-backup="${wallet.walletId}"] button`).click();
+    // Un sobre por clave: la lista dice la dirección de la R de cada uno, leída del contenido (N13).
+    const listed = page.locator(
+      `[data-drive-backup="${wallet.walletId}"][data-drive-backup-key="${recovery.address}"]`,
+    );
+    await expect(listed).toContainText(
+      `Sobre de la clave R con la dirección 0x ${(recovery.address.slice(2).match(/.{4}/g) ?? []).join(' ')}`,
+    );
+    await listed.getByRole('button').click();
     await openAndVerify(page);
   } finally {
     await removeRecoveryBackup(wallet.walletId);

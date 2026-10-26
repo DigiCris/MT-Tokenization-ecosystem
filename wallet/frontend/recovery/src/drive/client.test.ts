@@ -1,17 +1,25 @@
 // P19.T03/T08 [F-DRV-02]: el cliente REST de Drive de Recovery (sólo appDataFolder, multipart, Bearer sin cookies ni
-// referrer), errores, verificación post-subida byte a byte, listado paginado y el backup `R.enc.<walletId>.json`
-// (uno por wallet; al restaurar se valida que el sobre sea de la wallet de su nombre). Contra la API real lo prueba
-// test/live/drive.live.test.ts con la cuenta de prueba.
+// referrer), errores, verificación post-subida byte a byte, listado paginado y el backup del sobre de R: uno por clave,
+// `R.enc.<walletId>.<dirección>.json`, así un reemplazo no pisa la copia de la R vigente (N13 de la verificación de
+// P17.MAN); al restaurar se aceptan también los de antes (`R.enc.<walletId>.json`) y cada sobre se valida contra su
+// nombre. Contra la API real lo prueba test/live/drive.live.test.ts con la cuenta de prueba.
+import { getAddress } from 'viem';
 import { describe, expect, it } from 'vitest';
 import envelopeVectors from '../../test/vectors/wire/envelope.json' with { type: 'json' };
 import { utf8 } from '../crypto/encoding.ts';
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from '../crypto/envelope.ts';
-import { backupName, downloadRecoveryEnvelope, listRecoveryBackups, uploadRecoveryEnvelope } from './backup.ts';
+import { backupName, listRecoveryBackups, readRecoveryBackup, uploadRecoveryEnvelope } from './backup.ts';
 import { DriveClient, DriveError } from './client.ts';
 
 const vector = envelopeVectors.envelopes.find((e) => e.envelope.role === 'R');
 if (!vector) throw new Error('el vector de sobres no tiene el de R');
 const envelope = parseRecoveryEnvelope(vector.envelope);
+/** El sobre de R′ de un reemplazo de la misma wallet (otra dirección; el cifrado no se abre en estos tests). */
+const replacement = parseRecoveryEnvelope({
+  ...vector.envelope,
+  keyAddress: getAddress('0x5a3c9b11e0f4d2a7c8b6e5f4a3b2c1d0e9f8a7b6'),
+});
+if (replacement.keyAddress === envelope.keyAddress) throw new Error('R′ tiene que ser otra clave');
 
 /** Drive en memoria con la semántica de la API (ids, appDataFolder, multipart, páginas) para probar el cliente. */
 function fakeDrive(
@@ -155,38 +163,105 @@ describe('cliente de Drive', () => {
 });
 
 describe('backup de R', () => {
-  it('uno por wallet: R.enc.<walletId>.json con la serialización exacta del sobre', async () => {
+  /** El nombre con el que se subía antes (uno por wallet): se sigue listando y restaurando. */
+  const legacyName = (walletId: string) => `R.enc.${walletId}.json`;
+
+  it('uno por clave: R.enc.<walletId>.<dirección en minúsculas, sin 0x>.json con la serialización exacta del sobre', async () => {
     const drive = fakeDrive();
     const client = new DriveClient(() => 't', drive.fetcher);
     const file = await uploadRecoveryEnvelope(client, envelope);
-    expect(file.name).toBe(backupName(envelope.walletId));
+    expect(file.name).toBe(`R.enc.${envelope.walletId}.${envelope.keyAddress.slice(2).toLowerCase()}.json`);
+    expect(file.name).toBe(backupName(envelope.walletId, envelope.keyAddress));
+    expect(file.name).toMatch(/^R\.enc\.[0-9a-f-]{36}\.[0-9a-f]{40}\.json$/);
     expect(new TextDecoder().decode(drive.files.get(file.id)?.content)).toBe(serializeRecoveryEnvelope(envelope));
-    expect(() => backupName('no-es-un-uuid')).toThrow('walletId inválido');
+    expect(() => backupName('no-es-un-uuid', envelope.keyAddress)).toThrow('walletId inválido');
   });
 
-  it('en un dispositivo nuevo lista los sobres (paginado, sin otros archivos) y valida el elegido', async () => {
+  it('un reemplazo de R no pisa la copia de la R vigente (N13): quedan las dos', async () => {
+    const drive = fakeDrive();
+    const client = new DriveClient(() => 't', drive.fetcher);
+    await uploadRecoveryEnvelope(client, envelope);
+    await uploadRecoveryEnvelope(client, replacement);
+    // Subir otra vez la misma R reemplaza su archivo (no lo duplica).
+    await uploadRecoveryEnvelope(client, replacement);
+    expect([...drive.files.values()].map((f) => f.name).sort()).toEqual(
+      [
+        backupName(envelope.walletId, envelope.keyAddress),
+        backupName(envelope.walletId, replacement.keyAddress),
+      ].sort(),
+    );
+    const { backups, unreadable } = await listRecoveryBackups(client);
+    expect(unreadable).toBe(0);
+    expect(backups.map((b) => b.keyAddress).sort()).toEqual([envelope.keyAddress, replacement.keyAddress].sort());
+  });
+
+  it('en un dispositivo nuevo lista los sobres (nombre nuevo y anterior, paginado) con su dirección validada contra el contenido', async () => {
     const drive = fakeDrive({ pageSize: 2 });
     const client = new DriveClient(() => 't', drive.fetcher);
     await client.create('U.enc.json', utf8('{}'));
     await client.create('otro.json', utf8('{}'));
-    await uploadRecoveryEnvelope(client, envelope);
+    // Uno subido antes con el nombre por wallet y otro con el nombre por clave.
+    await client.create(legacyName(envelope.walletId), utf8(serializeRecoveryEnvelope(envelope)));
+    await uploadRecoveryEnvelope(client, replacement);
+    // Uno cuyo nombre dice otra R que la de su contenido y otro que no es un sobre: no se ofrecen.
+    await client.create(
+      `R.enc.${envelope.walletId}.${'ab'.repeat(20)}.json`,
+      utf8(serializeRecoveryEnvelope(replacement)),
+    );
+    await client.create(legacyName('00000000-0000-4000-8000-000000000000'), utf8('no es json'));
     await client.create('notas.txt', utf8('x'));
-    const backups = await listRecoveryBackups(client);
-    expect(backups.map((b) => b.walletId)).toEqual([envelope.walletId]);
-    const [backup] = backups;
-    if (!backup) throw new Error('sin backup');
-    expect(await downloadRecoveryEnvelope(client, backup)).toEqual(envelope);
-    // Un sobre de otra wallet guardado con el nombre de esta no se acepta.
-    const other = { ...backup, walletId: '00000000-0000-4000-8000-000000000000' };
-    await expect(downloadRecoveryEnvelope(client, other)).rejects.toThrow('no es de la wallet');
+    const { backups, unreadable } = await listRecoveryBackups(client);
+    expect(unreadable).toBe(2);
+    expect(backups.map((b) => [b.walletId, b.keyAddress])).toEqual(
+      expect.arrayContaining([
+        [envelope.walletId, envelope.keyAddress],
+        [envelope.walletId, replacement.keyAddress],
+      ]),
+    );
+    expect(backups).toHaveLength(2);
+    expect(backups.find((b) => b.file.name === legacyName(envelope.walletId))?.envelope).toEqual(envelope);
+    expect(backups.find((b) => b.keyAddress === replacement.keyAddress)?.envelope).toEqual(replacement);
   });
 
-  it('un archivo con ese nombre que no es un sobre se rechaza', async () => {
+  it('cada archivo se valida contra su nombre: otra wallet, otra R o algo que no es un sobre se rechazan', async () => {
     const drive = fakeDrive();
     const client = new DriveClient(() => 't', drive.fetcher);
-    const file = await client.create(backupName(envelope.walletId), utf8('no es json'));
-    await expect(downloadRecoveryEnvelope(client, { file, walletId: envelope.walletId })).rejects.toThrow(
-      'no es un sobre válido',
-    );
+    const otherWallet = '00000000-0000-4000-8000-000000000000';
+    const content = utf8(serializeRecoveryEnvelope(envelope));
+    const ofOtherWallet = await client.create(legacyName(otherWallet), content);
+    await expect(readRecoveryBackup(client, ofOtherWallet)).rejects.toThrow('no es de la wallet');
+    const ofOtherKey = await client.create(backupName(envelope.walletId, replacement.keyAddress), content);
+    await expect(readRecoveryBackup(client, ofOtherKey)).rejects.toThrow('no es de la clave R');
+    const notJson = await client.create(backupName(envelope.walletId, envelope.keyAddress), utf8('no es json'));
+    await expect(readRecoveryBackup(client, notJson)).rejects.toThrow('no es un sobre válido');
+    const notAnEnvelope = await client.create(legacyName(envelope.walletId), utf8('{"role":"U"}'));
+    await expect(readRecoveryBackup(client, notAnEnvelope)).rejects.toThrow('no es un sobre válido');
+    await expect(readRecoveryBackup(client, { id: 'x', name: 'U.enc.json' })).rejects.toThrow('no es un sobre de R');
+    // Un error de Drive no se confunde con un sobre inválido: corta el listado.
+    const offline = new DriveClient(() => 't', fakeDrive({ status: 503 }).fetcher);
+    await expect(listRecoveryBackups(offline)).rejects.toMatchObject({ code: 'UNEXPECTED', status: 503 });
+  });
+
+  it('un sobre que se borró entre el listado y la descarga no está; un 5xx al bajarlo corta el listado', async () => {
+    const drive = fakeDrive();
+    const kept = await uploadRecoveryEnvelope(new DriveClient(() => 't', drive.fetcher), envelope);
+    const gone = await uploadRecoveryEnvelope(new DriveClient(() => 't', drive.fetcher), replacement);
+    /** Drive responde `status` al bajar el sobre de R′ (el resto, como siempre). */
+    const failing =
+      (status: number): typeof fetch =>
+      (input, init) => {
+        const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+        if (url.pathname.endsWith(`/files/${gone.id}`) && url.searchParams.get('alt') === 'media') {
+          return Promise.resolve(new Response(null, { status }));
+        }
+        return drive.fetcher(input, init);
+      };
+    const listed = await listRecoveryBackups(new DriveClient(() => 't', failing(404)));
+    expect(listed.unreadable).toBe(0);
+    expect(listed.backups.map((b) => b.file.id)).toEqual([kept.id]);
+    await expect(listRecoveryBackups(new DriveClient(() => 't', failing(503)))).rejects.toMatchObject({
+      code: 'UNEXPECTED',
+      status: 503,
+    });
   });
 });

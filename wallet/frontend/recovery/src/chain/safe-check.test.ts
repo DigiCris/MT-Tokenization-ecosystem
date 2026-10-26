@@ -2,7 +2,7 @@
 // hay fallas; cada desvío (contrato del sistema con otro código, proxy o singleton distintos, threshold, guards, Safe no
 // registrada, owners ≠ roles, R que no es la recoveryKey) aparece como su ítem y requireSafe se niega a seguir. También
 // las propuestas pendientes del timelock y el nonce leídos on-chain, y una R que no es firmante de la Safe (el sobre de
-// un pedido anterior, cuarta revisión de P17.MAN).
+// un pedido anterior, cuarta revisión de P17.MAN), que sólo se afirma con una Safe que es la esperada salvo por R (N2).
 import { getAddress, keccak256, padHex, toHex, type Address, type Hex } from 'viem';
 import { describe, expect, it } from 'vitest';
 import type { PinnedChain } from '../config/chain.ts';
@@ -123,6 +123,31 @@ describe('checkSafe', () => {
     // La R vigente sí es firmante; un owner que no es la recoveryKey del Guard no cuenta como «no firmante».
     expect(notASigner(await checkSafe(reader(healthy()), pinned, SAFE, { recoveryKey: R }), R)).toBe(false);
     expect(notASigner(await checkSafe(reader(healthy()), pinned, SAFE, { recoveryKey: U }), U)).toBe(false);
+  });
+
+  it('una dirección sin código o una Safe de otra configuración no hacen decir «no es firmante» (N2)', async () => {
+    const other = addr(0xa9);
+    // Sin código (el backend informa otra Safe, un RPC atrasado): no hay owners con qué comparar.
+    const empty = healthy();
+    empty.codes[SAFE] = '0x';
+    const noCode = await checkSafe(reader(empty), pinned, SAFE, { recoveryKey: other });
+    expect(noCode.failures).toEqual(expect.arrayContaining(['SAFE_PROXY_CODEHASH', 'RECOVERY_KEY']));
+    expect(noCode.owners).toEqual([]);
+    expect(notASigner(noCode, other)).toBe(false);
+    // Una Safe con otro Guard y sin registrar en el del sistema, aunque R no sea uno de sus owners.
+    const foreign = healthy();
+    foreign.slots[SAFE_SLOTS.guard] = addr(0x99);
+    foreign.registered = false;
+    const otherConfig = await checkSafe(reader(foreign), pinned, SAFE, { recoveryKey: other });
+    expect(otherConfig.failures).toEqual(expect.arrayContaining(['GUARD', 'NOT_REGISTERED', 'RECOVERY_KEY']));
+    expect(otherConfig.owners).toEqual([U, R, S]);
+    expect(notASigner(otherConfig, other)).toBe(false);
+    // Owners que no son los roles del Guard: tampoco es la Safe que espera la app.
+    const mixed = healthy();
+    mixed.owners = [U, addr(0xbad), S];
+    expect(notASigner(await checkSafe(reader(mixed), pinned, SAFE, { recoveryKey: other }), other)).toBe(false);
+    // RECOVERY_KEY como única falla pero sin owners leídos: no se afirma nada.
+    expect(notASigner({ failures: ['RECOVERY_KEY'], owners: [] }, other)).toBe(false);
   });
 
   it('textos de cada ítem', () => {

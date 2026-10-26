@@ -98,6 +98,22 @@ code {
   border-top: 1px solid var(--mtw-color-line);
 }
 
+/* Aviso de inactividad ([F-SES-04]): pegado al borde de abajo de la ventana desde cualquier scroll. Va después del
+   contenido, así que al llegar al final de la página ocupa su lugar y no tapa nada. */
+.inactivity-warning {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  width: 100%;
+  max-width: var(--mtw-content-width);
+  margin: 0 auto;
+  padding: 0 var(--mtw-space-6) var(--mtw-space-4);
+}
+
+.inactivity-warning > .notice {
+  box-shadow: var(--mtw-shadow-lg);
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
@@ -513,6 +529,10 @@ legend {
   .printing-section .print-target label {
     display: none;
   }
+
+  .inactivity-warning {
+    display: none;
+  }
 }
 
 .scanner__video {
@@ -525,6 +545,10 @@ legend {
 @media (max-width: 40rem) {
   .shell__main {
     padding: var(--mtw-space-6) var(--mtw-space-4);
+  }
+
+  .inactivity-warning {
+    padding: 0 var(--mtw-space-4) var(--mtw-space-3);
   }
 
   .card--hero {

@@ -11,6 +11,7 @@ import { normalizePasswordR } from '../crypto/password.ts';
 import { loadWordlist } from '../crypto/wordlist.ts';
 import { FrameCollector } from '../qr/frames.ts';
 import { useSessionStore } from '../session/context.tsx';
+import { SEVERAL_ENVELOPES_TEXT } from '../session/texts.ts';
 import { rememberEnvelope, rememberedEnvelopes } from '../storage/envelope-cache.ts';
 import { AddressText, groupedAddress } from '../ui/AddressText.tsx';
 import { readTextFile } from '../ui/download.ts';
@@ -18,10 +19,6 @@ import { describeError } from '../ui/errors.ts';
 import { Field, formValue, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { QrScanner } from '../ui/QrScanner.tsx';
 import type { UnlockedRecovery } from '../crypto/session.ts';
-
-/** Más de un sobre recordado de la misma wallet: cuál elegir y cómo se sabe si no era. */
-const SEVERAL_ENVELOPES_TEXT =
-  'Este dispositivo recuerda más de un sobre de R de la misma wallet (por ejemplo, de un pedido anterior o de un reemplazo en curso). Elegí el que tenga la dirección de tu R vigente: la muestra la app Wallet en Seguridad → «Estado y reemplazo de tu clave de recuperación (R)». Si elegís otro, Recovery te lo va a decir al verificar tu Safe y, si es de un pedido anterior, vas a poder olvidarlo.';
 
 export function UnlockRecovery({
   walletId,

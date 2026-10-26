@@ -4,7 +4,9 @@
 // palabras y se re-cifra con una Password R nueva para la wallet de la PlatformSession RECOVERY (su papel lleva la
 // dirección de R, que ya se conoce). Antes de quedarse con R, la app verifica en Base que sea la recoveryKey vigente de
 // la Safe y uno de sus owners. Después se puede recordar el sobre en este dispositivo y guardar los backups (Drive,
-// archivo o QR, con la dirección de R en el nombre y en lo impreso).
+// archivo o QR, con la dirección de R en el nombre y en lo impreso). En Drive hay un sobre por clave (N13 de la
+// verificación de P17.MAN: en un reemplazo conviven el de la R vigente y el de R′), así que la lista muestra la
+// dirección de la R de cada uno, leída de su contenido y comparada con la de su nombre.
 import { useCallback, useEffect, useState } from 'react';
 import type { Address } from 'viem';
 import { argon2, pinned, reader } from '../app/services.ts';
@@ -23,12 +25,7 @@ import {
 import { normalizePasswordR } from '../crypto/password.ts';
 import type { UnlockedRecovery } from '../crypto/session.ts';
 import { loadWordlist } from '../crypto/wordlist.ts';
-import {
-  downloadRecoveryEnvelope,
-  listRecoveryBackups,
-  uploadRecoveryEnvelope,
-  type RecoveryBackup,
-} from '../drive/backup.ts';
+import { listRecoveryBackups, uploadRecoveryEnvelope, type RecoveryBackup } from '../drive/backup.ts';
 import { DriveClient } from '../drive/client.ts';
 import { DriveConnect } from '../drive/DriveConnect.tsx';
 import { driveToken, hasDriveToken } from '../drive/token.ts';
@@ -36,7 +33,7 @@ import { encodeFrames, FrameCollector, type FrameProgress } from '../qr/frames.t
 import { useSensitiveScreen, useSession, useSessionStore } from '../session/context.tsx';
 import { StepUp } from '../session/StepUp.tsx';
 import { rememberedSafe, rememberEnvelope, rememberSafe } from '../storage/envelope-cache.ts';
-import { AddressText } from '../ui/AddressText.tsx';
+import { AddressText, groupedAddress } from '../ui/AddressText.tsx';
 import { downloadText, readTextFile } from '../ui/download.ts';
 import { describeError } from '../ui/errors.ts';
 import { Field, formValue, Notice, TextAreaField, useAsyncAction } from '../ui/forms.tsx';
@@ -47,6 +44,13 @@ import { recoveryFromWords, resealRecovery, verifyRestoredRecovery, type WordsRe
 type Source = 'drive' | 'file' | 'qr' | 'words';
 
 const drive = new DriveClient(() => driveToken());
+
+/** Archivos de la carpeta de Recovery que no son un sobre de R válido (o no coinciden con su nombre): no se ofrecen. */
+function unreadableText(count: number): string {
+  return count === 1
+    ? 'Un archivo de tu Drive de Recovery no es un sobre de R válido o no coincide con su nombre: no se muestra.'
+    : `${String(count)} archivos de tu Drive de Recovery no son sobres de R válidos o no coinciden con su nombre: no se muestran.`;
+}
 
 function Restored({ unlocked, fromWords }: { unlocked: UnlockedRecovery; fromWords: boolean }) {
   const [remembered, setRemembered] = useState(false);
@@ -195,7 +199,7 @@ export function RestorePage() {
   const [opened, setOpened] = useState<UnlockedRecovery | null>(null);
   const [fromWords, setFromWords] = useState<WordsRecovery | null>(null);
   const [restored, setRestored] = useState<{ unlocked: UnlockedRecovery; fromWords: boolean } | null>(null);
-  const [backups, setBackups] = useState<RecoveryBackup[] | null>(null);
+  const [backups, setBackups] = useState<{ backups: RecoveryBackup[]; unreadable: number } | null>(null);
   const [scanning, setScanning] = useState<FrameCollector | null>(null);
   const [progress, setProgress] = useState<FrameProgress | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
@@ -218,14 +222,10 @@ export function RestorePage() {
     }
   }, []);
 
+  // Cada sobre ya viene leído y validado contra su nombre (drive/backup.ts): elegirlo no vuelve a descargar nada.
   const listDrive = useAsyncAction(
     useCallback(async () => {
       setBackups(await listRecoveryBackups(drive));
-    }, []),
-  );
-  const pickDrive = useAsyncAction(
-    useCallback(async (backup: RecoveryBackup) => {
-      setEnvelope(await downloadRecoveryEnvelope(drive, backup));
     }, []),
   );
 
@@ -349,23 +349,28 @@ export function RestorePage() {
               Buscar mis sobres en Drive
             </button>
           )}
-          {backups?.length === 0 && <Notice tone="warning">No hay sobres de R en este Drive.</Notice>}
+          {backups?.backups.length === 0 && <Notice tone="warning">No hay sobres de R en este Drive.</Notice>}
+          {backups !== null && backups.unreadable > 0 && (
+            <Notice tone="warning">{unreadableText(backups.unreadable)}</Notice>
+          )}
           <ul className="list">
-            {backups?.map((backup) => (
-              <li key={backup.file.id} data-drive-backup={backup.walletId}>
+            {backups?.backups.map((backup) => (
+              <li key={backup.file.id} data-drive-backup={backup.walletId} data-drive-backup-key={backup.keyAddress}>
                 <button
                   type="button"
                   className="button button--secondary"
-                  disabled={pickDrive.pending}
-                  onClick={() => void pickDrive.run(backup)}
+                  onClick={() => {
+                    setEnvelope(backup.envelope);
+                  }}
                 >
-                  Sobre de la wallet {backup.walletId.slice(0, 8)}…
+                  Sobre de la clave R con la dirección <code>{groupedAddress(backup.keyAddress)}</code>, de la wallet{' '}
+                  {backup.walletId.slice(0, 8)}…
                   {backup.file.modifiedTime ? ` (${new Date(backup.file.modifiedTime).toLocaleString('es-AR')})` : ''}
                 </button>
               </li>
             ))}
           </ul>
-          {(listDrive.error ?? pickDrive.error) && <Notice tone="error">{listDrive.error ?? pickDrive.error}</Notice>}
+          {listDrive.error && <Notice tone="error">{listDrive.error}</Notice>}
         </section>
       )}
 

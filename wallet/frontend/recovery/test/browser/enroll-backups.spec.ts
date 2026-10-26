@@ -9,31 +9,40 @@
 // solas con el suyo y cuentan como backup recién al reingresar 3 al azar (mientras están a la vista sin confirmar no se
 // puede seguir). Al final, el enlace y el QR de regreso llevan el pedido, la dirección de R y el mismo secreto k del
 // enlace de ida, que no viaja en ningún pedido a la API; y en los storages queda sólo el sobre cifrado (canario de
-// [F-KEY-07]: ni R ni la Password R ni las 17 palabras). Sin recordar el sobre, nada queda (y se borra el de un pedido
-// anterior), la pantalla final lo dice, y con un enlace de ida sin k no hay enlace de regreso: se copia a mano.
+// [F-KEY-07]: ni R ni la Password R ni las 17 palabras). Sin recordar el sobre, no queda el de esta R (y el que ya
+// hubiera de la wallet no se borra), la pantalla final lo dice, y con un enlace de ida sin k no hay enlace de regreso: se
+// copia a mano.
 //
 // Cuarta revisión de P17.MAN: el archivo, lo impreso y lo anotado llevan la dirección de esa R (y la pantalla final pide
 // anotarla en sus backups y en el papel de la Password R); un envío a un pedido vencido o reemplazado dice qué pasó con
 // el pedido releído y descarta esa R; si Recovery se bloquea (botón o inactividad, con un aviso un minuto antes) con una
 // R sin enviar, la R se descarta y la pantalla dice qué destruir; y R externa sin «EOA».
+//
+// Verificación de P17.MAN: una R descartada se nombra por su dirección, con su Password R (N6); el aviso de inactividad
+// queda a la vista desde cualquier scroll sin tapar el final de la página, y la rueda también cuenta como actividad
+// (N3); el motivo «cerraste sesión» se ve al volver a iniciar sesión (N11); ningún envío borra sobres recordados
+// (N12); y la dirección abreviada usa espacios que no cortan (N9).
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { getAddress } from 'viem';
 import { wordsToRecoveryKey } from '../../src/crypto/backup-words.ts';
-import { bytesToBase64Url, bytesToHex } from '../../src/crypto/encoding.ts';
-import { envelopeFileName, parseRecoveryEnvelope } from '../../src/crypto/envelope.ts';
+import { bytesToBase64Url, bytesToHex, toBufferSource } from '../../src/crypto/encoding.ts';
+import { envelopeFileName, parseRecoveryEnvelope, sealRecoveryKey } from '../../src/crypto/envelope.ts';
+import type { Argon2 } from '../../src/crypto/kdf.ts';
+import { newPrivateKey } from '../../src/crypto/secp256k1.ts';
 import { parseWordlist } from '../../src/crypto/words.ts';
 import { requestExpiryText } from '../../src/enroll/enrollment.ts';
 import {
   ENROLLMENT_IN_USE_TEXT,
-  INTERRUPTED_INTERNAL_TEXT,
+  interruptedInternalText,
   lockReasonText,
   NEW_R_PER_REQUEST_TEXT,
   rejectedText,
   rAddressOnBackupsText,
   REMEMBER_R_LABEL,
+  REPLACEMENT_NEW_R_PER_REQUEST_TEXT,
   RETURN_QR_TEXT,
   RETURN_WITH_SECRET_TEXT,
   RETURN_WITHOUT_SECRET_TEXT,
@@ -53,9 +62,11 @@ import {
 import { INACTIVITY_WARNING_TEXT, KEEP_USING_LABEL } from '../../src/session/texts.ts';
 import {
   accountRoutes,
+  buildConfig,
   enrollmentStepUpRoutes,
   enrollmentView,
   mockApi,
+  USER,
   WALLET_ID,
   type MockRoute,
 } from './helpers/mock-api.ts';
@@ -64,6 +75,8 @@ import { readCanvasQr } from './stack/helpers/qr.ts';
 
 test.use({ timezoneId: 'America/Argentina/Buenos_Aires' });
 
+/** El espacio que no corta (U+00A0) de la dirección abreviada (N9). */
+const NBSP = String.fromCharCode(0xa0);
 const ENROLLMENT_ID = '3c1d9a7e-5b2f-4e6a-9c8d-7f6e5d4c3b2a';
 const NONCE = `0x${'cd'.repeat(32)}`;
 /** Vencimiento del pedido que informa el backend simulado (15:25 UTC = 12:25 en Buenos Aires). */
@@ -378,8 +391,9 @@ test('backups de R veraces, QR quieto e imprimible, 17 palabras confirmadas, sob
   for (let part = 1; part <= parts; part++) {
     await expect(page.getByText(rQrTitle(envelope.keyAddress, part, parts))).toBeVisible();
   }
+  // La dirección abreviada con espacios que no cortan (U+00A0): no se parte en dos renglones (N9).
   expect(rQrTitle(envelope.keyAddress, 1, parts)).toBe(
-    `MT Recovery: QR del sobre de tu clave R 0x ${hex.slice(0, 4)} … ${hex.slice(-4)}, parte 1 de ${String(parts)} (se abre con la Password R)`,
+    `MT Recovery: QR del sobre de tu clave R 0x${NBSP}${hex.slice(0, 4)}${NBSP}…${NBSP}${hex.slice(-4)}, parte 1 de ${String(parts)} (se abre con la Password R)`,
   );
   if (parts > 1) {
     await expect(
@@ -423,7 +437,7 @@ test('backups de R veraces, QR quieto e imprimible, 17 palabras confirmadas, sob
   // tercera revisión, 1 de la cuarta).
   await expect(page.locator('#r-words-print').getByText(rWordsTitle(envelope.keyAddress))).toBeVisible();
   expect(rWordsTitle(envelope.keyAddress)).toBe(
-    `MT Recovery: 17 palabras de tu clave R 0x ${hex.slice(0, 4)} … ${hex.slice(-4)}`,
+    `MT Recovery: 17 palabras de tu clave R 0x${NBSP}${hex.slice(0, 4)}${NBSP}…${NBSP}${hex.slice(-4)}`,
   );
   await expect(page.getByText(rWordsHandwritten(envelope.keyAddress))).toBeVisible();
   // Una palabra larga no baja debajo de su número (hallazgo 9): cada casilla ocupa una sola línea.
@@ -543,7 +557,7 @@ async function expectNoReloadAdvice(page: Page): Promise<void> {
   await expect(page.getByText(/texto del backend/)).toHaveCount(0);
 }
 
-test('sin recordar el sobre nada queda (se borra el de un pedido anterior); sin k no hay enlace de regreso', async ({
+test('sin recordar el sobre no queda el de esta R (y ninguno se borra: N12); sin k no hay enlace de regreso', async ({
   page,
   context,
   baseURL,
@@ -619,9 +633,11 @@ test('sin recordar el sobre nada queda (se borra el de un pedido anterior); sin 
   await expect(page.getByText(/se confirma sola/)).toHaveCount(0);
   await expect(page.locator('[data-return-link]')).toHaveCount(0);
   await expect(page.getByRole('img', { name: /^QR para volver a la Wallet/ })).toHaveCount(0);
-  // Nada de R en el dispositivo: tampoco el sobre del pedido anterior (en el onboarding su R ya no se usa).
+  // Nada de esta R en el dispositivo. El sobre que ya estaba sigue (N12 de la verificación de P17.MAN): en el
+  // onboarding no se borran sobres, porque un backend que informe ONBOARDING para una wallet con R haría borrar el de la
+  // R vigente; uno de un pedido anterior se olvida desde el desbloqueo («Olvidar este sobre»).
   const { dump, envelopes } = await storages(page, context);
-  expect(envelopes).toEqual([]);
+  expect(envelopes).toEqual([[WALLET_ID, '{"de":"un pedido anterior"}']]);
   await expectNoSecretsStored(dump, backupWords, passwordWords);
 });
 
@@ -647,9 +663,13 @@ test('un pedido vencido o reemplazado al enviar: esta R no se va a usar, se desc
   // no se guardó nada en el dispositivo (aunque la casilla de recordar estaba marcada).
   await page.goto(link);
   await verifyAndChooseInternal(page);
-  await createRUntilSend(page);
+  const expired = await createRUntilSend(page);
   await page.getByRole('button', { name: 'Firmar y enviar' }).click();
-  await expect(page.getByText(unusedText('EXPIRED', 'internal'))).toBeVisible();
+  // Cuál es esta R (su dirección, también la de sus backups) y qué destruir, también su Password R (N6).
+  const internal = (address: `0x${string}`) => ({ kind: 'internal' as const, address });
+  await expect(
+    page.getByText(unusedText('EXPIRED', internal(expired.envelope.keyAddress), 'ONBOARDING')),
+  ).toBeVisible();
   await expect(page.locator('[data-enroll-ended]')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Firmar y enviar' })).toHaveCount(0);
   await expectNoReloadAdvice(page);
@@ -661,12 +681,14 @@ test('un pedido vencido o reemplazado al enviar: esta R no se va a usar, se desc
   await page.goto('/');
   await page.goto(link);
   await verifyAndChooseInternal(page);
-  await createRUntilSend(page);
+  const superseded = await createRUntilSend(page);
   const reads = calls.filter((c) => c.method === 'GET' && c.path === `/recovery/enrollments/${ENROLLMENT_ID}`).length;
   await page.getByRole('button', { name: 'Firmar y enviar' }).click();
-  await expect(page.getByText(unusedText('SUPERSEDED', 'internal'))).toBeVisible();
-  expect(unusedText('SUPERSEDED', 'internal')).toBe(
-    'La app Wallet generó un pedido más nuevo: esta clave R no se va a usar; destruí sus backups y abrí el enlace o el QR más reciente de la app Wallet.',
+  const text = unusedText('SUPERSEDED', internal(superseded.envelope.keyAddress), 'ONBOARDING');
+  await expect(page.getByText(text)).toBeVisible();
+  const hex = superseded.envelope.keyAddress.slice(2);
+  expect(text).toBe(
+    `La app Wallet generó un pedido más nuevo: esta clave R (0x${NBSP}${hex.slice(0, 4)}${NBSP}…${NBSP}${hex.slice(-4)}) no se va a usar; destruí sus backups (archivo, QR y 17 palabras, con esa dirección) y su Password R. Abrí el enlace o el QR más reciente de la app Wallet.`,
   );
   expect(
     calls.filter((c) => c.method === 'GET' && c.path === `/recovery/enrollments/${ENROLLMENT_ID}`).length,
@@ -677,7 +699,7 @@ test('un pedido vencido o reemplazado al enviar: esta R no se va a usar, se desc
   expect(state.submittedR).toBeNull();
 });
 
-test('«Bloquear» con una R sin enviar la descarta: qué destruir y por qué; al verificar de nuevo se crea otra', async ({
+test('«Bloquear» con una R sin enviar la descarta: cuál, qué destruir y por qué; al verificar de nuevo se crea otra', async ({
   page,
   context,
   baseURL,
@@ -688,16 +710,22 @@ test('«Bloquear» con una R sin enviar la descarta: qué destruir y por qué; a
     ...accountRoutes(),
     ...enrollmentStepUpRoutes('2030-01-01T15:10:00.000Z'),
     ...enrollmentRoutes(state),
+    { method: 'POST', path: /^\/auth\/logout$/, handle: () => ({ status: 204 }) },
+    {
+      method: 'POST',
+      path: /^\/auth\/login$/,
+      handle: () => ({ body: { user: USER, csrfToken: 'csrf-de-prueba-3' } }),
+    },
   ]);
   await page.goto(`/enroll#${new URLSearchParams({ eid: ENROLLMENT_ID, n: NONCE }).toString()}`);
   await verifyAndChooseInternal(page);
   const interrupted = page.locator('[data-interrupted="internal"]');
 
-  // Con la Password R a la vista (R todavía sin cifrar): se bloquea y lo anotado ya no sirve.
+  // Con la Password R a la vista (R todavía sin cifrar): se bloquea y lo anotado (la Password R) ya no sirve.
   await page.getByRole('button', { name: 'Generar mi clave R' }).click();
   await expect(page.getByRole('list', { name: 'Password R' })).toBeVisible();
   await page.getByRole('button', { name: 'Bloquear' }).click();
-  await expect(interrupted.getByText(INTERRUPTED_INTERNAL_TEXT)).toBeVisible();
+  await expect(interrupted.getByText(interruptedInternalText(null, 'ONBOARDING'))).toBeVisible();
   await expect(interrupted.getByText(lockReasonText('MANUAL'))).toBeVisible();
   await expect(page.getByRole('list', { name: 'Password R' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Mandarme el código' })).toBeVisible();
@@ -707,16 +735,17 @@ test('«Bloquear» con una R sin enviar la descarta: qué destruir y por qué; a
   await page.getByLabel('Código del email').fill('12345678');
   await page.getByRole('button', { name: 'Confirmar' }).click();
   await expect(page.getByRole('heading', { name: '¿Cómo vas a tener tu clave R?' })).toBeVisible();
-  await expect(interrupted.getByText(INTERRUPTED_INTERNAL_TEXT)).toBeVisible();
+  await expect(interrupted.getByText(interruptedInternalText(null, 'ONBOARDING'))).toBeVisible();
   await page.getByRole('button', { name: 'Crear una clave R en este navegador' }).click();
   await expect(interrupted).toHaveCount(0);
   await expect(page.getByText(NEW_R_PER_REQUEST_TEXT)).toBeVisible();
 
   // Con R cifrada y sus backups, en la tarjeta de envío: el bloqueo también la descarta (no queda en la pantalla ni se
-  // puede enviar después de verificar otra vez), y la tarjeta no aparece con un «La verificación venció».
+  // puede enviar después de verificar otra vez), el aviso dice cuál es (su dirección, la de sus backups: N6) y la
+  // tarjeta no aparece con un «La verificación venció».
   const { envelope } = await createRUntilSend(page);
   await page.getByRole('button', { name: 'Bloquear' }).click();
-  await expect(interrupted.getByText(INTERRUPTED_INTERNAL_TEXT)).toBeVisible();
+  await expect(interrupted.getByText(interruptedInternalText(envelope.keyAddress, 'ONBOARDING'))).toBeVisible();
   await expect(page.getByRole('button', { name: 'Firmar y enviar' })).toHaveCount(0);
   await expect(page.locator(`[data-address="${envelope.keyAddress}"]`)).toHaveCount(0);
   await expect(page.getByText(/La verificación venció/)).toHaveCount(0);
@@ -725,17 +754,50 @@ test('«Bloquear» con una R sin enviar la descarta: qué destruir y por qué; a
   await page.getByRole('button', { name: 'Confirmar' }).click();
   await expect(page.getByRole('heading', { name: '¿Cómo vas a tener tu clave R?' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Firmar y enviar' })).toHaveCount(0);
+
+  // Cerrar sesión con una R en curso: al volver a iniciar sesión, el aviso sigue diciendo por qué se bloqueó (N11).
+  await page.getByRole('button', { name: 'Crear una clave R en este navegador' }).click();
+  await page.getByRole('button', { name: 'Generar mi clave R' }).click();
+  await expect(page.getByRole('list', { name: 'Password R' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await expect(page.getByLabel('Contraseña de cuenta')).toBeVisible();
+  await page.getByLabel('Email').fill(USER.email);
+  await page.getByLabel('Contraseña de cuenta').fill('una contraseña de prueba');
+  await page.getByRole('button', { name: 'Iniciar sesión' }).click();
+  await expect(interrupted.getByText(interruptedInternalText(null, 'ONBOARDING'))).toBeVisible();
+  await expect(interrupted.getByText(lockReasonText('LOGOUT'))).toBeVisible();
+  expect(lockReasonText('LOGOUT')).toBe('Se bloqueó porque cerraste sesión.');
+  // Hasta verificar la identidad de nuevo.
+  await page.getByRole('button', { name: 'Mandarme el código' }).click();
+  await page.getByLabel('Código del email').fill('12345678');
+  await page.getByRole('button', { name: 'Confirmar' }).click();
+  await expect(page.getByRole('heading', { name: '¿Cómo vas a tener tu clave R?' })).toBeVisible();
+  await expect(interrupted.getByText(lockReasonText('LOGOUT'))).toHaveCount(0);
+
   // No se envió nada ni quedó nada de esas R en el dispositivo.
   expect(calls.filter((c) => c.path.endsWith('/submit'))).toEqual([]);
   expect((await storages(page, context)).envelopes).toEqual([]);
 });
 
-test('inactividad: un minuto antes avisa, «Seguir usando Recovery» reinicia la cuenta y sin tocar se descarta la R', async ({
+/** El aviso de inactividad entero dentro de la ventana (la medición no depende del reloj simulado). */
+async function expectInView(page: Page, locator: Locator): Promise<void> {
+  const box = await locator.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  if (box === null || viewport === null) return;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
+}
+
+test('inactividad: un minuto antes avisa (a la vista desde cualquier scroll), tocar o scrollear reinicia la cuenta y sin tocar se descarta la R', async ({
   page,
   context,
   baseURL,
 }) => {
   test.setTimeout(120_000);
+  // Una ventana chica: la pantalla de la Password R no entra y hay que scrollear (como al anotar en un celular).
+  await page.setViewportSize({ width: 390, height: 480 });
   await page.clock.install();
   await mockApi(context, new URL(baseURL ?? '').origin, [
     ...accountRoutes(),
@@ -746,6 +808,7 @@ test('inactividad: un minuto antes avisa, «Seguir usando Recovery» reinicia la
   await verifyAndChooseInternal(page);
   await page.getByRole('button', { name: 'Generar mi clave R' }).click();
   await expect(page.getByRole('list', { name: 'Password R' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight)).toBe(true);
   const warning = page.locator('[data-inactivity-warning]');
 
   // Anotando la Password R sin tocar la pantalla: a los 4 minutos, el aviso.
@@ -753,6 +816,26 @@ test('inactividad: un minuto antes avisa, «Seguir usando Recovery» reinicia la
   await expect(warning).toHaveCount(0);
   await page.clock.fastForward('00:10');
   await expect(warning.getByText(INACTIVITY_WARNING_TEXT)).toBeVisible();
+  // Fijo abajo y a la vista desde cualquier scroll (N3); al final de la página ocupa su lugar y no tapa el contenido.
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+  });
+  await expectInView(page, warning);
+  await page.evaluate(() => {
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
+  await expectInView(page, warning);
+  const main = await page.locator('main').boundingBox();
+  const shown = await warning.boundingBox();
+  expect((shown?.y ?? 0) + 1).toBeGreaterThanOrEqual((main?.y ?? 0) + (main?.height ?? 0));
+  // Scrollear con la rueda también es actividad (N3): el aviso se va y la cuenta vuelve a empezar.
+  await page.mouse.move(200, 200);
+  await page.mouse.wheel(0, -200);
+  await expect(warning).toHaveCount(0);
+  await page.clock.fastForward('03:50');
+  await expect(warning).toHaveCount(0);
+  await page.clock.fastForward('00:10');
+  await expect(warning).toBeVisible();
   // «Seguir usando Recovery» reinicia la cuenta: el aviso se va y la Password R sigue.
   await warning.getByRole('button', { name: KEEP_USING_LABEL }).click();
   await expect(warning).toHaveCount(0);
@@ -763,7 +846,9 @@ test('inactividad: un minuto antes avisa, «Seguir usando Recovery» reinicia la
   await page.clock.fastForward('00:10');
   await expect(warning).toBeVisible();
   await page.clock.fastForward('01:00');
-  await expect(page.locator('[data-interrupted="internal"]').getByText(INTERRUPTED_INTERNAL_TEXT)).toBeVisible();
+  await expect(
+    page.locator('[data-interrupted="internal"]').getByText(interruptedInternalText(null, 'ONBOARDING')),
+  ).toBeVisible();
   await expect(page.getByText(lockReasonText('INACTIVITY'))).toBeVisible();
   await expect(warning).toHaveCount(0);
   await expect(page.getByRole('list', { name: 'Password R' })).toHaveCount(0);
@@ -830,4 +915,116 @@ test('la Enrollment Key rechazada por el estado del pedido: se relee y dice qué
   await expect(page.getByText(ENROLLMENT_IN_USE_TEXT)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Crear una clave R en este navegador' })).toHaveCount(0);
   await expectNoReloadAdvice(page);
+});
+
+/** Argon2id de prueba (rápido): sólo para armar sobres válidos que esta pantalla recuerda sin abrir. */
+const fastArgon2: Argon2 = async ({ password, salt }) =>
+  new Uint8Array(await crypto.subtle.digest('SHA-256', toBufferSource(new Uint8Array([...password, ...salt]))));
+
+/** Deja en el dispositivo (IndexedDB de Recovery, como envelope-cache.ts) los sobres y las Safes verificadas dados. */
+async function seedDevice(
+  page: Page,
+  seed: { envelopes: [string, string][]; safes: [string, string][] },
+): Promise<void> {
+  await page.evaluate(async (stored) => {
+    await new Promise<void>((resolveDone, reject) => {
+      const request = indexedDB.open('mtw-recovery', 2);
+      request.onupgradeneeded = () => {
+        for (const name of ['envelopes', 'safes']) request.result.createObjectStore(name);
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction(['envelopes', 'safes'], 'readwrite');
+        for (const [key, value] of stored.envelopes) tx.objectStore('envelopes').put(value, key);
+        for (const [key, value] of stored.safes) tx.objectStore('safes').put(value, key);
+        tx.oncomplete = () => {
+          db.close();
+          resolveDone();
+        };
+        tx.onerror = () => {
+          reject(tx.error ?? new Error('indexedDB'));
+        };
+      };
+      request.onerror = () => {
+        reject(request.error ?? new Error('indexedDB'));
+      };
+    });
+  }, seed);
+}
+
+test('reemplazo de R: textos del reemplazo y el sobre de la R vigente nunca se borra (N5, N6 y N12)', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(300_000);
+  // La R vigente de la wallet, recordada en este dispositivo con su Safe ya verificada (como la deja RecoveryGate).
+  const current = await sealRecoveryKey(
+    newPrivateKey(),
+    'una password de prueba',
+    { platformId: buildConfig.platformId, walletId: WALLET_ID, keyVersion: 1 },
+    fastArgon2,
+  );
+  const currentKey = `${WALLET_ID}:${current.envelope.keyAddress.toLowerCase()}`;
+  const currentFile = JSON.stringify(current.envelope);
+  const state: { submittedR: string | null; failSubmit?: FailSubmit; view?: ViewPatch } = {
+    submittedR: null,
+    view: { purpose: 'REPLACEMENT' },
+  };
+  await mockApi(context, new URL(baseURL ?? '').origin, [
+    ...accountRoutes(),
+    ...enrollmentStepUpRoutes('2030-01-01T15:10:00.000Z'),
+    ...enrollmentRoutes(state),
+  ]);
+  const link = `/enroll#${new URLSearchParams({ eid: ENROLLMENT_ID, n: NONCE, k: randomBytes(16).toString('base64url') }).toString()}`;
+  await page.goto('/');
+  await seedDevice(page, {
+    envelopes: [[currentKey, currentFile]],
+    safes: [[current.envelope.keyAddress.toLowerCase(), getAddress(`0x${'5a'.repeat(20)}`)]],
+  });
+
+  // El backend dice que es un reemplazo: los textos son los del reemplazo, y lo que se destruye de otra R es lo que no
+  // tiene ni la dirección de la R nueva ni la de la actual (N5).
+  await page.goto(link);
+  await expect(page.getByRole('heading', { name: 'Reemplazar tu clave de recuperación' })).toBeVisible();
+  await verifyAndChooseInternal(page);
+  await expect(page.getByText(REPLACEMENT_NEW_R_PER_REQUEST_TEXT)).toBeVisible();
+  await expect(page.getByText(NEW_R_PER_REQUEST_TEXT)).toHaveCount(0);
+  // Un envío que llega tarde: esta R′ no se va a usar, con su dirección, y los backups de la R actual no se tocan (N6).
+  state.failSubmit = { code: 'ENROLLMENT_EXPIRED', status: 422 };
+  const late = await createRUntilSend(page);
+  await page.getByRole('button', { name: 'Firmar y enviar' }).click();
+  const lateText = unusedText('EXPIRED', { kind: 'internal', address: late.envelope.keyAddress }, 'REPLACEMENT');
+  await expect(page.getByText(lateText)).toBeVisible();
+  expect(lateText).toContain('Los de tu R actual, no.');
+  expect((await storages(page, context)).envelopes.map(([key]) => key)).toEqual([currentKey]);
+
+  // Otro pedido, enviado recordando el sobre: el de R′ queda junto al de la R vigente, que sigue intacto.
+  state.view = { purpose: 'REPLACEMENT' };
+  await page.goto('/');
+  await page.goto(link);
+  await verifyAndChooseInternal(page);
+  const { envelope } = await createRUntilSend(page);
+  await page.getByRole('button', { name: 'Firmar y enviar' }).click();
+  await expect(page.getByRole('heading', { name: 'Dirección de tu clave R enviada' })).toBeVisible();
+  expect(state.submittedR).toBe(envelope.keyAddress);
+  const kept = new Map((await storages(page, context)).envelopes);
+  expect([...kept.keys()].sort()).toEqual([currentKey, `${WALLET_ID}:${envelope.keyAddress.toLowerCase()}`].sort());
+  expect(kept.get(currentKey)).toBe(currentFile);
+
+  // El backend dice onboarding, pero este dispositivo ya conoce la R vigente de la wallet: los textos siguen siendo
+  // los del reemplazo, y sin recordar el sobre tampoco se borra nada (N12).
+  state.submittedR = null;
+  state.view = { purpose: 'ONBOARDING' };
+  await page.goto('/');
+  await page.goto(link);
+  await expect(page.getByRole('heading', { name: 'Reemplazar tu clave de recuperación' })).toBeVisible();
+  await verifyAndChooseInternal(page);
+  await expect(page.getByText(REPLACEMENT_NEW_R_PER_REQUEST_TEXT)).toBeVisible();
+  const other = await createRUntilSend(page, { remember: false });
+  await page.getByRole('button', { name: 'Firmar y enviar' }).click();
+  await expect(page.locator('[data-kept="not-remembered"]')).toBeVisible();
+  const after = new Map((await storages(page, context)).envelopes);
+  expect(after.get(currentKey)).toBe(currentFile);
+  expect(after.has(`${WALLET_ID}:${other.envelope.keyAddress.toLowerCase()}`)).toBe(false);
 });

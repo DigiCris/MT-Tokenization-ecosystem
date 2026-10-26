@@ -114,11 +114,17 @@ export async function checkSafe(
 /**
  * La R que se verificó no es firmante de la Safe (no es uno de sus owners): por ejemplo, la de un sobre recordado de un
  * pedido anterior que no se usó, o R′ de un reemplazo que todavía no se ejecutó (cuarta revisión de P17.MAN, hallazgo
- * 12). Distinto de una Safe que no es la que espera la app.
+ * 12). Distinto de una Safe que no es la que espera la app: sólo vale si la única falla es RECOVERY_KEY (la dirección
+ * tiene el código del proxy fijado, el Guard la tiene registrada y sus owners son los roles) y se leyeron sus owners. Con
+ * una dirección sin código (un backend que informa otra Safe, un RPC atrasado) no hay owners que comparar, y decir «no
+ * es firmante» sería falso y ofrecería olvidar el sobre de la R vigente (N2 de la verificación de P17.MAN).
  */
 export function notASigner(checked: Pick<CheckedSafe, 'failures' | 'owners'>, recoveryKey: Address): boolean {
   return (
-    checked.failures.includes('RECOVERY_KEY') && !checked.owners.some((owner) => isAddressEqual(owner, recoveryKey))
+    checked.failures.length === 1 &&
+    checked.failures[0] === 'RECOVERY_KEY' &&
+    checked.owners.length > 0 &&
+    !checked.owners.some((owner) => isAddressEqual(owner, recoveryKey))
   );
 }
 

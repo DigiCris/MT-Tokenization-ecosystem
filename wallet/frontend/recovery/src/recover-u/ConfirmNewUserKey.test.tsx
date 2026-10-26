@@ -155,6 +155,10 @@ describe('confirmar la U′ antes de firmar', () => {
     expect(prefix?.nextElementSibling).toBe(field(c, 0));
     expect(c.querySelectorAll('.address-group__prefix')).toHaveLength(1);
     expect(c.textContent).toContain('Copiá la dirección completa de la clave U nueva que muestra la app Wallet');
+    // De dónde se copia: la pantalla final de «Perdí mi Password U», nunca un aviso, un email o un chat (B1, ESC-41).
+    expect(c.textContent.replace(/\s+/g, ' ')).toContain(
+      'que muestra la app Wallet en la pantalla final de «Perdí mi Password U» (no la de un aviso, un email o un chat)',
+    );
     expectHidden(c, U_WALLET);
   });
 

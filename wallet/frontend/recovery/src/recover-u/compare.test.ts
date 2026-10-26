@@ -261,5 +261,10 @@ describe('el borrador que muestra la pantalla y el rechazo de la plataforma', ()
     }
     expect(STILL_BLOCKED_TEXT).toContain('Esta app igual no va a firmar hacia esa dirección');
     expect(REPORT_FAILED_TEXT).toBe('No se pudo avisar a la plataforma.');
+    // La pantalla relee las rotaciones sola: recargar descartaría R y la verificación (N10).
+    expect(REPORT_CHANGED_TEXT).toBe(
+      'La plataforma informa que este pedido cambió (la app Wallet pudo registrar otra clave U nueva): la pantalla se actualiza sola.',
+    );
+    expect(REPORT_CHANGED_TEXT).not.toMatch(/recarg|volvé a cargar/);
   });
 });

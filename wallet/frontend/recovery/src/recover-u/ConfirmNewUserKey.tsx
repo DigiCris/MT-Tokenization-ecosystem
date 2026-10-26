@@ -1,10 +1,11 @@
 // Comparación de U′ antes de firmar la propuesta del reemplazo de U (compare.ts, [F-LNK-04]): la U′ que informa el
-// backend no se muestra hasta que coincide con la que el usuario copia de la app Wallet. Los 10 grupos con el 0x fijo
-// antes del primero (un 0x tipeado o pegado se ignora), pegar la dirección completa la reparte en los grupos, y antes
-// de aceptar se vuelve a leer el borrador (la Wallet pudo registrar otra U′). Con los intentos agotados, el borrador
-// queda bloqueado con el motivo y qué hacer, y la app le avisa a la plataforma para que lo cancele (si el aviso no
-// llega, el bloqueo sigue y se puede reintentar). Un borrador que la plataforma ya canceló se muestra bloqueado de
-// entrada, sin formulario. Ningún texto del backend llega a la pantalla.
+// backend no se muestra hasta que coincide con la que el usuario copia de la app Wallet, de la pantalla final de «Perdí
+// mi Password U» y nunca de un aviso, un email o un chat (ESC-41: ahí puede estar la U″ de un backend comprometido).
+// Los 10 grupos con el 0x fijo antes del primero (un 0x tipeado o pegado se ignora), pegar la dirección completa la
+// reparte en los grupos, y antes de aceptar se vuelve a leer el borrador (la Wallet pudo registrar otra U′). Con los
+// intentos agotados, el borrador queda bloqueado con el motivo y qué hacer, y la app le avisa a la plataforma para que
+// lo cancele (si el aviso no llega, el bloqueo sigue y se puede reintentar). Un borrador que la plataforma ya canceló se
+// muestra bloqueado de entrada, sin formulario. Ningún texto del backend llega a la pantalla.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/client.ts';
 import { describeError } from '../ui/errors.ts';
@@ -159,10 +160,10 @@ export function ConfirmNewUserKey({
         creaste vos.
       </p>
       <p>
-        Copiá la dirección completa de la clave U nueva que muestra la app Wallet en «Perdí mi Password U»: son{' '}
-        {ADDRESS_GROUPS} grupos de 4 caracteres después del «0x», que acá ya está puesto. Acá no la mostramos a
-        propósito: así se comprueba que nadie la cambió en el camino. Da igual mayúsculas o minúsculas, y si pegás la
-        dirección completa se reparte sola en los grupos.
+        Copiá la dirección completa de la clave U nueva que muestra la app Wallet en la pantalla final de «Perdí mi
+        Password U» (no la de un aviso, un email o un chat): son {ADDRESS_GROUPS} grupos de 4 caracteres después del
+        «0x», que acá ya está puesto. Acá no la mostramos a propósito: así se comprueba que nadie la cambió en el
+        camino. Da igual mayúsculas o minúsculas, y si pegás la dirección completa se reparte sola en los grupos.
       </p>
       <form
         className="stack"

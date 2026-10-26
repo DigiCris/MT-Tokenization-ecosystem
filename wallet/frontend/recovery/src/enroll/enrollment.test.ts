@@ -6,7 +6,7 @@
 // ya conoce la R de la wallet), un envío rechazado por el estado del pedido explicado con el pedido releído, y los
 // textos de «otra R», del bloqueo con una R sin enviar, del pedido de reemplazo cancelado, de Drive y de la wallet
 // externa.
-import { keccak256, recoverAddress, toBytes, type Address, type Hex } from 'viem';
+import { getAddress, keccak256, recoverAddress, toBytes, type Address, type Hex } from 'viem';
 import { describe, expect, it } from 'vitest';
 import p256Vectors from '../../test/vectors/wire/p256.json' with { type: 'json' };
 import { ApiError } from '../api/client.ts';
@@ -37,7 +37,7 @@ import {
   ENROLLMENT_IN_USE_TEXT,
   EXTERNAL_R_ADVICE,
   INTERRUPTED_EXTERNAL_TEXT,
-  INTERRUPTED_INTERNAL_TEXT,
+  interruptedInternalText,
   lockReasonText,
   NEW_R_PER_REQUEST_TEXT,
   R_EXTERNAL_TEXT,
@@ -247,21 +247,14 @@ describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07],
   const WALLET = '7d2e3f40-1a2b-4c5d-8e9f-a0b1c2d3e4f5';
   const PASSWORD_R = 'acorn violet marble tundra zebra';
 
-  /** Lo que guardaría el storage, como lo guarda envelope-cache.ts (el JSON del sobre por wallet). */
+  /** Lo que guardaría el storage, como lo guarda envelope-cache.ts (el JSON del sobre por clave de cada wallet). */
   function fakeStore() {
     const stored = new Map<string, string>();
-    const forgotten: string[] = [];
     return {
       stored,
-      forgotten,
       store: {
         remember: (envelope: RecoveryEnvelope) => {
           stored.set(`${envelope.walletId}:${envelope.keyAddress}`, JSON.stringify(envelope));
-          return Promise.resolve();
-        },
-        forget: (walletId: string) => {
-          forgotten.push(walletId);
-          for (const key of [...stored.keys()]) if (key.startsWith(`${walletId}:`)) stored.delete(key);
           return Promise.resolve();
         },
       },
@@ -281,12 +274,11 @@ describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07],
 
   it('con la casilla marcada queda sólo el sobre cifrado: nunca R ni la Password R', async () => {
     const envelope = await sealed();
-    const { stored, forgotten, store } = fakeStore();
+    const { stored, store } = fakeStore();
     stored.set(`${WALLET}:0xde-un-pedido-anterior`, '{"de":"un pedido anterior"}');
-    expect(await keepEnvelopeOnDevice(envelope, { remember: true, purpose: 'ONBOARDING' }, store)).toBe(true);
-    // En el onboarding no queda el sobre de la R de un pedido anterior, sólo el de la nueva.
-    expect(forgotten).toEqual([WALLET]);
-    expect([...stored.keys()]).toEqual([`${WALLET}:${envelope.keyAddress}`]);
+    expect(await keepEnvelopeOnDevice(envelope, true, store)).toBe(true);
+    // El de un pedido anterior no se borra (N12): se olvida desde el desbloqueo si su R no es firmante de la Safe.
+    expect([...stored.keys()]).toEqual([`${WALLET}:0xde-un-pedido-anterior`, `${WALLET}:${envelope.keyAddress}`]);
     const saved = stored.get(`${WALLET}:${envelope.keyAddress}`) ?? '';
     expect(JSON.parse(saved)).toEqual(envelope);
     // Ni la clave (hex con o sin 0x, base64url) ni la Password R (completa o sus palabras) aparecen en lo guardado.
@@ -302,45 +294,29 @@ describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07],
     }
   });
 
-  it('sin marcar no se guarda nada; en el onboarding se borra el sobre de un pedido anterior, en un reemplazo no', async () => {
+  it('sin marcar no se guarda nada y nunca se borra otro sobre: tampoco en el onboarding (N12)', async () => {
     const envelope = await sealed();
-    const onboarding = fakeStore();
-    onboarding.stored.set(`${WALLET}:0xde-un-pedido-anterior`, '{"de":"un pedido anterior"}');
-    expect(await keepEnvelopeOnDevice(envelope, { remember: false, purpose: 'ONBOARDING' }, onboarding.store)).toBe(
-      false,
-    );
-    expect(onboarding.forgotten).toEqual([WALLET]);
-    expect(onboarding.stored.size).toBe(0);
-    const replacement = fakeStore();
-    replacement.stored.set(`${WALLET}:0xde-la-r-vigente`, '{"de":"la R vigente"}');
-    expect(await keepEnvelopeOnDevice(envelope, { remember: false, purpose: 'REPLACEMENT' }, replacement.store)).toBe(
-      false,
-    );
-    expect(replacement.forgotten).toEqual([]);
-    expect(replacement.stored.get(`${WALLET}:0xde-la-r-vigente`)).toBe('{"de":"la R vigente"}');
+    // Un backend que informe ONBOARDING para una wallet con R no le hace borrar a este dispositivo el de la R vigente.
+    const device = fakeStore();
+    device.stored.set(`${WALLET}:0xde-la-r-vigente`, '{"de":"la R vigente"}');
+    expect(await keepEnvelopeOnDevice(envelope, false, device.store)).toBe(false);
+    expect([...device.stored.keys()]).toEqual([`${WALLET}:0xde-la-r-vigente`]);
+    expect(device.stored.get(`${WALLET}:0xde-la-r-vigente`)).toBe('{"de":"la R vigente"}');
   });
 
   it('en un reemplazo, el sobre de R′ queda junto al de la R vigente (hasta las 48 h, la vigente cancela rotaciones)', async () => {
     const envelope = await sealed();
     const replacement = fakeStore();
     replacement.stored.set(`${WALLET}:0xde-la-r-vigente`, '{"de":"la R vigente"}');
-    expect(await keepEnvelopeOnDevice(envelope, { remember: true, purpose: 'REPLACEMENT' }, replacement.store)).toBe(
-      true,
-    );
-    expect(replacement.forgotten).toEqual([]);
+    expect(await keepEnvelopeOnDevice(envelope, true, replacement.store)).toBe(true);
     expect(replacement.stored.get(`${WALLET}:0xde-la-r-vigente`)).toBe('{"de":"la R vigente"}');
     expect(JSON.parse(replacement.stored.get(`${WALLET}:${envelope.keyAddress}`) ?? '')).toEqual(envelope);
   });
 
   it('si el dispositivo no deja guardarlo, el error llega a quien lo pidió (la pantalla no dice que quedó)', async () => {
     const envelope = await sealed();
-    const failing = {
-      remember: () => Promise.reject(new Error('IndexedDB no disponible')),
-      forget: () => Promise.resolve(),
-    };
-    await expect(keepEnvelopeOnDevice(envelope, { remember: true, purpose: 'ONBOARDING' }, failing)).rejects.toThrow(
-      'IndexedDB',
-    );
+    const failing = { remember: () => Promise.reject(new Error('IndexedDB no disponible')) };
+    await expect(keepEnvelopeOnDevice(envelope, true, failing)).rejects.toThrow('IndexedDB');
   });
 
   it('textos de la pantalla final: ciertos con el sobre recordado, sin recordarlo, con Drive y con una wallet externa', () => {
@@ -374,9 +350,10 @@ describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07],
       'Usá una wallet que no uses a diario: su frase de recuperación es el backup de R. Guardala lejos de los backups de tu clave U: quien tenga las dos puede mover tus fondos sin la plataforma.',
     );
     for (const text of [R_EXTERNAL_TEXT, EXTERNAL_R_ADVICE]) expect(text).not.toContain('EOA');
-    // La dirección de esta R, para anotarla en sus backups y en el papel de su Password R (hallazgo 1).
+    // La dirección de esta R, para anotarla en sus backups y en el papel de su Password R (hallazgo 1), abreviada con
+    // espacios que no cortan (N9).
     expect(rAddressOnBackupsText('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913')).toBe(
-      'Anotá en los backups de esta R y en el papel de su Password R su dirección (0x 8335 … 2913): así los distinguís de los de una R anterior.',
+      'Anotá en los backups de esta R y en el papel de su Password R su dirección (0x\u00a08335\u00a0…\u00a02913): así los distinguís de los de una R anterior.',
     );
     // Los 10 grupos son los que siguen al «0x»; sin k no hay enlace de regreso.
     expect(RETURN_WITH_SECRET_TEXT).toContain('los 10 grupos que siguen al «0x»');
@@ -390,8 +367,9 @@ describe('el sobre de R en este dispositivo al enviar la dirección ([F-KEY-07],
     expect(NEW_R_PER_REQUEST_TEXT).toBe(
       'Cada pedido crea una clave R nueva. Si ya creaste otra (para este pedido o para uno anterior), destruí sus backups (archivo, QR y 17 palabras) y su Password R: son los que no tienen la dirección de la R nueva.',
     );
-    expect(REPLACEMENT_NEW_R_PER_REQUEST_TEXT).toContain(
-      'destruí sus backups (archivo, QR y 17 palabras) y su Password R: son los que no tienen la dirección de la R nueva.',
+    // En un reemplazo, los backups de la R actual tampoco tienen la dirección de la R nueva (N5).
+    expect(REPLACEMENT_NEW_R_PER_REQUEST_TEXT).toBe(
+      'Cada pedido crea una clave R nueva. Si ya creaste otra para este reemplazo o para uno anterior, destruí sus backups (archivo, QR y 17 palabras) y su Password R: son los que no tienen ni la dirección de la R nueva ni la de tu R actual. Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.',
     );
   });
 });
@@ -538,22 +516,43 @@ describe('envío que no llega al pedido (hallazgo 4 de la cuarta revisión)', ()
     }
   });
 
-  it('cada causa con su texto: con una R creada acá, destruir sus backups; con una wallet externa, nunca', () => {
-    expect(unusedText('SUPERSEDED', 'internal')).toBe(
-      'La app Wallet generó un pedido más nuevo: esta clave R no se va a usar; destruí sus backups y abrí el enlace o el QR más reciente de la app Wallet.',
+  it('cada causa con su texto: con una R creada acá, cuál es y qué destruir; con una wallet externa, nada (N6)', () => {
+    const internal = { kind: 'internal' as const, address: MINE };
+    const external = { kind: 'external' as const, address: MINE };
+    const short = `0x\u00a0${getAddress(MINE).slice(2, 6)}\u00a0…\u00a0${getAddress(MINE).slice(-4)}`;
+    expect(unusedText('SUPERSEDED', internal, 'ONBOARDING')).toBe(
+      `La app Wallet generó un pedido más nuevo: esta clave R (${short}) no se va a usar; destruí sus backups (archivo, QR y 17 palabras, con esa dirección) y su Password R. Abrí el enlace o el QR más reciente de la app Wallet.`,
     );
+    // En un reemplazo, los backups de la R actual no se destruyen.
+    expect(unusedText('SUPERSEDED', internal, 'REPLACEMENT')).toBe(
+      `La app Wallet generó un pedido más nuevo: esta clave R (${short}) no se va a usar; destruí sus backups (archivo, QR y 17 palabras, con esa dirección) y su Password R. Los de tu R actual, no. Abrí el enlace o el QR más reciente de la app Wallet.`,
+    );
+    expect(unusedText('OTHER_KEY', internal, 'ONBOARDING')).toMatch(/con esa dirección\) y su Password R\.$/);
     const causes: UnusedCause[] = ['SUPERSEDED', 'CANCELLED', 'EXPIRED', 'RETIRED', 'OTHER_KEY', 'NOT_FOUND'];
     for (const cause of causes) {
-      expect(unusedText(cause, 'internal')).toContain('esta clave R no se va a usar; destruí sus backups');
-      expect(unusedText(cause, 'external')).not.toMatch(/destru/);
-      for (const kind of ['internal', 'external'] as const) expect(unusedText(cause, kind)).not.toMatch(/recarg/i);
+      for (const purpose of ['ONBOARDING', 'REPLACEMENT'] as const) {
+        const text = unusedText(cause, internal, purpose);
+        expect(text).toContain(`esta clave R (${short}) no se va a usar; destruí sus backups`);
+        expect(text).toContain('y su Password R.');
+        expect(text.includes('Los de tu R actual, no.')).toBe(purpose === 'REPLACEMENT');
+        expect(unusedText(cause, external, purpose)).not.toMatch(/destru/);
+        for (const key of [internal, external]) expect(unusedText(cause, key, purpose)).not.toMatch(/recarg/i);
+      }
     }
   });
 
-  it('Recovery se bloqueó con una R sin enviar: se descartó, qué destruir, y por qué se bloqueó', () => {
-    expect(INTERRUPTED_INTERNAL_TEXT).toBe(
-      'Recovery se bloqueó y la clave R que estabas creando se descartó sin enviarse. Destruí lo que anotaste o guardaste de ella (Password R, archivo, QR y 17 palabras) y creá otra.',
+  it('Recovery se bloqueó con una R sin enviar: se descartó, cuál y qué destruir, y por qué se bloqueó (N6)', () => {
+    const short = `0x\u00a0${getAddress(MINE).slice(2, 6)}\u00a0…\u00a0${getAddress(MINE).slice(-4)}`;
+    // Con R ya cifrada: su dirección y sus backups.
+    expect(interruptedInternalText(MINE, 'ONBOARDING')).toBe(
+      `Recovery se bloqueó y la clave R que estabas creando (${short}) se descartó sin enviarse. Destruí lo que anotaste o guardaste de ella (su Password R y sus backups: archivo, QR y 17 palabras, con esa dirección) y creá otra.`,
     );
+    expect(interruptedInternalText(MINE, 'REPLACEMENT')).toMatch(/y creá otra\. Los de tu R actual, no\.$/);
+    // Antes de cifrarla sólo existía su Password R.
+    expect(interruptedInternalText(null, 'ONBOARDING')).toBe(
+      'Recovery se bloqueó y la clave R que estabas creando se descartó sin enviarse. Destruí lo que anotaste de ella (su Password R) y creá otra.',
+    );
+    expect(interruptedInternalText(null, 'REPLACEMENT')).toMatch(/Los de tu R actual, no\.$/);
     expect(INTERRUPTED_EXTERNAL_TEXT).not.toMatch(/destru/);
     expect(lockReasonText('MANUAL')).toBe('Se bloqueó porque tocaste «Bloquear».');
     expect(lockReasonText('INACTIVITY')).toContain('5 minutos sin usar Recovery');

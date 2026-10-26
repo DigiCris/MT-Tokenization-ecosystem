@@ -25,7 +25,9 @@ describe('parseAddressInput', () => {
 
 describe('shortAddress', () => {
   it('el principio y el final de la dirección en EIP-55, como se anotan en los backups', () => {
-    expect(shortAddress(CHECKSUMMED)).toBe('0x 8335 … 2913');
-    expect(shortAddress(CHECKSUMMED.toLowerCase() as `0x${string}`)).toBe('0x 8335 … 2913');
+    // Con espacios que no cortan (U+00A0): el «0x» y el último grupo no quedan solos en otro renglón (N9).
+    expect(shortAddress(CHECKSUMMED)).toBe('0x\u00a08335\u00a0…\u00a02913');
+    expect(shortAddress(CHECKSUMMED.toLowerCase() as `0x${string}`)).toBe('0x\u00a08335\u00a0…\u00a02913');
+    expect(shortAddress(CHECKSUMMED)).not.toContain(' ');
   });
 });

@@ -2,7 +2,13 @@
 // pierde, y una R que no es firmante de la Safe se puede olvidar sólo si el dispositivo recuerda su sobre y no es R′ de
 // un reemplazo en curso.
 import { describe, expect, it } from 'vitest';
-import { INACTIVITY_WARNING_TEXT, KEEP_USING_LABEL, notASignerText, pendingReplacementText } from './texts.ts';
+import {
+  INACTIVITY_WARNING_TEXT,
+  KEEP_USING_LABEL,
+  notASignerText,
+  pendingReplacementText,
+  SEVERAL_ENVELOPES_TEXT,
+} from './texts.ts';
 
 describe('textos de la sesión', () => {
   it('el aviso de inactividad: un minuto, y qué pasa con una R sin enviar', () => {
@@ -10,6 +16,15 @@ describe('textos de la sesión', () => {
       'Recovery se va a bloquear en menos de un minuto por inactividad. Si estás creando tu clave R y todavía no enviaste su dirección, se va a descartar y lo que anotaste de ella no va a servir.',
     );
     expect(KEEP_USING_LABEL).toBe('Seguir usando Recovery');
+  });
+
+  it('varios sobres de la misma wallet: dónde ver la R vigente (con la wallet desbloqueada) y, si no se puede, probar (N8)', () => {
+    expect(SEVERAL_ENVELOPES_TEXT).toContain(
+      'la muestra la app Wallet en Seguridad → «Estado y reemplazo de tu clave de recuperación (R)», con la wallet desbloqueada.',
+    );
+    expect(SEVERAL_ENVELOPES_TEXT).toContain(
+      'Si no podés verla, probá uno: al verificar tu Safe, Recovery te dice si no es y, si es de un pedido anterior, vas a poder olvidarlo.',
+    );
   });
 
   it('una R que no es firmante: olvidar el sobre sólo si está recordado, y nunca el de R′ de un reemplazo', () => {

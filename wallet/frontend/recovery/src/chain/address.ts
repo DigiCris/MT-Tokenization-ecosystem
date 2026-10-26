@@ -24,9 +24,10 @@ export function parseAddressInput(text: string, options: { allowZero?: boolean }
 
 /**
  * El principio y el final de una dirección (EIP-55), como se escriben en los backups de una clave para distinguirlos de
- * los de otra: «0x F0c0 … 98bf».
+ * los de otra: «0x F0c0 … 98bf». Los espacios son U+00A0 (no cortan): el «0x» o el último grupo no pasan solos al
+ * renglón siguiente (N9 de la verificación de P17.MAN).
  */
 export function shortAddress(address: Address): string {
   const hex = getAddress(address).slice(2);
-  return `0x ${hex.slice(0, 4)} … ${hex.slice(-4)}`;
+  return `0x\u00a0${hex.slice(0, 4)}\u00a0…\u00a0${hex.slice(-4)}`;
 }

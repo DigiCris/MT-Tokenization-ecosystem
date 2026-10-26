@@ -11,6 +11,7 @@ import { getAddress, type Address } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { securityGuardAbi } from '../../../src/chain/abis/SecurityGuard.ts';
 import { envelopeFileName, parseRecoveryEnvelope, serializeRecoveryEnvelope } from '../../../src/crypto/envelope.ts';
+import { backupName } from '../../../src/drive/backup.ts';
 import { chain } from './helpers/chain.ts';
 import { downloadedText } from './helpers/download.ts';
 import { answerGoogleConsent, driveTestToken, removeRecoveryBackup, testDrive } from './helpers/drive.ts';
@@ -78,9 +79,11 @@ test('R interna: Password R, backups en Drive y archivo, prueba de control y Saf
     const hex = envelope.keyAddress.slice(2);
     expect(download.suggestedFilename()).toBe(`mtw-R-${state.walletId}-${hex.slice(0, 4)}-${hex.slice(-4)}.enc.json`);
     expect(download.suggestedFilename()).toBe(envelopeFileName(envelope));
-    // El de Drive es exactamente el mismo sobre (la serialización del archivo).
+    // El de Drive es exactamente el mismo sobre (la serialización del archivo), con un nombre por clave: en un reemplazo
+    // no pisa la copia de la R vigente (N13 de la verificación de P17.MAN).
     const drive = await testDrive();
-    const [stored] = await drive.list(`R.enc.${state.walletId}.json`);
+    const [stored] = await drive.list(backupName(state.walletId, envelope.keyAddress));
+    expect(stored?.name).toBe(`R.enc.${state.walletId}.${envelope.keyAddress.slice(2).toLowerCase()}.json`);
     expect(new TextDecoder().decode(await drive.download(stored?.id ?? ''))).toBe(serializeRecoveryEnvelope(envelope));
     // Drive no cuenta como backup independiente de la plataforma: hace falta el archivo (o QR o palabras).
     await expect(page.getByText('Falta al menos un backup: archivo, QR o las 17 palabras.')).toBeVisible();

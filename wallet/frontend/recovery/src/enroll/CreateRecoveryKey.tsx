@@ -4,8 +4,10 @@
 // cifrado en este dispositivo ([F-KEY-07], marcado por defecto como en la Wallet): se guarda recién al enviar la
 // dirección (enrollment.ts, keepEnvelopeOnDevice). Desde que la Password R está a la vista, quien monta este paso sabe
 // que hay una R en curso: si Recovery se bloquea antes de enviarla, se descarta y se avisa (cuarta revisión de P17.MAN).
-// Un cifrado que termina después del bloqueo (el paso ya se desmontó) no vuelve a poner R en la sesión.
+// Un cifrado que termina después del bloqueo (el paso ya se desmontó) no vuelve a poner R en la sesión. Con R cifrada,
+// quien monta el paso sabe su dirección: si Recovery se bloquea durante los backups, el aviso dice cuál destruir (N6).
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Address } from 'viem';
 import type { EnrollmentStatus, StorageFlags } from '../api/recovery-api.ts';
 import { argon2 } from '../app/services.ts';
 import { BackupStep } from '../backup/BackupStep.tsx';
@@ -23,6 +25,7 @@ export function CreateRecoveryKey({
   walletId,
   purpose,
   onStarted,
+  onCreated,
   onReady,
 }: {
   walletId: string;
@@ -30,6 +33,8 @@ export function CreateRecoveryKey({
   purpose: EnrollmentStatus['purpose'];
   /** La Password R quedó a la vista: empezó una R nueva (lo que se anote desde acá es de ella). */
   onStarted: () => void;
+  /** R quedó cifrada (antes de los backups, que llevan su dirección). */
+  onCreated: (address: Address) => void;
   onReady: (result: { unlocked: UnlockedRecovery; flags: StorageFlags; remember: boolean }) => void;
 }) {
   const store = useSessionStore();
@@ -58,11 +63,12 @@ export function CreateRecoveryKey({
           if (!mounted.current) return;
           store.unlockRecovery(opened);
           setUnlocked(opened);
+          onCreated(opened.address);
         } finally {
           wipe(key);
         }
       },
-      [walletId, store],
+      [walletId, store, onCreated],
     ),
   );
 

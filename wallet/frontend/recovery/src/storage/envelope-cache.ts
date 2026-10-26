@@ -3,7 +3,8 @@
 // reemplazo se ejecute (48 h) la vigente es la que cancela rotaciones desde acá. Es una comodidad: el backup
 // independiente de la plataforma sigue siendo obligatorio. También la Safe que R ya verificó (dato público): el modo
 // soberano la propone sin preguntarle al backend. El sobre de una R que no es firmante de la Safe (de un pedido anterior)
-// se puede olvidar solo, sin tocar los demás de la wallet (cuarta revisión de P17.MAN, hallazgo 12).
+// se puede olvidar solo, sin tocar los demás de la wallet (cuarta revisión de P17.MAN, hallazgo 12); el enrollment nunca
+// borra sobres (N12 de la verificación).
 import { getAddress, isAddress, isAddressEqual, type Address } from 'viem';
 import { parseRecoveryEnvelope, type RecoveryEnvelope } from '../crypto/envelope.ts';
 
@@ -56,32 +57,6 @@ function envelopeKey(envelope: RecoveryEnvelope): string {
 
 export async function rememberEnvelope(envelope: RecoveryEnvelope): Promise<void> {
   await run(ENVELOPES, 'readwrite', (store) => store.put(JSON.stringify(envelope), envelopeKey(envelope)));
-}
-
-/** Borra todos los sobres recordados de la wallet (también uno guardado con la clave anterior, sólo la wallet). */
-export async function forgetEnvelope(walletId: string): Promise<void> {
-  const db = await open();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction(ENVELOPES, 'readwrite');
-      const cursor = transaction.objectStore(ENVELOPES).openCursor();
-      cursor.onsuccess = () => {
-        const current = cursor.result;
-        if (current === null) return;
-        const key = typeof current.key === 'string' ? current.key : '';
-        if (key === walletId || key.startsWith(`${walletId}:`)) current.delete();
-        current.continue();
-      };
-      transaction.oncomplete = () => {
-        resolve();
-      };
-      transaction.onerror = () => {
-        reject(transaction.error ?? new Error('IndexedDB falló'));
-      };
-    });
-  } finally {
-    db.close();
-  }
 }
 
 /**

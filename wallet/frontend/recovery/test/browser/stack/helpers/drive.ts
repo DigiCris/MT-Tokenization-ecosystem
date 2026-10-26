@@ -120,8 +120,12 @@ export async function testDrive(): Promise<DriveClient> {
   return new DriveClient(() => accessToken);
 }
 
-/** Borra el backup de R de una wallet de este test (nombre propio por wallet: no toca el de otras corridas). */
+/**
+ * Borra los backups de R de una wallet de este test: uno por clave (`R.enc.<walletId>.<dirección>.json`) y el del nombre
+ * anterior, por wallet. La wallet es propia de cada corrida: no toca los de otras.
+ */
 export async function removeRecoveryBackup(walletId: string): Promise<void> {
   const drive = await testDrive();
-  for (const file of await drive.list(`R.enc.${walletId}.json`)) await drive.remove(file.id);
+  const mine = (name: string) => name === `R.enc.${walletId}.json` || name.startsWith(`R.enc.${walletId}.`);
+  for (const file of await drive.listMatching(mine)) await drive.remove(file.id);
 }

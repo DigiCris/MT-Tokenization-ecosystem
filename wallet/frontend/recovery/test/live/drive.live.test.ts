@@ -9,12 +9,7 @@ import { WALLET_ROOT } from '../../build/config.ts';
 import { readEnvFile } from '../../build/env-file.ts';
 import { utf8 } from '../../src/crypto/encoding.ts';
 import { parseRecoveryEnvelope, serializeRecoveryEnvelope } from '../../src/crypto/envelope.ts';
-import {
-  backupName,
-  downloadRecoveryEnvelope,
-  listRecoveryBackups,
-  uploadRecoveryEnvelope,
-} from '../../src/drive/backup.ts';
+import { backupName, listRecoveryBackups, readRecoveryBackup, uploadRecoveryEnvelope } from '../../src/drive/backup.ts';
 import { DRIVE_API, DriveClient } from '../../src/drive/client.ts';
 import { DRIVE_SCOPE, revokeDriveToken, setDriveToken } from '../../src/drive/token.ts';
 import envelopeVectors from '../vectors/wire/envelope.json' with { type: 'json' };
@@ -67,7 +62,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (accessToken === '') return;
-  for (const name of [`${RUN}-crud.json`, backupName(envelope.walletId)]) {
+  for (const name of [
+    `${RUN}-crud.json`,
+    backupName(envelope.walletId, envelope.keyAddress),
+    `R.enc.${envelope.walletId}.json`,
+  ]) {
     for (const file of await drive.list(name)) await drive.remove(file.id);
   }
 });
@@ -86,16 +85,19 @@ describe('Drive real: carpeta privada de la app', () => {
     await expect(drive.download(first.file.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('el sobre de R se sube exacto, aparece al listar los backups y se baja validado', async () => {
+  it('el sobre de R se sube exacto (uno por clave), aparece al listar los backups con su dirección y se baja validado', async () => {
     const file = await uploadRecoveryEnvelope(drive, envelope);
-    expect(file.name).toBe(backupName(envelope.walletId));
+    expect(file.name).toBe(backupName(envelope.walletId, envelope.keyAddress));
     expect(new TextDecoder().decode(await drive.download(file.id))).toBe(serializeRecoveryEnvelope(envelope));
-    const backup = (await listRecoveryBackups(drive)).find((b) => b.walletId === envelope.walletId);
-    expect(backup?.file.id).toBe(file.id);
-    if (!backup) throw new Error('el backup no aparece en la lista');
-    expect(await downloadRecoveryEnvelope(drive, backup)).toEqual(envelope);
+    // Uno subido antes con el nombre por wallet también se lista (y se valida contra su contenido).
+    const legacy = await drive.create(`R.enc.${envelope.walletId}.json`, utf8(serializeRecoveryEnvelope(envelope)));
+    const mine = (await listRecoveryBackups(drive)).backups.filter((b) => b.walletId === envelope.walletId);
+    expect(mine.map((b) => b.file.id).sort()).toEqual([file.id, legacy.id].sort());
+    expect(mine.every((b) => b.keyAddress === envelope.keyAddress)).toBe(true);
+    expect((await readRecoveryBackup(drive, file)).envelope).toEqual(envelope);
     await drive.remove(file.id);
-    expect((await listRecoveryBackups(drive)).some((b) => b.walletId === envelope.walletId)).toBe(false);
+    await drive.remove(legacy.id);
+    expect((await listRecoveryBackups(drive)).backups.some((b) => b.walletId === envelope.walletId)).toBe(false);
   });
 
   it('el scope drive.appdata no ve el resto del Drive del usuario', async () => {

@@ -7,7 +7,9 @@
 // se bloquea con una R sin enviar, se dice que se descartó y qué hacer con lo anotado (2); un envío a un pedido que ya
 // no la espera dice qué pasó, nunca «recargá la pantalla» (4); el pedido de reemplazo cancelado tiene su texto (5); los
 // textos nombran la copia de Drive y la wallet externa (7 y 9). Con una wallet externa nada pide destruir backups: su
-// frase de recuperación es el backup de R.
+// frase de recuperación es el backup de R. Verificación de P17.MAN: en un reemplazo, lo que se destruye no tiene ni la
+// dirección de la R nueva ni la de la actual (N5), y una R descartada se nombra por su dirección, con su Password R y,
+// en un reemplazo, sin tocar los backups de la R actual (N6).
 import type { Address } from 'viem';
 import type { EnrollmentStatus } from '../api/recovery-api.ts';
 import { shortAddress } from '../chain/address.ts';
@@ -26,10 +28,11 @@ export const NEW_R_PER_REQUEST_TEXT =
 
 /**
  * Lo mismo en un reemplazo de R: la R actual no es «la de un pedido anterior» que se descarta. Sigue siendo la de
- * recuperación (y puede cancelar el reemplazo) hasta que se ejecute: sus backups no se destruyen.
+ * recuperación (y puede cancelar el reemplazo) hasta que se ejecute: sus backups no se destruyen. Y tampoco tienen la
+ * dirección de la R nueva, así que lo que se destruye es lo que no tiene ninguna de las dos (N5 de la verificación).
  */
 export const REPLACEMENT_NEW_R_PER_REQUEST_TEXT =
-  'Cada pedido crea una clave R nueva. Si ya creaste otra para este reemplazo o para uno anterior, destruí sus backups (archivo, QR y 17 palabras) y su Password R: son los que no tienen la dirección de la R nueva. Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.';
+  'Cada pedido crea una clave R nueva. Si ya creaste otra para este reemplazo o para uno anterior, destruí sus backups (archivo, QR y 17 palabras) y su Password R: son los que no tienen ni la dirección de la R nueva ni la de tu R actual. Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.';
 
 /**
  * Pantalla final, R creada en este navegador con el sobre recordado. `drive`: también quedó una copia en la carpeta de
@@ -117,12 +120,22 @@ export function rejectedText(
   return 'La app Wallet canceló este pedido porque no pudo confirmar la dirección de tu clave R. Generá uno nuevo desde la app Wallet: Recovery va a crear otra clave R, y los backups de la anterior ya no sirven. Destruilos, también su Password R: son los que no tienen la dirección de la R nueva.';
 }
 
+/** En un reemplazo de R, lo de la R actual no se destruye: sigue vigente hasta que el reemplazo se ejecute. */
+const KEEP_CURRENT_R = 'Los de tu R actual, no.';
+
 /**
  * Recovery se bloqueó (botón «Bloquear», inactividad, verificación vencida o salida) con una R creada acá que todavía
- * no se envió: se descartó, y lo anotado o guardado de ella no sirve (hallazgo 2 de la cuarta revisión).
+ * no se envió: se descartó, y lo anotado o guardado de ella no sirve (hallazgo 2 de la cuarta revisión). Con R ya
+ * cifrada, su dirección dice qué backups son (N6 de la verificación); antes, sólo existía su Password R. En un
+ * reemplazo, los de la R actual no se destruyen. `purpose` es el propósito efectivo (enrollment.ts, effectivePurpose).
  */
-export const INTERRUPTED_INTERNAL_TEXT =
-  'Recovery se bloqueó y la clave R que estabas creando se descartó sin enviarse. Destruí lo que anotaste o guardaste de ella (Password R, archivo, QR y 17 palabras) y creá otra.';
+export function interruptedInternalText(address: Address | null, purpose: EnrollmentStatus['purpose']): string {
+  const what =
+    address === null
+      ? 'Recovery se bloqueó y la clave R que estabas creando se descartó sin enviarse. Destruí lo que anotaste de ella (su Password R) y creá otra.'
+      : `Recovery se bloqueó y la clave R que estabas creando (${shortAddress(address)}) se descartó sin enviarse. Destruí lo que anotaste o guardaste de ella (su Password R y sus backups: archivo, QR y 17 palabras, con esa dirección) y creá otra.`;
+  return purpose === 'REPLACEMENT' ? `${what} ${KEEP_CURRENT_R}` : what;
+}
 
 /** Lo mismo con una wallet externa: se desconectó sin enviar nada (y no hay nada que destruir). */
 export const INTERRUPTED_EXTERNAL_TEXT =
@@ -149,19 +162,23 @@ export function lockReasonText(reason: LockReason): string {
  */
 export type UnusedCause = 'SUPERSEDED' | 'CANCELLED' | 'EXPIRED' | 'RETIRED' | 'OTHER_KEY' | 'NOT_FOUND';
 
-const UNUSED_INTERNAL: Record<UnusedCause, string> = {
-  SUPERSEDED:
-    'La app Wallet generó un pedido más nuevo: esta clave R no se va a usar; destruí sus backups y abrí el enlace o el QR más reciente de la app Wallet.',
-  CANCELLED:
-    'La app Wallet canceló este pedido: esta clave R no se va a usar; destruí sus backups y generá un pedido nuevo desde la app Wallet.',
-  EXPIRED:
-    'El pedido venció antes de enviar la dirección: esta clave R no se va a usar; destruí sus backups y generá un pedido nuevo desde la app Wallet.',
-  RETIRED:
-    'El pedido fue reemplazado por otro: esta clave R no se va a usar; destruí sus backups y abrí el enlace o el QR más reciente de la app Wallet.',
-  OTHER_KEY:
-    'Para este pedido ya se envió la dirección de otra clave R (desde otra pestaña u otro dispositivo): esta clave R no se va a usar; destruí sus backups.',
-  NOT_FOUND:
-    'La plataforma ya no encuentra este pedido: esta clave R no se va a usar; destruí sus backups y generá un pedido nuevo desde la app Wallet.',
+/** Por qué no se va a usar una R creada acá y, si hace falta, qué hacer después. */
+const UNUSED_INTERNAL: Record<UnusedCause, { why: string; next: string | null }> = {
+  SUPERSEDED: {
+    why: 'La app Wallet generó un pedido más nuevo',
+    next: 'Abrí el enlace o el QR más reciente de la app Wallet.',
+  },
+  CANCELLED: { why: 'La app Wallet canceló este pedido', next: 'Generá un pedido nuevo desde la app Wallet.' },
+  EXPIRED: {
+    why: 'El pedido venció antes de enviar la dirección',
+    next: 'Generá un pedido nuevo desde la app Wallet.',
+  },
+  RETIRED: { why: 'El pedido fue reemplazado por otro', next: 'Abrí el enlace o el QR más reciente de la app Wallet.' },
+  OTHER_KEY: {
+    why: 'Para este pedido ya se envió la dirección de otra clave R (desde otra pestaña u otro dispositivo)',
+    next: null,
+  },
+  NOT_FOUND: { why: 'La plataforma ya no encuentra este pedido', next: 'Generá un pedido nuevo desde la app Wallet.' },
 };
 
 const UNUSED_EXTERNAL: Record<UnusedCause, string> = {
@@ -179,8 +196,22 @@ const UNUSED_EXTERNAL: Record<UnusedCause, string> = {
     'La plataforma ya no encuentra este pedido: generá un pedido nuevo desde la app Wallet y volvé a conectar tu wallet externa.',
 };
 
-export function unusedText(cause: UnusedCause, kind: 'internal' | 'external'): string {
-  return (kind === 'internal' ? UNUSED_INTERNAL : UNUSED_EXTERNAL)[cause];
+/**
+ * Una R que no se va a usar. Si se creó acá, cuál es (su dirección, también la de sus backups) y qué destruir, también
+ * su Password R; en un reemplazo, los backups de la R actual no (N6 de la verificación de P17.MAN). Con una wallet
+ * externa no hay nada que destruir. `purpose` es el propósito efectivo (enrollment.ts, effectivePurpose).
+ */
+export function unusedText(
+  cause: UnusedCause,
+  key: { kind: 'internal' | 'external'; address: Address },
+  purpose: EnrollmentStatus['purpose'],
+): string {
+  if (key.kind === 'external') return UNUSED_EXTERNAL[cause];
+  const { why, next } = UNUSED_INTERNAL[cause];
+  const destroy = `esta clave R (${shortAddress(key.address)}) no se va a usar; destruí sus backups (archivo, QR y 17 palabras, con esa dirección) y su Password R.`;
+  return [`${why}: ${destroy}`, purpose === 'REPLACEMENT' ? KEEP_CURRENT_R : null, next]
+    .filter((part) => part !== null)
+    .join(' ');
 }
 
 /** El backend no aceptó el envío pero el pedido sigue abierto (p. ej. el reloj del dispositivo corrido). */

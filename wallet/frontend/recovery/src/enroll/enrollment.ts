@@ -196,25 +196,23 @@ export function requestExpiryText(expiresAt: string, timeZone?: string): string 
 /** Los sobres recordados en este dispositivo (src/storage/envelope-cache.ts: IndexedDB, uno por clave de cada wallet). */
 export interface EnvelopeStore {
   remember: (envelope: RecoveryEnvelope) => Promise<void>;
-  forget: (walletId: string) => Promise<void>;
 }
 
 /**
  * «Recordar el sobre cifrado de R en este dispositivo» ([F-KEY-07]) al enviar la dirección de una R creada en este
  * navegador: con la casilla marcada se guarda sólo el sobre cifrado (nunca R ni la Password R). Se guarda recién con la
- * dirección enviada, así un pedido que vence o se abandona no deja el sobre de una R que no se va a usar. En el
- * onboarding, antes se borra el que hubiera quedado de un pedido anterior (la wallet todavía no tiene R vigente: era de
- * una R que ya no se usa). En un reemplazo de R nunca se borra nada: el de R′ queda junto al de la R vigente, que hasta
- * que el reemplazo se ejecute (48 h) es la que cancela rotaciones. `purpose` es el propósito efectivo
- * (effectivePurpose), no sólo el que informa el backend. Devuelve si quedó recordado.
+ * dirección enviada, así un pedido que vence o se abandona no deja el sobre de una R que no se va a usar. Nunca se
+ * borra otro sobre, tampoco en el onboarding (N12 de la verificación de P17.MAN): el de R′ queda junto a los que ya
+ * hubiera de la wallet, porque un backend que informe ONBOARDING para una wallet que ya tiene R le haría borrar a este
+ * dispositivo el sobre de la R vigente. Uno de un pedido anterior que ya no se usa se olvida desde el desbloqueo
+ * («Olvidar este sobre», cuando la verificación de la Safe dice que esa R no es firmante). Devuelve si quedó recordado.
  */
 export async function keepEnvelopeOnDevice(
   envelope: RecoveryEnvelope,
-  choice: { remember: boolean; purpose: EnrollmentStatus['purpose'] },
+  remember: boolean,
   store: EnvelopeStore,
 ): Promise<boolean> {
-  if (choice.purpose === 'ONBOARDING') await store.forget(envelope.walletId);
-  if (!choice.remember) return false;
+  if (!remember) return false;
   await store.remember(envelope);
   return true;
 }
@@ -229,8 +227,9 @@ export interface DeviceRecords {
  * El propósito con el que esta app trata el pedido (hallazgo 5 de la cuarta revisión): reemplazo si el backend lo dice
  * o si este dispositivo recuerda un sobre de esa wallet cuya R tiene una Safe recordada (la que RecoveryGate verificó en
  * Base, con R como clave de recuperación del Guard): esa wallet ya tiene R. Así, un backend que marque como onboarding
- * el reemplazo de una wallet con R no consigue que se borre el sobre de la R vigente ni que se muestren los textos del
- * onboarding. Si el dispositivo no se puede leer, vale lo que dice el backend (tampoco se podría borrar nada).
+ * el reemplazo de una wallet con R no consigue que se muestren los textos del onboarding (que piden destruir los backups
+ * de «la anterior»). Decide sólo textos: ningún sobre se borra al enviar (keepEnvelopeOnDevice). Si el dispositivo no se
+ * puede leer, vale lo que dice el backend.
  */
 export async function effectivePurpose(
   enrollment: Pick<EnrollmentStatus, 'purpose' | 'walletId'>,
