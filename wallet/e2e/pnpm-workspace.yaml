@@ -1,0 +1,7 @@
+# Política de supply chain del proyecto (P01.T05, docs/VERSIONS.md#supply-chain).
+saveExact: true
+strictPeerDependencies: true
+minimumReleaseAge: 10080
+strictDepBuilds: true
+# Scripts de instalación revisados (allowlist explícita; se completa con lo que pida la instalación).
+allowBuilds: {}

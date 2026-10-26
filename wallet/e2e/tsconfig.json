@@ -1,0 +1,33 @@
+{
+  // Specs, fixtures y scripts del E2E: corren en Node 26 (type stripping) o en Playwright.
+  "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024", "dom"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "useUnknownInCatchVariables": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": [
+    "fixtures",
+    "specs",
+    "scripts/*.ts",
+    "playwright.config.ts",
+    // Declaraciones de las apps para los módulos suyos que importan las fixtures (`?url` de Vite, Trusted Types).
+    "../frontend/wallet/src/env.d.ts",
+    "../frontend/wallet/src/types/trusted-types.d.ts"
+  ]
+}
