@@ -347,7 +347,10 @@ describe('rechazo del borrador del reemplazo de U desde Recovery', () => {
       m.subject.includes('Posible sustitución de tu clave U nueva'),
     );
     expect(email.text).toContain('la app Recovery canceló el pedido y no va a firmar el reemplazo hacia esa dirección');
-    expect(email.text).toContain(`Dirección que recibió la plataforma: ${groupedAddress(newKey)}`);
+    // La U′ que recibió la plataforma puede ser la de un atacante: el email no la muestra (ni agrupada ni en hex).
+    expect(email.text).not.toContain('Dirección que recibió la plataforma');
+    expect(email.text).not.toContain(groupedAddress(newKey));
+    expect(email.text.toLowerCase()).not.toContain(newKey.slice(2).toLowerCase());
     expect(email.text).toContain(`Safe: ${groupedAddress(o.safe)}`);
     expect(email.text).toContain('— MT Wallet Recovery.');
     expect(await rejections()).toBe(before + 1);

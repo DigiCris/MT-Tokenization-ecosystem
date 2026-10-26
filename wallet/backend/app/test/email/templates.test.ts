@@ -314,8 +314,8 @@ describe('contenido obligatorio', () => {
     );
   });
 
-  it('rechazo del borrador del reemplazo de U (ESC-41): posible sustitución, dirección recibida, de dónde copiarla y qué hacer', () => {
-    const { subject, text } = render('u-replacement-rejected');
+  it('rechazo del borrador del reemplazo de U (ESC-41): posible sustitución, sin la dirección recibida, de dónde copiarla y qué hacer', () => {
+    const { subject, text, html } = render('u-replacement-rejected');
     expect(subject).toBe('Posible sustitución de tu clave U nueva');
     expect(text).toMatch(/^Cancelamos un pedido para reemplazar tu clave de usuario \(U\)$/m);
     expect(text).toContain(
@@ -325,7 +325,13 @@ describe('contenido obligatorio', () => {
     expect(text).toContain('alguien haya intentado cambiar tu clave U nueva en el camino');
     expect(text).toContain('Acción: Cancelación del reemplazo de tu clave de usuario (U)');
     expect(text).toContain('Motivo: la dirección copiada de la app Wallet no coincidió');
-    expect(text).toContain(`Dirección que recibió la plataforma: ${groupedAddress(NEW_KEY)}`);
+    // La U′ del borrador puede ser la U″ del atacante: el email no la muestra en ninguna forma (N4 de la verificación de
+    // P17.MAN), igual que el aviso in-app.
+    expect(text).not.toContain('Dirección que recibió la plataforma');
+    for (const body of [text, html]) {
+      expect(body).not.toContain(groupedAddress(NEW_KEY));
+      expect(body.toLowerCase()).not.toContain(NEW_KEY.slice(2).toLowerCase());
+    }
     // La plataforma no la propone, se empieza de nuevo desde la Wallet y la dirección se copia sólo de ahí (ESC-41).
     expect(text).toContain(
       'no va a proponer el reemplazo de tu clave U hacia ninguna dirección que haya llegado por él',

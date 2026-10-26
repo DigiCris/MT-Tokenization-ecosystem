@@ -97,7 +97,10 @@ export interface TemplateParams {
   /** La app Recovery canceló un borrador del reemplazo de U porque la U′ no coincidió ([F-LNK-04]). */
   'u-replacement-rejected': {
     reason: UReplacementRejection;
-    /** Dirección de la U′ del borrador: la que recibió la plataforma. */
+    /**
+     * Dirección de la U′ del borrador: la que recibió la plataforma. El email no la muestra (ESC-41, N4 de la
+     * verificación de P17.MAN): puede ser la del atacante, y la clave nueva se copia sólo de la app Wallet.
+     */
     newKey: string;
     safe: string | null;
     occurredAt: string;
@@ -624,10 +627,10 @@ const RENDERERS: Renderers = {
     subject: 'Posible sustitución de tu clave U nueva',
     heading: 'Cancelamos un pedido para reemplazar tu clave de usuario (U)',
     intro: `${U_REJECTION_INTRO[p.reason]} Puede ser un error al copiar, pero también que alguien haya intentado cambiar tu clave U nueva en el camino. ${uRejectionOutcome(false)}`,
+    // Sin la dirección que recibió la plataforma (como el aviso in-app): puede ser la U″ de un backend comprometido.
     details: [
       ['Acción', `Cancelación del reemplazo ${ofRole('U')}`],
       ['Motivo', U_REJECTION_REASON[p.reason]],
-      ['Dirección que recibió la plataforma', groupedAddress(p.newKey)],
       ['Red', ctx.networkLabel],
       ...(p.safe === null ? [] : ([['Safe', groupedAddress(p.safe)]] as [string, string][])),
       ...timeRows(ctx, 'Fecha', p.occurredAt),
