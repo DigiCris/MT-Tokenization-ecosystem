@@ -5,8 +5,10 @@
 // plataforma (archivo, QR o palabras) para seguir, y no se sigue con las palabras a la vista sin confirmar (después de
 // este paso no se vuelven a mostrar): hay que confirmarlas u ocultarlas. Lo que se imprime lleva el título de qué app y
 // qué clave es, y las 17 palabras se guardan lejos de los backups de R: U y R juntas mueven los fondos sin la
-// plataforma (tercera revisión de P17.MAN).
+// plataforma (tercera revisión de P17.MAN). El archivo, lo impreso y lo anotado llevan la dirección de esta U
+// (abreviada): los backups de U′ se distinguen de los de la U anterior (cuarta revisión, hallazgo 1).
 import { useCallback, useEffect, useState } from 'react';
+import type { Address } from 'viem';
 import type { StorageFlags } from '../api/wallet-api.ts';
 import { drive } from '../app/services.ts';
 import { BACKUP_WORDS, keyToBackupWords } from '../crypto/backup-words.ts';
@@ -20,7 +22,7 @@ import { downloadText, envelopeFileName } from '../ui/download.ts';
 import { Field, Notice, useAsyncAction } from '../ui/forms.tsx';
 import { printSection } from '../ui/print.ts';
 import { EnvelopeQr } from './EnvelopeQr.tsx';
-import { hasIndependentBackup, LOST_U_AND_R_WARNING, U_WORDS_HANDWRITTEN, U_WORDS_TITLE } from './user-key.ts';
+import { hasIndependentBackup, LOST_U_AND_R_WARNING, uWordsHandwritten, uWordsTitle } from './user-key.ts';
 
 /** Palabras que se reingresan para confirmar el backup de 17 (como las 2 de la Password U). */
 const WORDS_TO_CONFIRM = 3;
@@ -116,7 +118,7 @@ export function BackupStep({
           type="button"
           className="button button--ghost"
           onClick={() => {
-            downloadText(envelopeFileName(envelope.walletId), serializeEnvelope(envelope));
+            downloadText(envelopeFileName(envelope), serializeEnvelope(envelope));
             setDownloaded(true);
           }}
         >
@@ -142,7 +144,7 @@ export function BackupStep({
           </button>
         ) : (
           <>
-            <EnvelopeQr frames={frames} printId="qr-print" />
+            <EnvelopeQr frames={frames} keyAddress={envelope.keyAddress} printId="qr-print" />
             <label className="check">
               <input type="checkbox" checked={flags.qr} onChange={check('qr')} />
               {frames.length > 1
@@ -157,6 +159,7 @@ export function BackupStep({
       {wordsKey && (
         <BackupWords
           wordsKey={wordsKey}
+          keyAddress={envelope.keyAddress}
           onOpenChange={setWordsOpen}
           onConfirmed={() => {
             setFlags((f) => ({ ...f, words: true }));
@@ -192,10 +195,13 @@ type WordsStep = 'hidden' | 'shown' | 'confirm' | 'confirmed';
  */
 function BackupWords({
   wordsKey,
+  keyAddress,
   onOpenChange,
   onConfirmed,
 }: {
   wordsKey: Uint8Array;
+  /** La dirección de la clave: va abreviada en el título de lo impreso y de lo anotado. */
+  keyAddress: Address;
   onOpenChange: (open: boolean) => void;
   onConfirmed: () => void;
 }) {
@@ -246,7 +252,7 @@ function BackupWords({
       {step === 'shown' && words !== null && (
         <>
           <div className="stack" id="words-print">
-            <p className="print-title">{U_WORDS_TITLE}</p>
+            <p className="print-title">{uWordsTitle(keyAddress)}</p>
             <ol className="words words--17" aria-label="17 palabras de la clave">
               {words.map((word, i) => (
                 <li key={`${String(i)}-${word}`} className="words__item">
@@ -255,7 +261,7 @@ function BackupWords({
               ))}
             </ol>
           </div>
-          <p>{U_WORDS_HANDWRITTEN}</p>
+          <p>{uWordsHandwritten(keyAddress)}</p>
           <div className="choices">
             <button
               type="button"

@@ -227,8 +227,9 @@ describe('perdí mi Password U', () => {
       (await registerReplacement(api as unknown as WalletApi, stepUp, draft, prepared, flags, FACTORY)).userKey,
     ).toBe(draft.address);
     // Lo que se le pide al usuario con esa dirección en Recovery.
+    // Recovery no muestra la U' que recibió la plataforma hasta que coincide (hallazgo 10 de la cuarta revisión).
     expect(NEW_USER_KEY_COMPARE_TEXT).toBe(
-      'En la app Recovery te vamos a pedir que copies estos 10 grupos (los que siguen al «0x»): comparalos con calma; si Recovery muestra otra dirección, no firmes.',
+      'En la app Recovery vas a tener que copiar estos 10 grupos (los que siguen al «0x»). Recovery no te muestra la dirección que recibió la plataforma: si te dice que no coincide y la copiaste bien, no firmes.',
     );
   });
 

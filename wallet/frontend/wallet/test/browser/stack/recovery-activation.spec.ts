@@ -13,6 +13,7 @@ import { expect, test } from '@playwright/test';
 import { getAddress } from 'viem';
 import {
   MANUAL_MISMATCH_TEXT,
+  NEW_REQUEST_TEXT,
   RecoveryKeyMismatchError,
   ReturnLinkUnverifiedError,
 } from '../../../src/recovery-activation/activation.ts';
@@ -106,9 +107,8 @@ test('enlace de regreso con otra R que la que informa la plataforma: el pedido s
     .toMatchObject({ status: 'REJECTED', rejectionReason: 'RETURN_LINK_KEY_MISMATCH' });
   await page.getByRole('button', { name: 'Generar un pedido nuevo' }).click();
   await expect(page.getByText('Esperando que Recovery informe la dirección de tu clave R…')).toBeVisible();
-  await expect(
-    page.getByText('Escaneá el QR nuevo: Recovery va a crear otra clave R; destruí los backups de la anterior.'),
-  ).toBeVisible();
+  // Recovery va a crear otra R: qué destruir de la anterior (cuarta revisión de P17.MAN, hallazgo 1).
+  await expect(page.getByText(NEW_REQUEST_TEXT)).toBeVisible();
   const renewed = await recoveryRequest(page);
   expect(renewed.enrollmentId).not.toBe(enrollment.enrollmentId);
   expect(renewed.secret).not.toBe(enrollment.secret);

@@ -240,13 +240,14 @@ function RestoreFromWords({
           </button>
         </form>
       )}
-      {step === 'password' && passwordWords && (
+      {step === 'password' && passwordWords && restored && (
         <>
           <Notice tone="success">
             Las palabras corresponden a la U vigente de tu Safe. Ahora elegimos una Password U nueva.
           </Notice>
           <ShowPasswordWords
             words={passwordWords}
+            keyAddress={restored.address}
             onWritten={() => {
               setStep('confirm');
             }}

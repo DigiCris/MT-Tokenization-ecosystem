@@ -1,6 +1,7 @@
 // Inicio de Wallet: qué es la app y, según la sesión, el próximo paso (cuenta, crear la wallet, desbloquearla) o, con la
 // wallet ACTIVE, desbloqueada y verificada por la app, la Safe operativa (P18.T03). Con sesión de cuenta, los avisos
-// in-app (P15.T07) se ven también con la wallet bloqueada o todavía no operativa.
+// in-app (P15.T07) se ven también con la wallet bloqueada o todavía no operativa. Lo que dice de R es cierto con el
+// sobre recordado o sin él y con una wallet externa, sin jerga (cuarta revisión de P17.MAN, hallazgo 3).
 import { Link } from 'react-router';
 import { OperatingHome } from '../home/OperatingHome.tsx';
 import { NotificationsPanel } from '../notifications/NotificationsPanel.tsx';
@@ -77,8 +78,9 @@ export function HomePage() {
         <h1 id="home-title">Tu wallet en Base, con tu clave en tu dispositivo</h1>
         <p className="lead">
           MT Wallet es una Safe con tres firmantes: tu clave de usuario (U), que nunca se envía a la plataforma; tu
-          clave de recuperación (R), que vive en la app Recovery; y la clave de la plataforma (S), que sólo coopera
-          dentro de las reglas on-chain. Ninguna parte puede mover tus fondos sola.
+          clave de recuperación (R), que se crea y se usa en la app Recovery (o es una wallet externa tuya), separada de
+          esta; y la clave de la plataforma (S), que sólo coopera dentro de las reglas de tu Safe en Base. Ninguna parte
+          puede mover tus fondos sola.
         </p>
         <ul className="facts">
           <li>U se cifra en tu dispositivo con tu Password U y sólo se descifra para firmar.</li>

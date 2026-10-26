@@ -1,6 +1,7 @@
 // P17.T05 [F-KEY-01..06]: alta de U — clave y Password U nuevas, sobre de la wallet con su AAD que abre con esa
 // Password U, registro OPAQUE con AuthSecret_U (nunca la Password U) contra el servidor OPAQUE real y alta en la API con
-// la dirección, el KDF público y los backups; AuthSecret_U se borra. Sin backup independiente no se sigue.
+// la dirección, el KDF público y los backups; AuthSecret_U se borra. Sin backup independiente no se sigue. Cuarta
+// revisión de P17.MAN: el archivo, lo impreso, lo anotado y el papel de la Password U llevan la dirección de esa U.
 import { describe, expect, it, vi } from 'vitest';
 import wordlistText from '../vendor/mtw-wordlist-v1.txt?raw';
 import { keysForEnvelope, openEnvelope, parseEnvelope, serializeEnvelope } from '../crypto/envelope.ts';
@@ -13,17 +14,20 @@ import { generateSessionKey } from '../api/session-key.ts';
 import type { WalletApi } from '../api/wallet-api.ts';
 import { startLogin } from '../unlock/opaque.ts';
 import { opaqueTestServer } from '../unlock/opaque-server.test-helper.ts';
+import { envelopeFileName } from '../ui/download.ts';
 import {
   draftUserKey,
   hasIndependentBackup,
   LOST_U_AND_R_WARNING,
   ONBOARDING_KEY_VERSION,
+  passwordUPaperText,
   registerNewUserKey,
   sealUserKey,
-  U_WORDS_HANDWRITTEN,
-  U_WORDS_TITLE,
+  shortAddress,
   uQrTitle,
   userKeyMemoryKiB,
+  uWordsHandwritten,
+  uWordsTitle,
 } from './user-key.ts';
 
 const wordlist = parseWordlist(wordlistText);
@@ -128,12 +132,24 @@ describe('alta de U', () => {
     expect(hasIndependentBackup({ drive: false, file: false, qr: false, words: true })).toBe(true);
   });
 
-  it('lo impreso (y lo anotado a mano) dice de qué app y de qué clave es, qué parte y con qué se abre', () => {
-    expect(U_WORDS_TITLE).toBe('MT Wallet: 17 palabras de tu clave U');
-    expect(uQrTitle(1, 1)).toBe('MT Wallet: QR del sobre de tu clave U, parte 1 de 1 (se abre con la Password U)');
-    expect(uQrTitle(2, 3)).toBe('MT Wallet: QR del sobre de tu clave U, parte 2 de 3 (se abre con la Password U)');
-    expect(U_WORDS_HANDWRITTEN).toBe(
-      'Si las anotás a mano, escribí arriba de qué clave son: «MT Wallet: 17 palabras de tu clave U».',
+  it('lo impreso (y lo anotado a mano) dice de qué app, de qué U (su dirección), qué parte y con qué se abre', () => {
+    const U = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+    expect(shortAddress(U)).toBe('0x 8335 … 2913');
+    expect(shortAddress(U.toLowerCase() as `0x${string}`)).toBe('0x 8335 … 2913');
+    expect(uWordsTitle(U)).toBe('MT Wallet: 17 palabras de tu clave U 0x 8335 … 2913');
+    expect(uQrTitle(U, 1, 1)).toBe(
+      'MT Wallet: QR del sobre de tu clave U 0x 8335 … 2913, parte 1 de 1 (se abre con la Password U)',
+    );
+    expect(uQrTitle(U, 2, 3)).toBe(
+      'MT Wallet: QR del sobre de tu clave U 0x 8335 … 2913, parte 2 de 3 (se abre con la Password U)',
+    );
+    expect(uWordsHandwritten(U)).toBe(
+      'Si las anotás a mano, escribí arriba de qué clave son, con su dirección: «MT Wallet: 17 palabras de tu clave U 0x 8335 … 2913».',
+    );
+    expect(passwordUPaperText(U)).toBe('Arriba del papel escribí «MT Wallet: Password U de 0x 8335 … 2913».');
+    // El archivo: el de U′ no baja con el mismo nombre que el de la U anterior (hallazgo 1 de la cuarta revisión).
+    expect(envelopeFileName({ walletId: WALLET, keyAddress: U.toLowerCase() as `0x${string}` })).toBe(
+      `mtw-U-${WALLET}-8335-2913.enc.json`,
     );
   });
 });

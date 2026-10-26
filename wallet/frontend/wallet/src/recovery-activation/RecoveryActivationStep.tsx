@@ -21,6 +21,10 @@
 // antes de cada pedido y, si venció, se pide la verificación ahí mismo (`renewSession`) en lugar de fallar con un 403
 // sin salida; el «0x» va fijo antes del Grupo 1 (y uno tipeado ahí se ignora); y con casi ningún grupo coincidente se
 // dicen los intentos que quedan y la acción principal pasa a ser generar un pedido nuevo.
+//
+// Cuarta revisión: el propósito (onboarding o reemplazo de R) lo da la pantalla que monta el paso y decide los textos;
+// un pedido que la plataforma crea con otro propósito no se usa (error local, sin su QR ni su enlace). Pegar «0x» y un
+// grupo en el Grupo 1 deja el grupo entero, como en la app Recovery.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { isAddress, type Address } from 'viem';
 import { ApiError, NetworkError } from '../api/problem.ts';
@@ -49,7 +53,9 @@ import {
   newRequestText,
   newReturnSecret,
   POLL_ERROR_TEXT,
+  purposeMismatchText,
   RecoveryAbortError,
+  RecoveryActivationError,
   recoveryEnrollLink,
   RecoveryKeyMismatchError,
   requestExpiryText,
@@ -89,6 +95,7 @@ export function RecoveryActivationStep({
   walletId,
   platform,
   sessionExpiresAt,
+  purpose,
   onConfirmed,
   intro,
   warning,
@@ -98,6 +105,12 @@ export function RecoveryActivationStep({
 }: {
   walletId: string;
   platform: PlatformAuth;
+  /**
+   * El propósito de la pantalla que monta el paso (el onboarding o el reemplazo de R): decide los textos, y un pedido
+   * que la plataforma cree con otro no se usa (un backend comprometido no hace decir «destruí los backups de la
+   * anterior» en un reemplazo).
+   */
+  purpose: EnrollmentPurpose;
   /** Cuándo vence la PlatformSession (para reintentar los avisos de aborto mientras siga vigente). */
   sessionExpiresAt?: string;
   onConfirmed: (confirmed: ConfirmedRecovery) => void;
@@ -200,13 +213,15 @@ export function RecoveryActivationStep({
         setTyped(emptyGroups());
         // Con la sesión vigente: la del padre o la que se acaba de renovar acá (el padre la recibe en el mismo render).
         const created = await api.createRecoveryEnrollment(renewedAuth ?? sessionRef.current.platform, walletId);
+        // Un pedido de otro propósito que el de esta pantalla no se usa: ni su QR ni su enlace (texto local).
+        if (created.purpose !== purpose) throw new RecoveryActivationError(purposeMismatchText(purpose));
         // Recién con el pedido nuevo puesto pasa a ser el vigente: nada tardío del anterior cae en éste.
         current.current = created.enrollmentId;
         setRequest({ created, secret: newReturnSecret() });
         setRequests((n) => n + 1);
         onRequestedRef.current?.();
       },
-      [walletId],
+      [walletId, purpose],
     ),
   );
   const run = create.run;
@@ -461,7 +476,7 @@ export function RecoveryActivationStep({
       )}
       {link && created && reported === null && ended === null && (
         <div className="stack">
-          {requests > 1 && <Notice tone="warning">{newRequestText(created.purpose)}</Notice>}
+          {requests > 1 && <Notice tone="warning">{newRequestText(purpose)}</Notice>}
           <p>
             Te recomendamos crear tu clave R en otro dispositivo, como tu celular: escaneá este QR con su cámara y se
             abre la app Recovery con este pedido. Si no tenés otro dispositivo, abrí el enlace en este.
@@ -484,7 +499,7 @@ export function RecoveryActivationStep({
       {ended !== null && (
         <div className="stack" data-request-ended="">
           <Notice tone="error">{ended}</Notice>
-          <p>{beforeNewRequestText(created?.purpose)}</p>
+          <p>{beforeNewRequestText(purpose)}</p>
           {newRequestButton}
         </div>
       )}
@@ -543,7 +558,11 @@ export function RecoveryActivationStep({
                   setTyped((current) => current.map((v, j) => (j === i ? next : v)));
                 }}
                 onPaste={(event) => {
-                  const next = distributePaste(typed, i, event.clipboardData.getData('text'));
+                  const input = event.currentTarget;
+                  const next = distributePaste(typed, i, event.clipboardData.getData('text'), {
+                    start: input.selectionStart ?? 0,
+                    end: input.selectionEnd ?? input.value.length,
+                  });
                   if (next === null) return;
                   event.preventDefault();
                   setTyped(next);
@@ -554,7 +573,7 @@ export function RecoveryActivationStep({
               <div className="stack" data-mismatch-groups={mismatch.groups.map((g) => g + 1).join(',')}>
                 <Notice tone="error">{MANUAL_MISMATCH_TEXT}</Notice>
                 <p>{manualRetryText(mismatch.groups, mismatch.attemptsLeft)}</p>
-                <p>{beforeNewRequestText(created.purpose)}</p>
+                <p>{beforeNewRequestText(purpose)}</p>
                 <button
                   type="button"
                   className={startOver ? 'button' : 'button button--secondary'}

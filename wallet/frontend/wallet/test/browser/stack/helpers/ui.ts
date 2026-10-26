@@ -1,8 +1,9 @@
 // Acciones de UI comunes de los specs contra el stack (por rol y etiqueta, como las usa una persona).
 import { expect, type Locator, type Page } from '@playwright/test';
 import type { Address } from 'viem';
-import { serializeEnvelope, type KeyEnvelope } from '../../../../src/crypto/envelope.ts';
+import { parseEnvelope, serializeEnvelope, type KeyEnvelope } from '../../../../src/crypto/envelope.ts';
 import { addressGroups } from '../../../../src/recovery-activation/activation.ts';
+import { envelopeFileName } from '../../../../src/ui/download.ts';
 import { downloadedText } from './download.ts';
 import { nextCode } from './mailpit.ts';
 
@@ -74,13 +75,17 @@ export async function completeStepUp(page: Page, email: string, second?: () => P
   await page.getByRole('button', { name: 'Confirmar', exact: true }).click();
 }
 
-/** Descarga el archivo cifrado del paso de backups, lo confirma y devuelve su contenido. */
+/**
+ * Descarga el archivo cifrado del paso de backups, lo confirma y devuelve su contenido. El nombre lleva el principio y
+ * el final de la dirección de la clave (cuarta revisión de P17.MAN).
+ */
 export async function backupToFile(page: Page): Promise<string> {
   const downloading = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Descargar el archivo cifrado' }).click();
   const download = await downloading;
-  expect(download.suggestedFilename()).toMatch(/^mtw-U-[0-9a-f-]{36}\.enc\.json$/);
+  expect(download.suggestedFilename()).toMatch(/^mtw-U-[0-9a-f-]{36}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}\.enc\.json$/);
   const content = await downloadedText(download);
+  expect(download.suggestedFilename()).toBe(envelopeFileName(parseEnvelope(JSON.parse(content))));
   await page.getByLabel(/Guardé el archivo fuera de este dispositivo/).check();
   return content;
 }

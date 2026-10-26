@@ -2,8 +2,10 @@
 // sobre cifrado con AAD de la wallet (Argon2id de 64 MiB o, como opción avanzada para computadoras, 128 MiB) y, una vez
 // hechos los backups, registro OPAQUE (la entrada es AuthSecret_U, nunca la Password U) y alta de U en el backend
 // (PENDING hasta que la Safe quede ACTIVE). U y la Password U nunca salen del navegador; el backend recibe la dirección,
-// los parámetros públicos del KDF, qué backups se confirmaron y el registro.
-import type { Address } from 'viem';
+// los parámetros públicos del KDF, qué backups se confirmaron y el registro. Lo que se imprime o se anota de cada backup
+// lleva la dirección abreviada de esa U (cuarta revisión de P17.MAN, hallazgo 1): «Perdí mi Password U» crea U′ con
+// backups propios, que tienen que distinguirse de los de la U anterior.
+import { getAddress, type Address } from 'viem';
 import { randomBytes, toBase64Url, zeroize } from '../crypto/bytes.ts';
 import { sealKey, type KeyEnvelope } from '../crypto/envelope.ts';
 import { defaultKdfParams, deriveKeys, type Argon2, type KdfParams, type KeyRole } from '../crypto/kdf.ts';
@@ -18,24 +20,39 @@ import { ARGON2_BASELINE, ARGON2_DESKTOP_MEMORY_KIB } from '../workers/argon2-pr
 /** Versión de U en el onboarding (la primera de la wallet). */
 export const ONBOARDING_KEY_VERSION = 1;
 
+/** El principio y el final de una dirección (EIP-55), como se anotan en los backups de una clave: «0x F0c0 … 98bf». */
+export function shortAddress(address: Address): string {
+  const hex = getAddress(address).slice(2);
+  return `0x ${hex.slice(0, 4)} … ${hex.slice(-4)}`;
+}
+
+/**
+ * Título de lo que se imprime o se anota de cada backup de U (hallazgo 7 de la tercera revisión de P17.MAN): una hoja
+ * suelta tiene que decir de qué app y de qué clave es, con qué se abre y, con la dirección abreviada, de qué U.
+ */
+export function uWordsTitle(address: Address): string {
+  return `MT Wallet: 17 palabras de tu clave U ${shortAddress(address)}`;
+}
+
+export function uQrTitle(address: Address, part: number, parts: number): string {
+  return `MT Wallet: QR del sobre de tu clave U ${shortAddress(address)}, parte ${String(part)} de ${String(parts)} (se abre con la Password U)`;
+}
+
+/** Al anotar las 17 palabras a mano, el mismo título que sale impreso, con la dirección. */
+export function uWordsHandwritten(address: Address): string {
+  return `Si las anotás a mano, escribí arriba de qué clave son, con su dirección: «${uWordsTitle(address)}».`;
+}
+
+/** El rótulo del papel de la Password U: la dirección de U ya se conoce cuando se muestra (alta, U′, cambio, restauración). */
+export function passwordUPaperText(address: Address): string {
+  return `Arriba del papel escribí «MT Wallet: Password U de ${shortAddress(address)}».`;
+}
+
 /**
  * Qué pasa si se pierden U y R a la vez (RR-14): la Safe es 2-de-3 y S sola nunca alcanza el umbral. Se muestra donde se
  * piden los backups y al activar Recovery. El U+2060 (word joiner) pega cada raya a la palabra de al lado, para que no
  * quede sola al final de un renglón (hallazgo N9).
  */
-/**
- * Título de lo que se imprime o se anota de cada backup de U (hallazgo 7 de la tercera revisión de P17.MAN): una hoja
- * suelta tiene que decir de qué app y de qué clave es, y con qué se abre.
- */
-export const U_WORDS_TITLE = 'MT Wallet: 17 palabras de tu clave U';
-
-export function uQrTitle(part: number, parts: number): string {
-  return `MT Wallet: QR del sobre de tu clave U, parte ${String(part)} de ${String(parts)} (se abre con la Password U)`;
-}
-
-/** Al anotar las 17 palabras a mano, el mismo título que sale impreso. */
-export const U_WORDS_HANDWRITTEN = `Si las anotás a mano, escribí arriba de qué clave son: «${U_WORDS_TITLE}».`;
-
 export const LOST_U_AND_R_WARNING =
   'Tu Safe necesita 2 de sus 3 firmas. Si perdés tu clave U (Password U y backups) y también tu clave R, nadie —\u2060tampoco MT Wallet\u2060— puede mover tus fondos: con la clave de la plataforma sola no alcanza. Por eso pedimos backups de las dos.';
 

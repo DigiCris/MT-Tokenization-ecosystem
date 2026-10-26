@@ -1,6 +1,6 @@
 // Marco común de las pantallas de Wallet: marca, entorno (fuera de producción), sesión de cuenta (seguridad, bloquear,
 // salir), aviso de pausa de la co-firma por integridad (P20.T03), aviso no bloqueante del chequeo periódico del backup
-// en Drive ([F-DRV-05]) y release del build.
+// en Drive ([F-DRV-05]), aviso un minuto antes del bloqueo por inactividad ([F-SES-04]) y release del build.
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useNavigate } from 'react-router';
 import { appConfig } from '../config/index.ts';
@@ -33,8 +33,12 @@ function useCooperationPaused(): boolean {
   return paused;
 }
 
+/** Un minuto antes del bloqueo por inactividad: lo que se pierde si llega, y cómo seguir. */
+export const INACTIVITY_WARNING_TEXT =
+  'La wallet se va a bloquear en menos de un minuto por inactividad. Si estás cambiando la Password U y todavía no la registraste, el cambio se pierde y vas a tener que hacerlo de nuevo, con backups nuevos.';
+
 export function AppShell() {
-  const { status, user, unlocked } = useSession();
+  const { status, user, unlocked, inactivityWarning } = useSession();
   const store = useSessionStore();
   const navigate = useNavigate();
   const health = status === 'account' ? backupHealth() : null;
@@ -92,6 +96,22 @@ export function AppShell() {
         </div>
       )}
       <main className="shell__main">
+        {inactivityWarning && (
+          <div className="notice notice--warning stack" role="alert" data-inactivity-warning="">
+            <p>{INACTIVITY_WARNING_TEXT}</p>
+            <div className="actions">
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  store.touch();
+                }}
+              >
+                Seguir usando la Wallet
+              </button>
+            </div>
+          </div>
+        )}
         <Outlet />
       </main>
       <footer className="shell__footer">

@@ -271,6 +271,7 @@ export function OnboardingPage() {
       {step === 'key' && draft && (
         <ShowPasswordWords
           words={draft.passwordWords}
+          keyAddress={draft.address}
           onWritten={() => {
             setStep('confirm');
           }}
@@ -411,7 +412,8 @@ export function OnboardingPage() {
             walletId={wallet.id}
             platform={stepUp.platform}
             sessionExpiresAt={stepUp.session.expiresAt}
-            intro="Tu clave de recuperación (R) se crea en la app Recovery, separada de esta, y queda en los backups que hagas ahí (y, si lo elegís, cifrada en ese dispositivo). Con U y R podés recuperar tu wallet sin la plataforma."
+            purpose="ONBOARDING"
+            intro="Tu clave de recuperación (R) se crea en la app Recovery (o es una wallet externa tuya), separada de esta. Si la creás en Recovery, queda en los backups que hagas ahí (y, si lo elegís, cifrada en ese dispositivo). Con U y R podés recuperar tu wallet sin la plataforma."
             warning={LOST_U_AND_R_WARNING}
             previousRequest={priorRequest}
             onRequested={() => {

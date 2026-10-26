@@ -7,7 +7,7 @@ import { generateSessionKey } from '../api/session-key.ts';
 import type { PlatformSessionView, User, WalletApi, WalletView } from '../api/wallet-api.ts';
 import type { UnlockedWallet } from '../unlock/unlock.ts';
 import { codeExpiryText, finishStepUp, isLive, startStepUp } from './step-up.ts';
-import { INACTIVITY_LOCK_MS, SessionStore } from './store.ts';
+import { INACTIVITY_LOCK_MS, INACTIVITY_WARNING_MS, SessionStore } from './store.ts';
 
 const user: User = {
   id: 'u1',
@@ -81,6 +81,23 @@ describe('SessionStore', () => {
     await vi.advanceTimersByTimeAsync(61_000);
     expect(store.state).toMatchObject({ unlocked: null, lastLock: 'EXPIRED' });
     expect(revoke).toHaveBeenCalledWith('ps1');
+  });
+
+  it('inactividad: un minuto antes del bloqueo avisa; la interacción saca el aviso y el bloqueo también', async () => {
+    const store = new SessionStore(api());
+    store.unlocked(await unlockedFor(60));
+    const leave = store.enterSensitive();
+    vi.advanceTimersByTime(INACTIVITY_LOCK_MS - INACTIVITY_WARNING_MS - 2_000);
+    expect(store.state.inactivityWarning).toBe(false);
+    vi.advanceTimersByTime(3_000);
+    expect(store.state.inactivityWarning).toBe(true);
+    store.touch();
+    expect(store.state.inactivityWarning).toBe(false);
+    vi.advanceTimersByTime(INACTIVITY_LOCK_MS - 5_000);
+    expect(store.state.inactivityWarning).toBe(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(store.state).toMatchObject({ unlocked: null, lastLock: 'INACTIVITY', inactivityWarning: false });
+    leave();
   });
 
   it('inactividad: 5 minutos sólo cuentan con una pantalla sensible montada; la interacción reinicia la cuenta', async () => {

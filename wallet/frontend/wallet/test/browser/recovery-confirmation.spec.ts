@@ -18,6 +18,8 @@
 // los intentos que quedan y generar otro pedido es la acción principal; retomar la creación después de un pedido (en
 // la misma pestaña o con una R ya enviada según la plataforma) avisa que Recovery va a crear otra R, y el primer pedido
 // lo repite; y si la verificación venció, «Generar un pedido nuevo» pide el step-up ahí mismo en lugar de fallar.
+// Cuarta revisión: un pedido que la plataforma crea con otro propósito que el de la pantalla no se usa (ni su QR ni su
+// enlace, con un texto local), y «0x» más el primer grupo pegado en el Grupo 1 deja el grupo entero.
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import type { Address } from 'viem';
 import { serializeEnvelope } from '../../src/crypto/envelope.ts';
@@ -30,6 +32,7 @@ import {
   MANUAL_MISMATCH_TEXT,
   NEW_REQUEST_TEXT,
   POLL_ERROR_TEXT,
+  purposeMismatchText,
   RecoveryKeyMismatchError,
   RESUME_NEW_REQUEST_TEXT,
   RETURN_LINK_ELSEWHERE_TEXT,
@@ -885,4 +888,56 @@ test('si la verificación venció, «Generar un pedido nuevo» pide el step-up a
   expect((await shownRequest(page)).enrollmentId).not.toBe(first.enrollmentId);
   await expect(page.getByText(/La sesión de la wallet venció/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Reintentar' })).toHaveCount(0);
+});
+
+test('un pedido que la plataforma crea con otro propósito no se usa; «0x» y el Grupo 1 pegados dejan el grupo entero', async ({
+  page,
+  context,
+  baseURL,
+}) => {
+  test.setTimeout(180_000);
+  const { userKey, envelopeJson } = await sealedUserKey();
+  const s = await scenario(context, baseURL, userKey);
+  // La plataforma marca como reemplazo de R el pedido del onboarding (un backend comprometido): no se usa.
+  s.create = {
+    status: 201,
+    body: {
+      enrollmentId: crypto.randomUUID(),
+      nonce: `0x${'ab'.repeat(32)}`,
+      expiresAt: REQUEST_EXPIRES_AT,
+      status: 'REQUESTED',
+      purpose: 'REPLACEMENT',
+    },
+  };
+  await page.goto('/onboarding');
+  await resume(page, envelopeJson);
+  await expect(step(page).getByText(purposeMismatchText('ONBOARDING'))).toBeVisible();
+  await expect(page.locator('[data-recovery-link]')).toHaveCount(0);
+  await expect(page.getByRole('img', { name: 'QR para abrir la app Recovery con este pedido' })).toHaveCount(0);
+
+  // Con un pedido del propósito de la pantalla, el paso sigue como siempre.
+  s.create = null;
+  await step(page).getByRole('button', { name: 'Reintentar' }).click();
+  const request = await shownRequest(page);
+  const r = release(s, request.enrollmentId);
+  await expect(confirmButton(page)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(NEW_REQUEST_TEXT)).toHaveCount(0);
+
+  // «0x» y el primer grupo, como se copian de la pantalla de Recovery, pegados en el Grupo 1: el grupo queda entero
+  // (el campo acepta 4 caracteres; antes quedaba cortado).
+  const groups = addressGroups(r);
+  const firstGroup = page.getByLabel('Grupo 1 de 10', { exact: true });
+  await firstGroup.focus();
+  await firstGroup.evaluate(
+    (input, text) => {
+      const data = new DataTransfer();
+      data.setData('text', text);
+      input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    },
+    `0x${groups[0] ?? ''}`,
+  );
+  await expect(firstGroup).toHaveValue(groups[0] ?? '');
+  await typeGroups(page, groups);
+  const confirmed = page.getByRole('status').filter({ hasText: 'Dirección de tu clave R (confirmada):' });
+  await expect(confirmed.locator(`[data-address="${r}"]`)).toBeVisible();
 });

@@ -11,6 +11,10 @@
 // auditado y el usuario reciba la alerta (abort-reports.ts). Revisión de seguridad de ADR-033 (MEDIO 2): en este paso
 // no se muestra ningún texto de la plataforma; con el `k` del pedido, cualquier respuesta que no confirme exactamente
 // la R del enlace aborta el pedido (sólo un error de red deja reintentar).
+//
+// Cuarta revisión de P17.MAN: los avisos de «otra R» dicen qué destruir (lo que no tiene la dirección de la R nueva,
+// también su Password R, hallazgo 1); el propósito del pedido lo da la pantalla que monta el paso, y un pedido de otro
+// propósito no se usa (hallazgo 5); y pegar «0x» más un grupo en el Grupo 1 deja el grupo entero (hallazgo 11).
 import { getAddress, isAddress, isAddressEqual, type Address } from 'viem';
 import type { CreatedEnrollment, RecoveryEnrollment } from '../api/wallet-api.ts';
 import type { EnrollmentPurpose } from './abort-reports.ts';
@@ -200,16 +204,25 @@ function comparableGroup(index: number, value: string | undefined): string {
 }
 
 /**
- * Lo que se pegó en el grupo `index`, repartido en los grupos (los campos aceptan 4 caracteres): la dirección completa
- * (con o sin 0x y espacios, como la copia o la muestra Recovery) llena los 10 desde el primero; un pedazo más largo que
- * un grupo sigue desde ese campo. null si entra en el campo (se pega como siempre).
+ * Lo que queda en los grupos al pegar `pasted` en el grupo `index`, con su selección, como en la app Recovery
+ * (hallazgo 11 de la cuarta revisión): la dirección completa (con o sin 0x y espacios, como la copia o la muestra
+ * Recovery) llena los 10 desde el primero; otro texto, sin espacios ni un «0x» delante, se inserta donde está el cursor
+ * y lo que no entra en el grupo sigue en los siguientes. null si el navegador puede pegarlo tal cual (entra en el campo y
+ * no trae espacios ni «0x»): los campos aceptan 4 caracteres, así que «0xF0c0» pegado tal cual quedaría «0xF0».
  */
-export function distributePaste(current: readonly string[], index: number, pasted: string): string[] | null {
+export function distributePaste(
+  current: readonly string[],
+  index: number,
+  pasted: string,
+  selection: { start: number; end: number } = { start: 0, end: (current[index] ?? '').length },
+): string[] | null {
   const compact = pasted.replace(/\s/g, '').replace(/^0x/i, '');
-  if (compact.length <= 4) return null;
-  const chunks = compact.match(/.{1,4}/g) ?? [];
-  const start = compact.length === ADDRESS_GROUPS * 4 ? 0 : index;
-  return current.map((value, i) => (i >= start && i - start < chunks.length ? (chunks[i - start] ?? '') : value));
+  const field = current[index] ?? '';
+  const merged = field.slice(0, selection.start) + compact + field.slice(selection.end);
+  if (compact === pasted && merged.length <= 4) return null;
+  if (compact.length === ADDRESS_GROUPS * 4) return compact.match(/.{4}/g) ?? [...current];
+  const chunks = merged.match(/.{1,4}/g) ?? [''];
+  return current.map((value, i) => (i >= index && i - index < chunks.length ? (chunks[i - index] ?? '') : value));
 }
 
 /**
@@ -288,23 +301,27 @@ export const MANUAL_ABORT_TEXT = `La dirección no coincidió con la que recibi�
 export const RETURN_LINK_ELSEWHERE_TEXT =
   'Este enlace de regreso no se puede comprobar en esta pestaña: sólo la pestaña donde generaste el pedido conoce su código secreto. Si esa pestaña sigue abierta, volvé a ella y abrí de nuevo el enlace (o escaneá otra vez el QR) de la app Recovery, o confirmá ahí la dirección a mano: tipeá los 10 grupos que muestra la app Recovery después del «0x». Si la cerraste, generá un pedido nuevo.';
 
+/** Qué destruir de la R anterior: sus backups y su Password R, los que no tienen la dirección de la R nueva. */
+const WHAT_TO_DESTROY =
+  '(archivo, QR y 17 palabras) y su Password R: son los que no tienen la dirección de la R nueva.';
+
 /** Un pedido nuevo obliga a crear otra R (Recovery siempre genera una R nueva): los backups de la anterior no sirven. */
-export const NEW_REQUEST_TEXT =
-  'Escaneá el QR nuevo: Recovery va a crear otra clave R; destruí los backups de la anterior.';
+export const NEW_REQUEST_TEXT = `Escaneá el QR nuevo: Recovery va a crear otra clave R. Destruí los backups de la anterior ${WHAT_TO_DESTROY}`;
 
 /** Antes de pedir otro: lo mismo, dicho como consecuencia de generar el pedido nuevo. */
-export const BEFORE_NEW_REQUEST_TEXT =
-  'Si generás un pedido nuevo, vas a escanear un QR nuevo y Recovery va a crear otra clave R: destruí los backups de la anterior.';
+export const BEFORE_NEW_REQUEST_TEXT = `Si generás un pedido nuevo, vas a escanear un QR nuevo y Recovery va a crear otra clave R. Destruí los backups de la anterior ${WHAT_TO_DESTROY}`;
+
+/** En un reemplazo, los backups de la R actual no se tocan. */
+const KEEP_CURRENT_R =
+  'Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.';
 
 /**
  * En un reemplazo de R, la «anterior» es la R nueva del pedido anterior, no la actual: la R actual sigue siendo la de
  * recuperación (y puede cancelar el reemplazo) hasta que se ejecute, así que sus backups no se destruyen.
  */
-export const REPLACEMENT_NEW_REQUEST_TEXT =
-  'Escaneá el QR nuevo: Recovery va a crear otra clave R nueva; destruí los backups de la que creaste para el pedido anterior. Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.';
+export const REPLACEMENT_NEW_REQUEST_TEXT = `Escaneá el QR nuevo: Recovery va a crear otra clave R nueva. Destruí los backups de la que creaste para el pedido anterior ${WHAT_TO_DESTROY} ${KEEP_CURRENT_R}`;
 
-export const REPLACEMENT_BEFORE_NEW_REQUEST_TEXT =
-  'Si generás un pedido nuevo, vas a escanear un QR nuevo y Recovery va a crear otra clave R nueva: destruí los backups de la que creaste para este pedido. Los de tu R actual, no: sigue siendo tu clave de recuperación (y puede cancelar el reemplazo) hasta que se ejecute.';
+export const REPLACEMENT_BEFORE_NEW_REQUEST_TEXT = `Si generás un pedido nuevo, vas a escanear un QR nuevo y Recovery va a crear otra clave R nueva. Destruí los backups de la que creaste para este pedido ${WHAT_TO_DESTROY} ${KEEP_CURRENT_R}`;
 
 /** Sin saber el propósito del pedido (no se pudo leer): lo del onboarding, con la salvedad del reemplazo. */
 export const ANY_BEFORE_NEW_REQUEST_TEXT = `${BEFORE_NEW_REQUEST_TEXT} Si estabas reemplazando tu clave R, los backups de la actual no los destruyas: sigue vigente hasta que el reemplazo se ejecute.`;
@@ -325,7 +342,16 @@ export function beforeNewRequestText(purpose: EnrollmentPurpose | null | undefin
  * tercera): seguir genera otro, que obliga a crear otra R.
  */
 export const RESUME_NEW_REQUEST_TEXT =
-  'Al seguir vas a activar Recovery de nuevo: Recovery va a crear otra clave R y los backups de la anterior no van a servir.';
+  'Al seguir vas a activar Recovery de nuevo: Recovery va a crear otra clave R y los backups de la anterior no van a servir. Destruilos, también su Password R: son los que no tienen la dirección de la R nueva.';
+
+/**
+ * El pedido que generó la plataforma no es del propósito de la pantalla que lo pidió (endurecimiento del hallazgo 5 de
+ * la cuarta revisión): no se usa ni se muestra su QR, y los textos nunca salen del propósito que informa la plataforma.
+ */
+export function purposeMismatchText(purpose: EnrollmentPurpose): string {
+  const what = purpose === 'REPLACEMENT' ? 'de reemplazo de tu clave R' : 'de activación de Recovery';
+  return `La plataforma generó un pedido que no es ${what}: no se usa y no se muestra su QR. Reintentá en un momento; si vuelve a pasar, no sigas y avisá a soporte.`;
+}
 
 /** La verificación del onboarding venció antes de generar un pedido (hallazgo 4 de la tercera revisión). */
 export const SESSION_EXPIRED_TEXT = 'Tu verificación venció: confirmá que sos vos de nuevo para generar el pedido.';

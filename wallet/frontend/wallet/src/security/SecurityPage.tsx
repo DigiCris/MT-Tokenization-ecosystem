@@ -20,7 +20,7 @@ export function SecurityPage() {
   const { unlocked } = useSession();
   const location = useLocation();
   const [health, setHealth] = useState(() => backupHealth());
-  const [qrFrames, setQrFrames] = useState<string[] | null>(null);
+  const [qr, setQr] = useState<{ frames: string[]; keyAddress: KeyEnvelope['keyAddress'] } | null>(null);
 
   const knownEnvelope = useCallback(async (): Promise<KeyEnvelope | null> => {
     return unlocked?.envelope ?? (await rememberedEnvelope());
@@ -45,14 +45,14 @@ export function SecurityPage() {
     useCallback(async () => {
       const envelope = await knownEnvelope();
       if (envelope === null) throw new Error('Desbloqueá la wallet para exportar el sobre cifrado');
-      downloadText(envelopeFileName(envelope.walletId), serializeEnvelope(envelope));
+      downloadText(envelopeFileName(envelope), serializeEnvelope(envelope));
     }, [knownEnvelope]),
   );
   const exportQr = useAsyncAction(
     useCallback(async () => {
       const envelope = await knownEnvelope();
       if (envelope === null) throw new Error('Desbloqueá la wallet para exportar el sobre cifrado');
-      setQrFrames(await encodeFrames(JSON.stringify(envelope)));
+      setQr({ frames: await encodeFrames(JSON.stringify(envelope)), keyAddress: envelope.keyAddress });
     }, [knownEnvelope]),
   );
 
@@ -121,7 +121,7 @@ export function SecurityPage() {
           >
             Descargar el archivo cifrado
           </button>
-          {qrFrames === null && (
+          {qr === null && (
             <button
               type="button"
               className="button button--ghost"
@@ -135,7 +135,7 @@ export function SecurityPage() {
         </div>
         {exportFile.error && <Notice tone="error">{exportFile.error}</Notice>}
         {exportQr.error && <Notice tone="error">{exportQr.error}</Notice>}
-        {qrFrames !== null && <EnvelopeQr frames={qrFrames} printId="security-qr-print" />}
+        {qr !== null && <EnvelopeQr frames={qr.frames} keyAddress={qr.keyAddress} printId="security-qr-print" />}
       </article>
 
       <nav className="card stack" aria-label="Password U">

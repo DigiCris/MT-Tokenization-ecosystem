@@ -1,6 +1,7 @@
 // `/security/recovery` (P18.T09.a): estado de la clave de recuperación (R leída on-chain del Guard) y su reemplazo si
 // se perdió o se comprometió: enrollment de R′ hacia la app Recovery (el mismo flujo de link/QR y confirmación de
-// P18.T01), U firma la propuesta armada por la app y, a las 48 h, la ejecución (desde Rotaciones).
+// P18.T01), U firma la propuesta armada por la app y, a las 48 h, la ejecución (desde Rotaciones). El paso de
+// activación sabe que es un reemplazo por esta pantalla, no por lo que diga el pedido (cuarta revisión de P17.MAN).
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router';
 import { isAddressEqual } from 'viem';
@@ -78,6 +79,7 @@ function ReplaceRecovery({ ctx }: { ctx: OperatingWallet }) {
           walletId={wallet.id}
           platform={unlocked.platform}
           sessionExpiresAt={unlocked.session.expiresAt}
+          purpose="REPLACEMENT"
           intro="Creá o conectá tu nueva clave R en la app Recovery. El reemplazo se puede ejecutar 48 h después de proponerlo, y hasta entonces lo podés cancelar con U o con tu R actual."
           onConfirmed={setConfirmed}
         />

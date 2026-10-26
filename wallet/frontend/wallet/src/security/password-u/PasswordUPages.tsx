@@ -3,6 +3,8 @@
 // perdió la Password U: con las 17 palabras se restaura la misma U en /restore ([F-KEY-10](c), sin R ni timelock); si
 // no, step-up U_REPLACEMENT → U' con su Password U' y backups → KeyAcceptance → handoff a Recovery (necesita R), con la
 // dirección de U' que generó esta app a la vista: en Recovery se tipean sus 10 grupos para compararlos con la del backend.
+// Cuarta revisión de P17.MAN: lo que se necesita de R incluye el sobre que recuerda Recovery (hallazgo 7) y el handoff
+// se abre donde se va a usar R, también con sólo uno de sus backups (hallazgo 6); los backups de U′ llevan su dirección.
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { Address } from 'viem';
@@ -54,6 +56,13 @@ function DriveFirst({ returnTo }: { returnTo: string }) {
 
 type ChangeStep = 'start' | 'show' | 'confirm' | 'backups' | 'done';
 
+/**
+ * La wallet se bloqueó (inactividad, vencimiento o «Bloquear») antes de registrar la Password U nueva: la plataforma
+ * sigue con la anterior. Los backups de la nueva abren la clave, pero con ellos no se inicia la sesión de operaciones.
+ */
+export const CHANGE_INTERRUPTED_TEXT =
+  'La wallet se bloqueó antes de registrar la Password U nueva, así que sigue valiendo la anterior: desbloqueá con ella y empezá el cambio de nuevo (vas a tener otra Password U nueva). Los backups que hiciste con la que no se registró, incluida la copia de Drive si la subiste, reemplazalos con los del cambio nuevo.';
+
 export function ChangePasswordUPage() {
   useSensitiveScreen();
   const store = useSessionStore();
@@ -86,6 +95,8 @@ export function ChangePasswordUPage() {
     return (
       <section className="stack narrow">
         <h1>Cambiar la Password U</h1>
+        {/* Se bloqueó a mitad del cambio: la Password U nueva nunca se registró. */}
+        {step !== 'start' && <Notice tone="warning">{CHANGE_INTERRUPTED_TEXT}</Notice>}
         <DriveFirst returnTo="/security/password-u" />
         <Notice>
           Para cambiarla, primero{' '}
@@ -122,9 +133,10 @@ export function ChangePasswordUPage() {
           </button>
         </article>
       )}
-      {step === 'show' && words && (
+      {step === 'show' && words && unlocked && (
         <ShowPasswordWords
           words={words}
+          keyAddress={unlocked.envelope.keyAddress}
           onWritten={() => {
             setStep('confirm');
           }}
@@ -228,8 +240,9 @@ export function LostPasswordUPage() {
           </p>
           <Notice tone="warning">
             Hacé esto sólo si de verdad perdiste la Password U: si la recordás, cambiala desde Seguridad. Y necesitás tu
-            clave R (uno de sus backups y, para el archivo o el QR, la Password R): si también la perdiste, nadie puede
-            reemplazar U, porque tu Safe necesita 2 de sus 3 firmas y con la clave de la plataforma sola no alcanza.
+            clave R (el sobre que recuerda Recovery en tu dispositivo o uno de sus backups, y para abrir el sobre, la
+            Password R): si también la perdiste, nadie puede reemplazar U, porque tu Safe necesita 2 de sus 3 firmas y
+            con la clave de la plataforma sola no alcanza.
           </Notice>
           <DriveFirst returnTo="/security/lost-password-u" />
           <button
@@ -260,6 +273,7 @@ export function LostPasswordUPage() {
       {step === 'show' && draft && (
         <ShowPasswordWords
           words={draft.passwordWords}
+          keyAddress={draft.address}
           onWritten={() => {
             setStep('confirm');
           }}
@@ -299,7 +313,10 @@ export function LostPasswordUPage() {
             </p>
             <Notice tone="warning">{NEW_USER_KEY_COMPARE_TEXT}</Notice>
           </section>
-          <p>Abrí este enlace (o escaneá el QR) en el dispositivo donde tenés tu clave de recuperación.</p>
+          <p>
+            Abrí este enlace (o escaneá el QR) en el dispositivo donde vas a usar tu clave de recuperación (el que la
+            recuerda, o cualquiera con uno de sus backups).
+          </p>
           <QrCanvas text={handoff.url} label="QR para continuar en Recovery" />
           <p>
             <a href={handoff.url} rel="noopener" data-testid="recovery-handoff">

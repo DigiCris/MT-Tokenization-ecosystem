@@ -59,9 +59,12 @@ export async function prepareReplacement(
 export const OTHER_USER_KEY_TEXT =
   'La plataforma informa otra clave U nueva que la que generó esta app: no sigas en la app Recovery ni firmes nada con tu clave R.';
 
-/** Junto a la dirección de U' en la pantalla final: qué hacer con ella en Recovery. */
+/**
+ * Junto a la dirección de U' en la pantalla final: qué hacer con ella en Recovery, que no muestra la U' que recibió la
+ * plataforma hasta que coincide con la copiada (cuarta revisión de P17.MAN, hallazgo 10).
+ */
 export const NEW_USER_KEY_COMPARE_TEXT =
-  'En la app Recovery te vamos a pedir que copies estos 10 grupos (los que siguen al «0x»): comparalos con calma; si Recovery muestra otra dirección, no firmes.';
+  'En la app Recovery vas a tener que copiar estos 10 grupos (los que siguen al «0x»). Recovery no te muestra la dirección que recibió la plataforma: si te dice que no coincide y la copiaste bien, no firmes.';
 
 /**
  * Con los backups hechos: KeyAcceptance de U' y registro de U' → borrador de rotación para que R la proponga. La U'

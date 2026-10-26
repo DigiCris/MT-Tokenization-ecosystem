@@ -26,6 +26,7 @@ import {
   newRequestText,
   newReturnSecret,
   parseRecoveryReturn,
+  purposeMismatchText,
   RecoveryAbortError,
   recoveryEnrollLink,
   RecoveryActivationError,
@@ -175,14 +176,33 @@ describe('activar Recovery', () => {
     expect(newRequestText('ONBOARDING')).toBe(NEW_REQUEST_TEXT);
     expect(newRequestText('REPLACEMENT')).toContain('Los de tu R actual, no: sigue siendo tu clave de recuperación');
     expect(beforeNewRequestText('ONBOARDING')).toBe(BEFORE_NEW_REQUEST_TEXT);
-    expect(beforeNewRequestText('REPLACEMENT')).toContain('destruí los backups de la que creaste para este pedido');
+    expect(beforeNewRequestText('REPLACEMENT')).toContain('Destruí los backups de la que creaste para este pedido');
     expect(beforeNewRequestText('REPLACEMENT')).toContain('Los de tu R actual, no');
     expect(beforeNewRequestText(null)).toContain(
       'Si estabas reemplazando tu clave R, los backups de la actual no los destruyas',
     );
+    // Qué destruir de la R anterior: lo que no tiene la dirección de la R nueva, también su Password R (hallazgo 1 de
+    // la cuarta revisión de P17.MAN).
     expect(NEW_REQUEST_TEXT).toBe(
-      'Escaneá el QR nuevo: Recovery va a crear otra clave R; destruí los backups de la anterior.',
+      'Escaneá el QR nuevo: Recovery va a crear otra clave R. Destruí los backups de la anterior (archivo, QR y 17 palabras) y su Password R: son los que no tienen la dirección de la R nueva.',
     );
+    for (const text of [
+      BEFORE_NEW_REQUEST_TEXT,
+      newRequestText('REPLACEMENT'),
+      beforeNewRequestText('REPLACEMENT'),
+      beforeNewRequestText(undefined),
+    ]) {
+      expect(text).toContain(
+        '(archivo, QR y 17 palabras) y su Password R: son los que no tienen la dirección de la R nueva.',
+      );
+    }
+  });
+
+  it('un pedido de otro propósito que el de la pantalla no se usa: el texto lo dice sin nada de la plataforma', () => {
+    expect(purposeMismatchText('ONBOARDING')).toBe(
+      'La plataforma generó un pedido que no es de activación de Recovery: no se usa y no se muestra su QR. Reintentá en un momento; si vuelve a pasar, no sigas y avisá a soporte.',
+    );
+    expect(purposeMismatchText('REPLACEMENT')).toContain('no es de reemplazo de tu clave R');
   });
 });
 
@@ -297,7 +317,7 @@ describe('comparación manual de la dirección de R (sin enlace de regreso)', ()
     expect(MANUAL_ABORT_TEXT).toContain('en 3 intentos: se canceló este pedido');
   });
 
-  it('pegar la dirección completa la reparte en los 10 grupos; un pedazo sigue desde el campo; 4 o menos, como siempre', () => {
+  it('pegar la dirección completa la reparte en los 10 grupos; un pedazo sigue desde el cursor; 4 o menos, como siempre', () => {
     const empty = Array.from({ length: ADDRESS_GROUPS }, () => '');
     // Como la copia el botón de Recovery (sin espacios) o como se ve en pantalla (0x y grupos), en cualquier campo.
     expect(distributePaste(empty, 0, R)).toEqual(groups);
@@ -319,7 +339,16 @@ describe('comparación manual de la dirección de R (sin enlace de regreso)', ()
       '',
     ]);
     expect(distributePaste(empty, 0, 'abcd')).toBeNull();
-    expect(distributePaste(empty, 0, ' 0xab ')).toBeNull();
+    // Con espacios o un «0x» delante no se pega tal cual (el campo acepta 4): se limpia (hallazgo 11 de la cuarta
+    // revisión). «0x» y el primer grupo, como se copia de la pantalla de Recovery, deja el grupo entero.
+    expect(distributePaste(empty, 0, ' 0xab ')).toEqual(['ab', ...empty.slice(1)]);
+    expect(distributePaste(empty, 0, `0x${groups[0] ?? ''}`)).toEqual([groups[0], ...empty.slice(1)]);
+    expect(distributePaste(empty, 0, `0x ${groups[0] ?? ''}`)).toEqual([groups[0], ...empty.slice(1)]);
+    // Donde está el cursor: lo pegado se inserta y lo que no entra sigue en el grupo siguiente.
+    const typedSoFar = ['ab', ...empty.slice(1)];
+    expect(distributePaste(typedSoFar, 0, 'cd', { start: 2, end: 2 })).toBeNull();
+    expect(distributePaste(typedSoFar, 0, 'cdef', { start: 2, end: 2 })).toEqual(['abcd', 'ef', ...empty.slice(2)]);
+    expect(distributePaste(['abcd', ...empty.slice(1)], 0, '12', { start: 0, end: 4 })).toBeNull();
   });
 
   it('un «0x» tipeado al principio del Grupo 1 se ignora: no corre los grupos ni cuenta como error (hallazgo 5)', () => {
@@ -358,7 +387,7 @@ describe('comparación manual de la dirección de R (sin enlace de regreso)', ()
 
   it('textos del paso: retomar con un pedido anterior, verificación vencida y el enlace en una pestaña sin el pedido', () => {
     expect(RESUME_NEW_REQUEST_TEXT).toBe(
-      'Al seguir vas a activar Recovery de nuevo: Recovery va a crear otra clave R y los backups de la anterior no van a servir.',
+      'Al seguir vas a activar Recovery de nuevo: Recovery va a crear otra clave R y los backups de la anterior no van a servir. Destruilos, también su Password R: son los que no tienen la dirección de la R nueva.',
     );
     expect(SESSION_EXPIRED_TEXT).toBe('Tu verificación venció: confirmá que sos vos de nuevo para generar el pedido.');
     // La pestaña sin el pedido también explica cómo confirmar a mano en la del pedido.

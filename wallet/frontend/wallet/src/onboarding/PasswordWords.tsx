@@ -1,10 +1,22 @@
 // Password U ([F-KEY-02]): la app la genera (5 palabras), el usuario la anota y la confirma reingresando 2 palabras al
-// azar. Nunca se envía ni se guarda; se muestra una vez por flujo.
+// azar. Nunca se envía ni se guarda; se muestra una vez por flujo. El papel lleva un rótulo con la dirección abreviada
+// de la U que abre (cuarta revisión de P17.MAN, hallazgo 1): la de U′ no se confunde con la de la U anterior.
 import { useMemo, useState } from 'react';
+import type { Address } from 'viem';
 import { confirmationMatches, confirmationPositions } from '../crypto/password.ts';
 import { Field, Notice } from '../ui/forms.tsx';
+import { passwordUPaperText } from './user-key.ts';
 
-export function ShowPasswordWords({ words, onWritten }: { words: readonly string[]; onWritten: () => void }) {
+export function ShowPasswordWords({
+  words,
+  keyAddress,
+  onWritten,
+}: {
+  words: readonly string[];
+  /** La U que abre esta Password U (en el alta y en U′ ya existe al mostrarla; al cambiarla o restaurar, es la misma). */
+  keyAddress: Address;
+  onWritten: () => void;
+}) {
   const [checked, setChecked] = useState(false);
   return (
     <article className="card stack" aria-labelledby="password-words-title">
@@ -21,6 +33,7 @@ export function ShowPasswordWords({ words, onWritten }: { words: readonly string
           </li>
         ))}
       </ol>
+      <p>{passwordUPaperText(keyAddress)}</p>
       <label className="check">
         <input
           type="checkbox"

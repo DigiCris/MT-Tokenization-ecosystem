@@ -1,13 +1,15 @@
 // Estado de sesión de la pestaña ([F-SES], [F-KEY-05]): cuenta (cookies del API host; el CSRF vive en el cliente),
 // wallet viva y desbloqueo (sobre, K_U no exportable y PlatformSession con su session key, sólo en memoria). Se bloquea
-// solo al vencer la PlatformSession o tras 5 minutos sin interacción en pantallas sensibles ([F-SES-04]); al bloquear
-// se revoca la PlatformSession en el backend y se descartan todas las referencias.
+// solo al vencer la PlatformSession o tras 5 minutos sin interacción en pantallas sensibles ([F-SES-04]), con un aviso un
+// minuto antes; al bloquear se revoca la PlatformSession en el backend y se descartan todas las referencias.
 import type { User, WalletApi, WalletView } from '../api/wallet-api.ts';
 import { ApiError } from '../api/problem.ts';
 import { revokeDriveToken } from '../drive/token.ts';
 import type { UnlockedWallet } from '../unlock/unlock.ts';
 
 export const INACTIVITY_LOCK_MS = 5 * 60_000;
+/** El aviso sale un minuto antes del bloqueo por inactividad (cualquier interacción lo saca y reinicia la cuenta). */
+export const INACTIVITY_WARNING_MS = 60_000;
 
 export type LockReason = 'MANUAL' | 'INACTIVITY' | 'EXPIRED' | 'LOGOUT';
 
@@ -17,6 +19,8 @@ export interface SessionSnapshot {
   wallet: WalletView | null;
   unlocked: UnlockedWallet | null;
   lastLock: LockReason | null;
+  /** Falta menos de un minuto para el bloqueo por inactividad. */
+  inactivityWarning: boolean;
 }
 
 export interface Timers {
@@ -36,7 +40,14 @@ const systemTimers: Timers = {
 export class SessionStore {
   readonly #api: WalletApi;
   readonly #timers: Timers;
-  #state: SessionSnapshot = { status: 'loading', user: null, wallet: null, unlocked: null, lastLock: null };
+  #state: SessionSnapshot = {
+    status: 'loading',
+    user: null,
+    wallet: null,
+    unlocked: null,
+    lastLock: null,
+    inactivityWarning: false,
+  };
   readonly #listeners = new Set<() => void>();
   #expiry: unknown = null;
   #idle: unknown = null;
@@ -124,7 +135,7 @@ export class SessionStore {
     const current = this.#state.unlocked;
     this.#dropUnlocked();
     if (current === null) return;
-    this.#set({ unlocked: null, lastLock: reason });
+    this.#set({ unlocked: null, lastLock: reason, inactivityWarning: false });
     try {
       await this.#api.revokePlatformSession(current.session.id);
     } catch {
@@ -143,6 +154,7 @@ export class SessionStore {
 
   touch(): void {
     this.#lastActivity = this.#timers.now();
+    if (this.#state.inactivityWarning) this.#set({ inactivityWarning: false });
   }
 
   #armIdle(): void {
@@ -155,6 +167,8 @@ export class SessionStore {
         void this.lock('INACTIVITY');
         return;
       }
+      const warning = this.#sensitive > 0 && idleFor >= INACTIVITY_LOCK_MS - INACTIVITY_WARNING_MS;
+      if (warning !== this.#state.inactivityWarning) this.#set({ inactivityWarning: warning });
       this.#armIdle();
     }, 1_000);
   }
