@@ -121,7 +121,8 @@ test("pantalla final: la dirección de U' que generó esta app, para copiarla en
   const api = await lostPasswordApi(context, baseURL, (requested) => requested);
   const envelope = await registerNewUserKey(page);
   const newKey = envelope.keyAddress;
-  expect(api.registered).toEqual([newKey]);
+  // El registro (OPAQUE y el alta de U') termina después del clic: se espera a que llegue.
+  await expect.poll(() => api.registered).toEqual([newKey]);
 
   await expect(page.getByRole('heading', { name: 'Seguí en la app Recovery' })).toBeVisible();
   const shown = page.locator(`[data-new-user-key="${newKey}"]`);
