@@ -45,6 +45,34 @@ de P22 son tres corridas seguidas en verde en los tres navegadores.
 | `fixtures/drive.ts`                      | Drive real: token de la cuenta de prueba y consentimiento respondido por el test.                                                                    |
 | `fixtures/wallet/`, `fixtures/recovery/` | Helpers de pantalla y de API de cada app, adaptados de sus tests del stack.                                                                          |
 
+### Flujos de P22.T02 y specs de seguridad de P22.T03
+
+| Flujo                                                                                                  | Spec                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a–d. Crear cuenta, login, logout, olvido y reset (U intacta)                                           | `account.spec.ts`                                                                                                                                                   |
+| e. Creación de la Safe con la verificación propia del frontend hasta ACTIVE                            | `safe-creation.spec.ts`                                                                                                                                             |
+| f–g. Enrollment de R interna y externa, por las pantallas de las dos apps                              | `recovery-enrollment.spec.ts` (y el lado de Recovery en `recovery-enrollment-r.spec.ts`)                                                                            |
+| h–i. Copiar la dirección de la Safe y recibir USDC (saldo y actividad)                                 | `safe-address-and-receive.spec.ts`                                                                                                                                  |
+| j. Activos                                                                                             | `assets.spec.ts`                                                                                                                                                    |
+| k. Alta en la whitelist (código por email, activación de 24 h)                                         | `whitelist.spec.ts`                                                                                                                                                 |
+| l. Envío de USDC                                                                                       | `send.spec.ts`                                                                                                                                                      |
+| m. Destino fuera de la whitelist: la UI no lo ofrece, la API manipulada se rechaza y on-chain revierte | `reject-non-whitelisted.spec.ts`                                                                                                                                    |
+| n. Swaps USDC→USDT y USDT→USDC                                                                         | `swap.spec.ts`                                                                                                                                                      |
+| o. Cola y estados de operación hasta FINALIZED, y cancelación por NoOp                                 | `operation-status.spec.ts`, `noop-cancel-and-emergency.spec.ts`                                                                                                     |
+| p. Recuperar U con R y R con U                                                                         | `recover-u-with-r.spec.ts`, `recover-r-with-u.spec.ts`                                                                                                              |
+| q. Cancelar una rotación con U y con R                                                                 | `cancel-rotation-u.spec.ts`, `cancel-rotation-r.spec.ts`                                                                                                            |
+| r. Restaurar U en un dispositivo nuevo (archivo, QR y 17 palabras)                                     | `restore-u.spec.ts`                                                                                                                                                 |
+| s. Restaurar R en un dispositivo nuevo (archivo, QR y 17 palabras)                                     | `restore-r.spec.ts`                                                                                                                                                 |
+| Hosts de la allowlist, CSP y Trusted Types, sin service workers                                        | `security/third-parties-wallet.spec.ts`, `security/third-parties-recovery.spec.ts`                                                                                  |
+| Canarios de U, R, Passwords, 17 palabras y tokens en storages y requests                               | `security/canary-wallet.spec.ts`, `security/canary-recovery.spec.ts`                                                                                                |
+| Bloqueo por inactividad y sesión vencida                                                               | `security/session.spec.ts`                                                                                                                                          |
+| Manipulación de lo que informa el backend (Safe, envío, swap, gate)                                    | `security/safe-creation-tamper.spec.ts`, `security/send-tamper.spec.ts`, `security/swap-tamper.spec.ts`, `security/safe-gate.spec.ts` |
+| Entrega real de email (P22.T06)                                                                        | `real-email.spec.ts` (fase propia: stack con Mailgun, en Chromium)                                                                                                  |
+
+Además corren los demás flujos de cada app que ya tenían test contra el stack (desbloqueo, onboarding de U con Drive,
+activación de Recovery con el enlace de regreso, cambio y pérdida de la Password U), así el E2E cubre todo lo que una
+persona hace con las dos apps.
+
 Las fixtures importan módulos de las apps (cliente de API, cripto, ABIs) sólo para preparar escenarios desde Node, igual
 que los tests del stack de cada app. Los helpers que usan Playwright viven acá: una corrida no puede mezclar dos
 instancias de `@playwright/test`.

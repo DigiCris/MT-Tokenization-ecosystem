@@ -2,12 +2,14 @@
 // contra ese stack, cada una en su vista previa (los orígenes con los que se compilaron y que acepta el backend). Sin
 // reintentos (el criterio de P22 son 3 corridas seguidas en verde) y un worker: los specs comparten el stack, la cadena
 // y la cuenta de prueba de Drive. Con MTW_E2E_RECORD=1 graba video y trace de todo (P22.MAN); si no, sólo de lo que
-// falla.
+// falla. El email de entrega real (P22.T06) corre aparte, con MTW_E2E_EMAIL=mailgun y un stack que manda por Mailgun.
 import { defineConfig, devices, type Project } from '@playwright/test';
 
 const WALLET_PORT = Number(process.env.MTW_E2E_WALLET_PORT ?? 4274);
 const RECOVERY_PORT = Number(process.env.MTW_E2E_RECOVERY_PORT ?? 5274);
 const record = process.env.MTW_E2E_RECORD === '1';
+const realEmail = process.env.MTW_E2E_EMAIL === 'mailgun';
+const REAL_EMAIL_SPEC = '**/real-email.spec.ts';
 
 const DEVICES = { chromium: 'Desktop Chrome', firefox: 'Desktop Firefox', webkit: 'Desktop Safari' } as const;
 
@@ -39,7 +41,8 @@ function preview(app: 'wallet' | 'recovery', port: number) {
 
 export default defineConfig({
   testDir: 'specs',
-  testMatch: '**/*.spec.ts',
+  testMatch: realEmail ? REAL_EMAIL_SPEC : '**/*.spec.ts',
+  testIgnore: realEmail ? [] : [REAL_EMAIL_SPEC],
   forbidOnly: process.env.CI !== undefined,
   retries: 0,
   workers: 1,

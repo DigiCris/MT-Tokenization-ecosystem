@@ -6,10 +6,12 @@
 // snapshot de policy armado y firmado con la clave local de ese stack, shards `dev-1` y `platform` del signer, API
 // (listeners de Wallet y Recovery), worker y gas tank. Nunca imprime secretos ni el RPC del fork.
 //
-//   node scripts/stack/stack.mjs up --state <archivo> --wallet-origin <url> [--recovery-origin <url>]
+//   node scripts/stack/stack.mjs up --state <archivo> --wallet-origin <url> [--recovery-origin <url>] [--email mailgun]
 //   node scripts/stack/stack.mjs down --state <archivo>
 //   node scripts/stack/stack.mjs backend-stop|backend-start --state <archivo>
 //
+// Con `--email mailgun` el worker entrega los emails reales por Mailgun (dominio y API key del entorno o de wallet/.env,
+// remitente no-reply@<dominio>; el E2E de entrega real, P22.T06); si no, por SMTP a Mailpit.
 // `up` deja los procesos corriendo en segundo plano y escribe en --state lo que necesitan los tests: URLs, puertos, el
 // archivo de deployment y la clave pública de atestación del signer. Si algo falla, desarma lo que levantó.
 // `backend-stop` detiene la API (los dos listeners), el worker y el gas tank —la plataforma apagada, para probar el modo
@@ -80,6 +82,22 @@ function forkRpcUrl() {
   const dotenv = readEnvFile(join(WALLET_ROOT, '.env')) ?? {};
   if (dotenv.BASE_RPC_URL) return dotenv.BASE_RPC_URL;
   throw new Error('falta BASE_RPC_URL (CI: secret del environment; local: wallet/.env)');
+}
+
+/** Mailgun real para el worker (entrega real, P22.T06): del entorno (CI: secrets) o de wallet/.env, sin imprimirlos. */
+function mailgunSettings() {
+  const dotenv = readEnvFile(join(WALLET_ROOT, '.env')) ?? {};
+  const value = (name) => process.env[name] || dotenv[name] || '';
+  const domain = value('EMAIL_PROVIDER_DOMAIN');
+  const apiKey = value('EMAIL_PROVIDER_API_KEY');
+  if (!domain || !apiKey) throw new Error('--email mailgun: faltan EMAIL_PROVIDER_DOMAIN o EMAIL_PROVIDER_API_KEY');
+  return {
+    EMAIL_PROVIDER: 'mailgun',
+    EMAIL_FROM: `no-reply@${domain}`,
+    EMAIL_PROVIDER_DOMAIN: domain,
+    EMAIL_PROVIDER_API_KEY: apiKey,
+    EMAIL_PROVIDER_BASE_URL: value('EMAIL_PROVIDER_BASE_URL') || 'https://api.mailgun.net',
+  };
 }
 
 function run(command, args, options = {}) {
@@ -220,7 +238,7 @@ function ensureInstalled(project) {
   run('pnpm', ['install', '--frozen-lockfile'], { cwd: project, label: `pnpm install en ${project}` });
 }
 
-export async function up({ stateFile, walletOrigin, recoveryOrigin, integrityMonitor }) {
+export async function up({ stateFile, walletOrigin, recoveryOrigin, integrityMonitor, email = 'smtp' }) {
   const dir = mkdtempSync(join(tmpdir(), 'mtw-stack-'));
   mkdirSync(join(dir, 'logs'), { recursive: true, mode: 0o700 });
   const id = dir
@@ -254,7 +272,7 @@ export async function up({ stateFile, walletOrigin, recoveryOrigin, integrityMon
   mkdirSync(dirname(state.stateFile), { recursive: true });
   saveState(state);
   try {
-    await bringUp(state, { walletOrigin, recoveryOrigin, integrityMonitor });
+    await bringUp(state, { walletOrigin, recoveryOrigin, integrityMonitor, email });
     return state;
   } catch (error) {
     log(`falló el arranque; logs en ${join(dir, 'logs')}`);
@@ -263,7 +281,7 @@ export async function up({ stateFile, walletOrigin, recoveryOrigin, integrityMon
   }
 }
 
-async function bringUp(state, { walletOrigin, recoveryOrigin, integrityMonitor }) {
+async function bringUp(state, { walletOrigin, recoveryOrigin, integrityMonitor, email }) {
   const { dir, ports } = state;
   const chain = JSON.parse(readFileSync(join(WALLET_ROOT, 'config/chains/base-mainnet.json'), 'utf8'));
   const anvilUrl = `http://127.0.0.1:${String(ports.anvil)}`;
@@ -329,6 +347,7 @@ async function bringUp(state, { walletOrigin, recoveryOrigin, integrityMonitor }
     INTEGRITY_MONITOR_URL: integrityMonitor ?? '',
     // Comparte la key del RPC con los demás jobs de CI (docs/CI.md#presupuesto-del-rpc-del-fork).
     ANVIL_COMPUTE_UNITS_PER_SECOND: '80',
+    ...(email === 'mailgun' ? mailgunSettings() : {}),
   };
   writeFileSync(state.envFile, '', { mode: 0o600 });
   updateEnvFile(state.envFile, { ...example, ...overrides });
@@ -567,11 +586,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       // Simulacro de integridad (P20.MAN): signer y worker con la integridad exigida y el monitor en esta URL.
       'integrity-monitor': { type: 'string' },
       'keep-logs': { type: 'boolean', default: false },
+      email: { type: 'string', default: 'smtp' },
     },
   });
   const command = positionals[0];
   const commands = ['up', 'down', 'backend-stop', 'backend-start'];
-  if (!values.state || !commands.includes(command)) {
+  if (!values.state || !commands.includes(command) || !['smtp', 'mailgun'].includes(values.email)) {
     process.stderr.write(
       'uso: node scripts/stack/stack.mjs up|down|backend-stop|backend-start --state <archivo> [--wallet-origin <url>]\n',
     );
@@ -584,6 +604,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         walletOrigin: values['wallet-origin'],
         recoveryOrigin: values['recovery-origin'],
         integrityMonitor: values['integrity-monitor'],
+        email: values.email,
       });
     } else if (command === 'backend-stop') {
       await stopBackend({ stateFile: values.state });
